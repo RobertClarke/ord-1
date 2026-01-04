@@ -1,5 +1,5 @@
 <!DOCTYPE HTML>
-<html lang="pt" class="coal" dir="ltr">
+<html lang="pt" class="coal sidebar-visible" dir="ltr">
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
@@ -7,7 +7,7 @@
 
 
         <!-- Custom HTML head -->
-        
+
         <meta name="description" content="">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
@@ -29,17 +29,19 @@
         <link rel="stylesheet" href="ayu-highlight.css">
 
         <!-- Custom theme stylesheets -->
-        <link rel="stylesheet" href="language-picker.css">
+        <link rel="stylesheet" href="index.css">
 
-    </head>
-    <body class="sidebar-visible no-js">
-    <div id="body-container">
+
         <!-- Provide site root to javascript -->
         <script>
             var path_to_root = "";
             var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "coal" : "coal";
         </script>
-
+        <!-- Start loading toc.js asap -->
+        <script src="toc.js"></script>
+    </head>
+    <body>
+    <div id="body-container">
         <!-- Work around some values being stored in localStorage wrapped in quotes -->
         <script>
             try {
@@ -61,19 +63,16 @@
             var theme;
             try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
             if (theme === null || theme === undefined) { theme = default_theme; }
-            var html = document.querySelector('html');
+            const html = document.documentElement;
             html.classList.remove('coal')
             html.classList.add(theme);
-            var body = document.querySelector('body');
-            body.classList.remove('no-js')
-            body.classList.add('js');
+            html.classList.add("js");
         </script>
 
         <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
 
         <!-- Hide / unhide sidebar before it is displayed -->
         <script>
-            var body = document.querySelector('body');
             var sidebar = null;
             var sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
             if (document.body.clientWidth >= 1080) {
@@ -83,43 +82,25 @@
                 sidebar = 'hidden';
             }
             sidebar_toggle.checked = sidebar === 'visible';
-            body.classList.remove('sidebar-visible');
-            body.classList.add("sidebar-" + sidebar);
+            html.classList.remove('sidebar-visible');
+            html.classList.add("sidebar-" + sidebar);
         </script>
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
-            <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded affix "><a href="introduction.html">Introdução</a></li><li class="chapter-item expanded "><a href="overview.html"><strong aria-hidden="true">1.</strong> Descrição Geral</a></li><li class="chapter-item expanded "><a href="digital-artifacts.html"><strong aria-hidden="true">2.</strong> Artefatos Digitais</a></li><li class="chapter-item expanded "><a href="inscriptions.html"><strong aria-hidden="true">3.</strong> Inscrições</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="inscriptions/delegate.html"><strong aria-hidden="true">3.1.</strong> Delegate</a></li><li class="chapter-item expanded "><a href="inscriptions/metadata.html"><strong aria-hidden="true">3.2.</strong> Metadata</a></li><li class="chapter-item expanded "><a href="inscriptions/pointer.html"><strong aria-hidden="true">3.3.</strong> Pointer</a></li><li class="chapter-item expanded "><a href="inscriptions/provenance.html"><strong aria-hidden="true">3.4.</strong> Procedência</a></li><li class="chapter-item expanded "><a href="inscriptions/recursion.html"><strong aria-hidden="true">3.5.</strong> Recursão</a></li></ol></li><li class="chapter-item expanded "><a href="faq.html" class="active"><strong aria-hidden="true">4.</strong> Perguntas Frequentes</a></li><li class="chapter-item expanded "><a href="contributing.html"><strong aria-hidden="true">5.</strong> Contribuir</a></li><li class="chapter-item expanded "><a href="donate.html"><strong aria-hidden="true">6.</strong> Doações</a></li><li class="chapter-item expanded "><a href="guides.html"><strong aria-hidden="true">7.</strong> Guias</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="guides/explorer.html"><strong aria-hidden="true">7.1.</strong> Explorador</a></li><li class="chapter-item expanded "><a href="guides/inscriptions.html"><strong aria-hidden="true">7.2.</strong> Inscrições</a></li><li class="chapter-item expanded "><a href="guides/batch-inscribing.html"><strong aria-hidden="true">7.3.</strong> Batch Inscribing</a></li><li class="chapter-item expanded "><a href="guides/sat-hunting.html"><strong aria-hidden="true">7.4.</strong> Caçando Sats</a></li><li class="chapter-item expanded "><a href="guides/teleburning.html"><strong aria-hidden="true">7.5.</strong> Teleburning</a></li><li class="chapter-item expanded "><a href="guides/collecting.html"><strong aria-hidden="true">7.6.</strong> Colecionando</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="guides/collecting/sparrow-wallet.html"><strong aria-hidden="true">7.6.1.</strong> Carteira Sparrow</a></li></ol></li><li class="chapter-item expanded "><a href="guides/testing.html"><strong aria-hidden="true">7.7.</strong> Testando</a></li><li class="chapter-item expanded "><a href="guides/moderation.html"><strong aria-hidden="true">7.8.</strong> Moderação</a></li><li class="chapter-item expanded "><a href="guides/reindexing.html"><strong aria-hidden="true">7.9.</strong> Reindexação</a></li></ol></li><li class="chapter-item expanded "><a href="bounties.html"><strong aria-hidden="true">8.</strong> Recompensas</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="bounty/0.html"><strong aria-hidden="true">8.1.</strong> Recompensa 0: 100,000 sats reivindicados!</a></li><li class="chapter-item expanded "><a href="bounty/1.html"><strong aria-hidden="true">8.2.</strong> Recompensa 1: 200,000 sats reivindicados!</a></li><li class="chapter-item expanded "><a href="bounty/2.html"><strong aria-hidden="true">8.3.</strong> Recompensa 2: 300,000 sats reivindicados!</a></li><li class="chapter-item expanded "><a href="bounty/3.html"><strong aria-hidden="true">8.4.</strong> Recompensa 3: 400,000 sats</a></li></ol></li></ol>
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+            </noscript>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
             </div>
-            <div id="sidebar-resize-handle" class="sidebar-resize-handle"></div>
         </nav>
-
-        <!-- Track and set sidebar scroll position -->
-        <script>
-            var sidebarScrollbox = document.querySelector('#sidebar .sidebar-scrollbox');
-            sidebarScrollbox.addEventListener('click', function(e) {
-                if (e.target.tagName === 'A') {
-                    sessionStorage.setItem('sidebar-scroll', sidebarScrollbox.scrollTop);
-                }
-            }, { passive: true });
-            var sidebarScrollTop = sessionStorage.getItem('sidebar-scroll');
-            sessionStorage.removeItem('sidebar-scroll');
-            if (sidebarScrollTop) {
-                // preserve sidebar scroll position when navigating via links within sidebar
-                sidebarScrollbox.scrollTop = sidebarScrollTop;
-            } else {
-                // scroll sidebar to current active section when navigating via "next/previous chapter" buttons
-                var activeSection = document.querySelector('#sidebar .active');
-                if (activeSection) {
-                    activeSection.scrollIntoView({ block: 'center' });
-                }
-            }
-        </script>
 
         <div id="page-wrapper" class="page-wrapper">
 
             <div class="page">
-                                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar-hover-placeholder"></div>
                 <div id="menu-bar" class="menu-bar sticky">
                     <div class="left-buttons">
                         <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
@@ -141,7 +122,6 @@
                     </div>
 
                     <h1 class="menu-title">Ordinal Theory Handbook</h1>
-
                     <div class="right-buttons">
                         <button id="language-toggle" class="icon-button" type="button"
                                 title="Change language" aria-label="Change language"
@@ -189,6 +169,9 @@
                           <li role="none"><button role="menuitem" class="theme">
                               <a id="it">Italiano</a>
                           </button></li>
+                          <li role="none"><button role="menuitem" class="theme">
+                              <a id="nl">Nederlands</a>
+                          </button></li>
                         </ul>
 
                         <script>
@@ -201,7 +184,6 @@
                           if (selectedLang) {
                               selectedLang.parentNode.classList.add("theme-selected");
                           }
-
                           // The path to the root, taking the current
                           // language into account.
                           let full_path_to_root = "../";
@@ -216,6 +198,8 @@
                               }
                           }
                         </script>
+
+
 
                         <a href="print.html" title="Print this book" aria-label="Print this book">
                             <i id="print-button" class="fa fa-print"></i>
@@ -275,7 +259,7 @@
 <p>E quanto às taxas, você pode perguntar? Boa pergunta! Vamos imaginar a mesma transação, desta vez com uma taxa de dois satoshis. Transações com taxas enviam mais satoshis nas entradas do que são recebidos pelas saídas, então para transformar nossa transação em uma que paga taxas, removeremos a segunda saída:</p>
 <pre><code>[2] [1] [3] → [4]
 </code></pre>
-<p>Os satoshis <var>e</var>&amp; <var>f</var>agora não têm para onde ir nas saídas:</p>
+<p>The satoshis <var>e</var> and <var>f</var> now have nowhere to go in the outputs:</p>
 <pre><code>[a b] [c] [d e f] → [a b c d]
 </code></pre>
 <p>Então eles vão, como taxas, para o minerador que minerou o bloco. <a href="https://github.com/ordinals/ord/blob/master/bip.mediawiki">O BIP</a> tem os detalhes, mas resumindo, as taxas pagas pelas transações são tratadas como entradas extras para a transação coinbase e são ordenadas como suas transações correspondentes são ordenadas no bloco. A transação coinbase do bloco pode ter a seguinte aparência:</p>
@@ -283,10 +267,10 @@
 </code></pre>
 <h2 id="onde-posso-encontrar-os-detalhes-técnicos"><a class="header" href="#onde-posso-encontrar-os-detalhes-técnicos">Onde posso encontrar os detalhes técnicos?</a></h2>
 <p><a href="https://github.com/ordinals/ord/blob/master/bip.mediawiki">No BIP!</a></p>
-<h2 id="por-que-as-inscrições-em-sats-são-chamadas-de-artefatos-digitais-em-vez-de-nfts"><a class="header" href="#por-que-as-inscrições-em-sats-são-chamadas-de-artefatos-digitais-em-vez-de-nfts">Por que as inscrições em sats são chamadas de &quot;artefatos digitais&quot; em vez de &quot;NFTs&quot;?</a></h2>
-<p>Uma inscrição é uma NFT, mas o termo &quot;artefato digital&quot; é usado em seu lugar, porque é simples, sugestivo e familiar.</p>
-<p>A frase &quot;artefato digital&quot; é altamente sugestiva, mesmo para alguém que nunca ouviu o termo antes. Em comparação, NFT é um acrônimo e não fornece nenhuma indicação do que significa se você nunca ouviu o termo anteriormente.</p>
-<p>Além disso, &quot;NFT&quot; parece uma terminologia financeira, e a palavra &quot;fungível&quot; e o sentido da palavra &quot;token,&quot; conforme usado em &quot;NFT,&quot; são incomuns fora de contextos financeiros.</p>
+<h2 id="por-que-as-inscrições-em-sats-são-chamadas-de-artefatos-digitais-em-vez-de-nfts"><a class="header" href="#por-que-as-inscrições-em-sats-são-chamadas-de-artefatos-digitais-em-vez-de-nfts">Por que as inscrições em sats são chamadas de "artefatos digitais" em vez de "NFTs"?</a></h2>
+<p>Uma inscrição é uma NFT, mas o termo "artefato digital" é usado em seu lugar, porque é simples, sugestivo e familiar.</p>
+<p>A frase "artefato digital" é altamente sugestiva, mesmo para alguém que nunca ouviu o termo antes. Em comparação, NFT é um acrônimo e não fornece nenhuma indicação do que significa se você nunca ouviu o termo anteriormente.</p>
+<p>Additionally, "NFT" feels like financial terminology, and both the word "fungible" and sense of the word "token" as used in "NFT" is uncommon outside of financial contexts.</p>
 <h2 id="como-as-inscrições-em-sat-se-comparam-a"><a class="header" href="#como-as-inscrições-em-sat-se-comparam-a">Como as inscrições em sat se comparam a...</a></h2>
 <h3 id="nfts-no-ethereum"><a class="header" href="#nfts-no-ethereum">NFTs no Ethereum?</a></h3>
 <p><em>As inscrições são sempre imutáveis.</em></p>
@@ -294,9 +278,9 @@
 <p>As NFTs no Ethereum <em>podem</em> ser imutáveis, mas muitas não são, e podem ser alteradas ou excluídas pelo proprietário do contrato NFT.</p>
 <p>Para garantir que uma determinada NFT no Ethereum seja imutável, o código do contrato deve ser auditado, o que requer conhecimento detalhado de semântica EVM e Solidity.</p>
 <p>É muito difícil para um usuário não técnico determinar se uma determinada NFT no Ethereum é mutável ou imutável, e as plataformas daquele ecosistema não fazem nenhum esforço para distinguir se uma NFT é mutável ou imutável, e se o código-fonte do contrato está disponível e foi auditado.</p>
-<p><em>O conteúdo de inscrições estão sempre &quot;on-chain&quot; na cadeia do Bitcoin.</em></p>
+<p><em>O conteúdo de inscrições estão sempre "on-chain" na cadeia do Bitcoin.</em></p>
 <p>Não há como uma inscrição se referir a conteúdo fora da rede. Isso torna as inscrições mais duráveis, porque o conteúdo não pode ser perdido, e mais escassas, porque os criadores das inscrições devem pagar taxas proporcionais ao tamanho do conteúdo.</p>
-<p>Existem alguns conteúdos de NFTs no Ethereum on-chain, mas muito está fora da cadeia, &quot;off-chain,&quot; e armazenado em plataformas como IPFS ou Arweave, ou em servidores web tradicionais e totalmente centralizados. Não há garantia de que o conteúdo no IPFS continuará disponível, e alguns conteúdos de NFT armazenados em IPFS já foram perdidos. Plataformas como a Arweave dependem de suposições econômicas fracas e provavelmente falharão catastroficamente quando essas suposições econômicas não forem mais atendidas. Servidores web centralizados podem desaparecer a qualquer momento.</p>
+<p>Existem alguns conteúdos de NFTs no Ethereum on-chain, mas muito está fora da cadeia, "off-chain," e armazenado em plataformas como IPFS ou Arweave, ou em servidores web tradicionais e totalmente centralizados. Não há garantia de que o conteúdo no IPFS continuará disponível, e alguns conteúdos de NFT armazenados em IPFS já foram perdidos. Plataformas como a Arweave dependem de suposições econômicas fracas e provavelmente falharão catastroficamente quando essas suposições econômicas não forem mais atendidas. Servidores web centralizados podem desaparecer a qualquer momento.</p>
 <p>É muito difícil para um usuário não técnico determinar onde o conteúdo de uma determinada NFT do Ethereum está armazenada.</p>
 <p><em>As inscrições são muito mais simples.</em></p>
 <p>As NFTs do Ethereum dependem da rede Ethereum e da máquina virtual, que são altamente complexas, estão em constante mudança e introduzem mudanças por meio de hard forks incompatíveis com versões anteriores.</p>
@@ -317,7 +301,7 @@
 <p>As inscrições consistem em um tipo de conteúdo, também conhecido como tipo MIME, e conteúdo em si, que é uma sequência de bytes arbitrária. Este é o mesmo modelo de dados usado pela web e permite que o conteúdo da inscrição evolua com a web e venha a suportar qualquer tipo de conteúdo suportado por navegadores web, sem exigir alterações no protocolo subjacente.</p>
 <h3 id="rgb-e-ativos-do-taro"><a class="header" href="#rgb-e-ativos-do-taro">RGB e ativos do Taro?</a></h3>
 <p>RGB e Taro são protocolos de ativos de segunda camada construídos no Bitcoin. Comparados às inscrições, eles são muito mais complicados, mas com muito mais recursos.</p>
-<p>A teoria ordinal foi projetada desde o início para artefatos digitais, experiência do usuário para inscrições provavelmente será mais simples e refinada do que a experiência do usuário para NFTs do RGB e Taro.</p>
+<p>A teoria ordinal foi projetada desde o início para artefatos digitais, enquanto o principal caso de uso de RGB e Taro são tokens fungíveis, então a experiência do usuário para inscrições provavelmente será mais simples e refinada do que a experiência do usuário para NFTs do RGB e Taro.</p>
 <p>RGB e Taro armazenam conteúdo fora da cadeia (off-chain), o que requer infraestrutura adicional e pode ser perdido. Por outro lado, o conteúdo de inscrição é armazenado na cadeia (on-chain) e não pode ser perdido.</p>
 <p>Tanto a teoria ordinal quanto RGB e Taro são muito novos, então isso é especulação, mas o foco da teoria ordinal pode dar-lhe vantagem em termos de recursos para artefatos digitais, incluindo um modelo de conteúdo melhor e recursos como símbolos globalmente únicos.</p>
 <h3 id="ativos-do-counterparty"><a class="header" href="#ativos-do-counterparty">Ativos do Counterparty?</a></h3>
@@ -352,7 +336,7 @@
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="inscriptions/recursion.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="security.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
@@ -366,7 +350,7 @@
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="inscriptions/recursion.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="security.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 

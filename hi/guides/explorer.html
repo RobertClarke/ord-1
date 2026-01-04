@@ -1,5 +1,5 @@
 <!DOCTYPE HTML>
-<html lang="hi" class="coal" dir="ltr">
+<html lang="hi" class="coal sidebar-visible" dir="ltr">
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
@@ -7,7 +7,7 @@
 
 
         <!-- Custom HTML head -->
-        
+
         <meta name="description" content="">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
@@ -29,17 +29,19 @@
         <link rel="stylesheet" href="../ayu-highlight.css">
 
         <!-- Custom theme stylesheets -->
-        <link rel="stylesheet" href="../language-picker.css">
+        <link rel="stylesheet" href="../index.css">
 
-    </head>
-    <body class="sidebar-visible no-js">
-    <div id="body-container">
+
         <!-- Provide site root to javascript -->
         <script>
             var path_to_root = "../";
             var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "coal" : "coal";
         </script>
-
+        <!-- Start loading toc.js asap -->
+        <script src="../toc.js"></script>
+    </head>
+    <body>
+    <div id="body-container">
         <!-- Work around some values being stored in localStorage wrapped in quotes -->
         <script>
             try {
@@ -61,19 +63,16 @@
             var theme;
             try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
             if (theme === null || theme === undefined) { theme = default_theme; }
-            var html = document.querySelector('html');
+            const html = document.documentElement;
             html.classList.remove('coal')
             html.classList.add(theme);
-            var body = document.querySelector('body');
-            body.classList.remove('no-js')
-            body.classList.add('js');
+            html.classList.add("js");
         </script>
 
         <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
 
         <!-- Hide / unhide sidebar before it is displayed -->
         <script>
-            var body = document.querySelector('body');
             var sidebar = null;
             var sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
             if (document.body.clientWidth >= 1080) {
@@ -83,43 +82,25 @@
                 sidebar = 'hidden';
             }
             sidebar_toggle.checked = sidebar === 'visible';
-            body.classList.remove('sidebar-visible');
-            body.classList.add("sidebar-" + sidebar);
+            html.classList.remove('sidebar-visible');
+            html.classList.add("sidebar-" + sidebar);
         </script>
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
-            <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded affix "><a href="../introduction.html">परिचय</a></li><li class="chapter-item expanded "><a href="../overview.html"><strong aria-hidden="true">1.</strong> अवलोकन</a></li><li class="chapter-item expanded "><a href="../digital-artifacts.html"><strong aria-hidden="true">2.</strong> डिजिटल अभिलेख</a></li><li class="chapter-item expanded "><a href="../inscriptions.html"><strong aria-hidden="true">3.</strong> इंस्‍क्रीप्‍शंस</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../inscriptions/delegate.html"><strong aria-hidden="true">3.1.</strong> Delegate</a></li><li class="chapter-item expanded "><a href="../inscriptions/metadata.html"><strong aria-hidden="true">3.2.</strong> Metadata</a></li><li class="chapter-item expanded "><a href="../inscriptions/pointer.html"><strong aria-hidden="true">3.3.</strong> Pointer</a></li><li class="chapter-item expanded "><a href="../inscriptions/provenance.html"><strong aria-hidden="true">3.4.</strong> उत्‍पति</a></li><li class="chapter-item expanded "><a href="../inscriptions/recursion.html"><strong aria-hidden="true">3.5.</strong> रिकर्सन-प्रतिवर्तन</a></li></ol></li><li class="chapter-item expanded "><a href="../faq.html"><strong aria-hidden="true">4.</strong> एफएक्‍यू</a></li><li class="chapter-item expanded "><a href="../contributing.html"><strong aria-hidden="true">5.</strong> योगदान</a></li><li class="chapter-item expanded "><a href="../donate.html"><strong aria-hidden="true">6.</strong> दान करें</a></li><li class="chapter-item expanded "><a href="../guides.html"><strong aria-hidden="true">7.</strong> मार्गदर्शक निर्देश</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../guides/explorer.html" class="active"><strong aria-hidden="true">7.1.</strong> एक्‍सप्‍लोरर</a></li><li class="chapter-item expanded "><a href="../guides/inscriptions.html"><strong aria-hidden="true">7.2.</strong> इंस्‍क्रीप्‍शंस</a></li><li class="chapter-item expanded "><a href="../guides/batch-inscribing.html"><strong aria-hidden="true">7.3.</strong> Batch Inscribing</a></li><li class="chapter-item expanded "><a href="../guides/sat-hunting.html"><strong aria-hidden="true">7.4.</strong> सैट हंटिंग</a></li><li class="chapter-item expanded "><a href="../guides/teleburning.html"><strong aria-hidden="true">7.5.</strong> Teleburning</a></li><li class="chapter-item expanded "><a href="../guides/collecting.html"><strong aria-hidden="true">7.6.</strong> संग्राहक</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../guides/collecting/sparrow-wallet.html"><strong aria-hidden="true">7.6.1.</strong> स्‍पैरो वॉलेट</a></li></ol></li><li class="chapter-item expanded "><a href="../guides/testing.html"><strong aria-hidden="true">7.7.</strong> परीक्षण</a></li><li class="chapter-item expanded "><a href="../guides/moderation.html"><strong aria-hidden="true">7.8.</strong> मॉडरेशन</a></li><li class="chapter-item expanded "><a href="../guides/reindexing.html"><strong aria-hidden="true">7.9.</strong> रिइंडैक्सिंग</a></li></ol></li><li class="chapter-item expanded "><a href="../bounties.html"><strong aria-hidden="true">8.</strong> बांउटीज़</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../bounty/0.html"><strong aria-hidden="true">8.1.</strong> बांउटी 0: 100,000 सैट्स दावा किया!</a></li><li class="chapter-item expanded "><a href="../bounty/1.html"><strong aria-hidden="true">8.2.</strong> बांउटी 1: 200,000 सैट्स दावा किया!</a></li><li class="chapter-item expanded "><a href="../bounty/2.html"><strong aria-hidden="true">8.3.</strong> बांउटी 2: 300,000 सैट्स दावा किया!</a></li><li class="chapter-item expanded "><a href="../bounty/3.html"><strong aria-hidden="true">8.4.</strong> बांउटी 3: 400,000 सैट्स दावा किया!</a></li></ol></li></ol>
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="../toc.html"></iframe>
+            </noscript>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
             </div>
-            <div id="sidebar-resize-handle" class="sidebar-resize-handle"></div>
         </nav>
-
-        <!-- Track and set sidebar scroll position -->
-        <script>
-            var sidebarScrollbox = document.querySelector('#sidebar .sidebar-scrollbox');
-            sidebarScrollbox.addEventListener('click', function(e) {
-                if (e.target.tagName === 'A') {
-                    sessionStorage.setItem('sidebar-scroll', sidebarScrollbox.scrollTop);
-                }
-            }, { passive: true });
-            var sidebarScrollTop = sessionStorage.getItem('sidebar-scroll');
-            sessionStorage.removeItem('sidebar-scroll');
-            if (sidebarScrollTop) {
-                // preserve sidebar scroll position when navigating via links within sidebar
-                sidebarScrollbox.scrollTop = sidebarScrollTop;
-            } else {
-                // scroll sidebar to current active section when navigating via "next/previous chapter" buttons
-                var activeSection = document.querySelector('#sidebar .active');
-                if (activeSection) {
-                    activeSection.scrollIntoView({ block: 'center' });
-                }
-            }
-        </script>
 
         <div id="page-wrapper" class="page-wrapper">
 
             <div class="page">
-                                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar-hover-placeholder"></div>
                 <div id="menu-bar" class="menu-bar sticky">
                     <div class="left-buttons">
                         <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
@@ -141,7 +122,6 @@
                     </div>
 
                     <h1 class="menu-title">Ordinal Theory Handbook</h1>
-
                     <div class="right-buttons">
                         <button id="language-toggle" class="icon-button" type="button"
                                 title="Change language" aria-label="Change language"
@@ -189,6 +169,9 @@
                           <li role="none"><button role="menuitem" class="theme">
                               <a id="it">Italiano</a>
                           </button></li>
+                          <li role="none"><button role="menuitem" class="theme">
+                              <a id="nl">Nederlands</a>
+                          </button></li>
                         </ul>
 
                         <script>
@@ -201,7 +184,6 @@
                           if (selectedLang) {
                               selectedLang.parentNode.classList.add("theme-selected");
                           }
-
                           // The path to the root, taking the current
                           // language into account.
                           let full_path_to_root = "../../";
@@ -216,6 +198,8 @@
                               }
                           }
                         </script>
+
+
 
                         <a href="../print.html" title="Print this book" aria-label="Print this book">
                             <i id="print-button" class="fa fa-print"></i>
@@ -250,16 +234,14 @@
                 <div id="content" class="content">
                     <main>
                         <h1 id="ऑरडिनलस-एकसपलोरर"><a class="header" href="#ऑरडिनलस-एकसपलोरर">ऑर्डिनल्स एक्सप्लोरर</a></h1>
-<p>The <code>ord</code> binary includes a block explorer. We host an instance of the block explorer on mainnet at <a href="https://ordinals.com">ordinals.com</a>, and on signet at <a href="https://signet.ordinals.com">signet.ordinals.com</a>.</p>
+<p>The <code>ord</code> binary includes a block explorer. We host an instance of the block explorer on mainnet at <a href="https://ordinals.com">ordinals.com</a>, on signet at <a href="https://signet.ordinals.com">signet.ordinals.com</a>, and on testnet at <a href="https://testnet.ordinals.com">testnet.ordinals.com</a>. As of version 0.16.0 the wallet needs <code>ord server</code> running in the background. This is analogous to how <code>bitcoin-cli</code> needs <code>bitcoind</code> running in the background.</p>
 <h3 id="एकसपलोरर-संचालन"><a class="header" href="#एकसपलोरर-संचालन">एक्सप्लोरर संचालन</a></h3>
 <p>सर्वर स्थानीय रूप से निम्‍न के साथ चलाया जा सकता है:</p>
 <p><code>ऑर्ड सर्वर</code></p>
 <p>पोर्ट निर्दिष्ट करने के लिए <code>--http-port</code> फ़्लैग टाइप करें:</p>
 <p>ऑर्ड सर्वर --http-port 8080`</p>
-<p>To enable the JSON-API endpoints add the <code>--enable-json-api</code> or <code>-j</code> flag (see <a href="#json-api">here</a> for more info):</p>
-<p><code>ord server --enable-json-api</code></p>
-<p>आपके डिजिटल अभिलेख कैसे दिखेंगे, यह जांचने के लिए कि आप निम्‍न संचालित कर सकते हैं:</p>
-<p>ऑर्ड प्रिव्‍यु  <FILE1> <FILE2> ...</p>
+<p>The JSON-API endpoints are enabled by default, to disable them add the <code>--disable-json-api</code> flag (see <a href="api.html">here</a> for more info):</p>
+<p><code>ord server --disable-json-api</code></p>
 <h2 id="सरच-तलाश-करें"><a class="header" href="#सरच-तलाश-करें">सर्च (तलाश करें)</a></h2>
 <p>सर्च बॉक्स विभिन्न प्रकार के ऑब्जेक्ट अभ्यावेदन स्वीकार करता है।</p>
 <h3 id="बलॉकस"><a class="header" href="#बलॉकस">ब्लॉक्‍स</a></h3>
@@ -278,51 +260,21 @@
 <p><a href="https://ordinals.com/search/481824.0">481824.0</a></p>
 <p>डिग्री, उसके चक्र, अंतिम कठिन समायोजन के बाद से अंतिम पड़ाव के बाद ब्लॉक द्वारा, और उनके ब्लॉक के भीतर ऑफसेट (प्रतिसंतुलित) कर:</p>
 <p><a href="https://ordinals.com/search/1%C2%B00%E2%80%B20%E2%80%B30%E2%80%B4">1°0′0″0‴</a></p>
-<p>नाम द्वारा, &quot;a&quot; से &quot;z&quot; उनके मूल 26 अक्षरों के प्रतिनिधित्व का उपयोग करके:</p>
+<p>नाम द्वारा, "a" से "z" उनके मूल 26 अक्षरों के प्रतिनिधित्व का उपयोग करके:</p>
 <p><a href="https://ordinals.com/search/ahistorical">अनैतिहासिक</a></p>
 <p>या प्रतिशतक द्वारा, बिटकॉइन खनन के समय जारी किये गये या जारी की जाने वाली बिटकॉइन की आपूर्ति के अनुरूप की जाएगी:</p>
 <p><a href="https://ordinals.com/search/100%">100%</a></p>
-<h2 id="json-api"><a class="header" href="#json-api">JSON-API</a></h2>
-<p>You can run <code>ord server</code> with the <code>--enable-json-api</code> flag to access endpoints that return JSON instead of HTML if you set the HTTP <code>Accept: application/json</code> header. The structure of these objects closely follows what is shown in the HTML. These endpoints are:</p>
-<ul>
-<li><code>/inscription/&lt;INSCRIPTION_ID&gt;</code></li>
-<li><code>/inscriptions</code></li>
-<li><code>/inscriptions/block/&lt;BLOCK_HEIGHT&gt;</code></li>
-<li><code>/inscriptions/block/&lt;BLOCK_HEIGHT&gt;/&lt;PAGE_INDEX&gt;</code></li>
-<li><code>/inscriptions/&lt;FROM&gt;</code></li>
-<li><code>/inscriptions/&lt;FROM&gt;/&lt;N&gt;</code></li>
-<li><code>/output/&lt;OUTPOINT&gt;</code></li>
-<li><code>/output/&lt;OUTPOINT&gt;</code></li>
-<li><code>/sat/&lt;SAT&gt;</code></li>
-</ul>
-<p>To get a list of the latest 100 inscriptions you would do:</p>
-<pre><code>curl -s -H &quot;Accept: application/json&quot; 'http://0.0.0.0:80/inscriptions'
-</code></pre>
-<p>To see information about a UTXO, which includes inscriptions inside it, do:</p>
-<pre><code>curl -s -H &quot;Accept: application/json&quot; 'http://0.0.0.0:80/output/bc4c30829a9564c0d58e6287195622b53ced54a25711d1b86be7cd3a70ef61ed:0'
-</code></pre>
-<p>Which returns:</p>
-<pre><code>{
-  &quot;value&quot;: 10000,
-  &quot;script_pubkey&quot;: &quot;OP_PUSHNUM_1 OP_PUSHBYTES_32 156cc4878306157720607cdcb4b32afa4cc6853868458d7258b907112e5a434b&quot;,
-  &quot;address&quot;: &quot;bc1pz4kvfpurqc2hwgrq0nwtfve2lfxvdpfcdpzc6ujchyr3ztj6gd9sfr6ayf&quot;,
-  &quot;transaction&quot;: &quot;bc4c30829a9564c0d58e6287195622b53ced54a25711d1b86be7cd3a70ef61ed&quot;,
-  &quot;sat_ranges&quot;: null,
-  &quot;inscriptions&quot;: [
-    &quot;6fb976ab49dcec017f1e201e84395983204ae1a7c2abf7ced0a85d692e442799i0&quot;
-  ]
-}
-</code></pre>
+<pre><code></code></pre>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../guides.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../guides/collecting/sparrow-wallet.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="../guides/inscriptions.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../guides/moderation.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -332,11 +284,11 @@
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../guides.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../guides/collecting/sparrow-wallet.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="../guides/inscriptions.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../guides/moderation.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>

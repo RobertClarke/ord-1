@@ -1,5 +1,5 @@
 <!DOCTYPE HTML>
-<html lang="de" class="coal" dir="ltr">
+<html lang="de" class="coal sidebar-visible" dir="ltr">
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
@@ -7,7 +7,7 @@
 
 
         <!-- Custom HTML head -->
-        
+
         <meta name="description" content="">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
@@ -29,17 +29,19 @@
         <link rel="stylesheet" href="../../ayu-highlight.css">
 
         <!-- Custom theme stylesheets -->
-        <link rel="stylesheet" href="../../language-picker.css">
+        <link rel="stylesheet" href="../../index.css">
 
-    </head>
-    <body class="sidebar-visible no-js">
-    <div id="body-container">
+
         <!-- Provide site root to javascript -->
         <script>
             var path_to_root = "../../";
             var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "coal" : "coal";
         </script>
-
+        <!-- Start loading toc.js asap -->
+        <script src="../../toc.js"></script>
+    </head>
+    <body>
+    <div id="body-container">
         <!-- Work around some values being stored in localStorage wrapped in quotes -->
         <script>
             try {
@@ -61,19 +63,16 @@
             var theme;
             try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
             if (theme === null || theme === undefined) { theme = default_theme; }
-            var html = document.querySelector('html');
+            const html = document.documentElement;
             html.classList.remove('coal')
             html.classList.add(theme);
-            var body = document.querySelector('body');
-            body.classList.remove('no-js')
-            body.classList.add('js');
+            html.classList.add("js");
         </script>
 
         <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
 
         <!-- Hide / unhide sidebar before it is displayed -->
         <script>
-            var body = document.querySelector('body');
             var sidebar = null;
             var sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
             if (document.body.clientWidth >= 1080) {
@@ -83,43 +82,25 @@
                 sidebar = 'hidden';
             }
             sidebar_toggle.checked = sidebar === 'visible';
-            body.classList.remove('sidebar-visible');
-            body.classList.add("sidebar-" + sidebar);
+            html.classList.remove('sidebar-visible');
+            html.classList.add("sidebar-" + sidebar);
         </script>
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
-            <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded affix "><a href="../../introduction.html">Einführung</a></li><li class="chapter-item expanded "><a href="../../overview.html"><strong aria-hidden="true">1.</strong> Übersicht</a></li><li class="chapter-item expanded "><a href="../../digital-artifacts.html"><strong aria-hidden="true">2.</strong> Digitale Artefakte</a></li><li class="chapter-item expanded "><a href="../../inscriptions.html"><strong aria-hidden="true">3.</strong> Inscriptions</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../../inscriptions/delegate.html"><strong aria-hidden="true">3.1.</strong> Delegate</a></li><li class="chapter-item expanded "><a href="../../inscriptions/metadata.html"><strong aria-hidden="true">3.2.</strong> Metadata</a></li><li class="chapter-item expanded "><a href="../../inscriptions/pointer.html"><strong aria-hidden="true">3.3.</strong> Pointer</a></li><li class="chapter-item expanded "><a href="../../inscriptions/provenance.html"><strong aria-hidden="true">3.4.</strong> Provenance</a></li><li class="chapter-item expanded "><a href="../../inscriptions/recursion.html"><strong aria-hidden="true">3.5.</strong> Rekursion</a></li></ol></li><li class="chapter-item expanded "><a href="../../faq.html"><strong aria-hidden="true">4.</strong> Häufig gestellte Fragen</a></li><li class="chapter-item expanded "><a href="../../contributing.html"><strong aria-hidden="true">5.</strong> Beitragen</a></li><li class="chapter-item expanded "><a href="../../donate.html"><strong aria-hidden="true">6.</strong> Spenden</a></li><li class="chapter-item expanded "><a href="../../guides.html"><strong aria-hidden="true">7.</strong> Anleitungen</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../../guides/explorer.html"><strong aria-hidden="true">7.1.</strong> Explorer</a></li><li class="chapter-item expanded "><a href="../../guides/inscriptions.html"><strong aria-hidden="true">7.2.</strong> Inscriptions</a></li><li class="chapter-item expanded "><a href="../../guides/batch-inscribing.html"><strong aria-hidden="true">7.3.</strong> Batch Inscribing</a></li><li class="chapter-item expanded "><a href="../../guides/sat-hunting.html"><strong aria-hidden="true">7.4.</strong> Sat-Suche</a></li><li class="chapter-item expanded "><a href="../../guides/teleburning.html"><strong aria-hidden="true">7.5.</strong> Teleburning</a></li><li class="chapter-item expanded "><a href="../../guides/collecting.html"><strong aria-hidden="true">7.6.</strong> Sammeln</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../../guides/collecting/sparrow-wallet.html" class="active"><strong aria-hidden="true">7.6.1.</strong> Sparrow Wallet</a></li></ol></li><li class="chapter-item expanded "><a href="../../guides/testing.html"><strong aria-hidden="true">7.7.</strong> Testen</a></li><li class="chapter-item expanded "><a href="../../guides/moderation.html"><strong aria-hidden="true">7.8.</strong> Moderation</a></li><li class="chapter-item expanded "><a href="../../guides/reindexing.html"><strong aria-hidden="true">7.9.</strong> Erneutes Indizieren</a></li></ol></li><li class="chapter-item expanded "><a href="../../bounties.html"><strong aria-hidden="true">8.</strong> Bounties</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../../bounty/0.html"><strong aria-hidden="true">8.1.</strong> Bounty 0: 100.000 sats beansprucht!</a></li><li class="chapter-item expanded "><a href="../../bounty/1.html"><strong aria-hidden="true">8.2.</strong> Bounty 1: 200.000 sats beansprucht!</a></li><li class="chapter-item expanded "><a href="../../bounty/2.html"><strong aria-hidden="true">8.3.</strong> Bounty 2: 300.000 sats beansprucht!</a></li><li class="chapter-item expanded "><a href="../../bounty/3.html"><strong aria-hidden="true">8.4.</strong> Bounty 3: 400.000 sats</a></li></ol></li></ol>
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="../../toc.html"></iframe>
+            </noscript>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
             </div>
-            <div id="sidebar-resize-handle" class="sidebar-resize-handle"></div>
         </nav>
-
-        <!-- Track and set sidebar scroll position -->
-        <script>
-            var sidebarScrollbox = document.querySelector('#sidebar .sidebar-scrollbox');
-            sidebarScrollbox.addEventListener('click', function(e) {
-                if (e.target.tagName === 'A') {
-                    sessionStorage.setItem('sidebar-scroll', sidebarScrollbox.scrollTop);
-                }
-            }, { passive: true });
-            var sidebarScrollTop = sessionStorage.getItem('sidebar-scroll');
-            sessionStorage.removeItem('sidebar-scroll');
-            if (sidebarScrollTop) {
-                // preserve sidebar scroll position when navigating via links within sidebar
-                sidebarScrollbox.scrollTop = sidebarScrollTop;
-            } else {
-                // scroll sidebar to current active section when navigating via "next/previous chapter" buttons
-                var activeSection = document.querySelector('#sidebar .active');
-                if (activeSection) {
-                    activeSection.scrollIntoView({ block: 'center' });
-                }
-            }
-        </script>
 
         <div id="page-wrapper" class="page-wrapper">
 
             <div class="page">
-                                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar-hover-placeholder"></div>
                 <div id="menu-bar" class="menu-bar sticky">
                     <div class="left-buttons">
                         <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
@@ -141,7 +122,6 @@
                     </div>
 
                     <h1 class="menu-title">Ordinal Theory Handbook</h1>
-
                     <div class="right-buttons">
                         <button id="language-toggle" class="icon-button" type="button"
                                 title="Change language" aria-label="Change language"
@@ -189,6 +169,9 @@
                           <li role="none"><button role="menuitem" class="theme">
                               <a id="it">Italiano</a>
                           </button></li>
+                          <li role="none"><button role="menuitem" class="theme">
+                              <a id="nl">Nederlands</a>
+                          </button></li>
                         </ul>
 
                         <script>
@@ -201,7 +184,6 @@
                           if (selectedLang) {
                               selectedLang.parentNode.classList.add("theme-selected");
                           }
-
                           // The path to the root, taking the current
                           // language into account.
                           let full_path_to_root = "../../../";
@@ -216,6 +198,8 @@
                               }
                           }
                         </script>
+
+
 
                         <a href="../../print.html" title="Print this book" aria-label="Print this book">
                             <i id="print-button" class="fa fa-print"></i>
@@ -259,11 +243,11 @@
 <p>Laden Sie die Sparrow Wallet von der <a href="https://sparrowwallet.com/download/">Download-Seite</a> für Ihr jeweiliges Betriebssystem herunter.</p>
 <p>Wählen Sie <code>File -&gt; New Wallet</code> und erstellen Sie eine neue Wallet namens <code>ord</code>.</p>
 <p><img src="images/wallet_setup_01.png" alt="" /></p>
-<p>Ändern Sie den &quot;Skripttyp&quot; in &quot;Taproot (P2TR)&quot; und wählen Sie die Option &quot;Neue oder importierte Software-Wallet&quot; aus.</p>
+<p>Ändern Sie den "Skripttyp" in "Taproot (P2TR)" und wählen Sie die Option "Neue oder importierte Software-Wallet" aus.</p>
 <p><img src="images/wallet_setup_02.png" alt="" /></p>
 <p>Wählen Sie <code>Verwenden von 12 Wörtern</code> aus und klicken Sie dann auf <code>Neue generieren</code>. Lassen Sie das Passwortfeld leer.</p>
 <p><img src="images/wallet_setup_03.png" alt="" /></p>
-<p>Es wird eine neue 12-Wort-BIP39-Sicherungsphrase für Sie generiert. Schreiben Sie diese an einem sicheren Ort auf, da dies Ihre Sicherung ist, um Zugriff auf Ihre Brieftasche zu erhalten. Teilen Sie diese Sicherungsphrase NIEMALS mit jemand anderem oder zeigen Sie sie niemandem.</p>
+<p>A new 12 word <a href="https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki">BIP39</a> seed phrase will be generated for you. Write this down somewhere safe as this is your backup to get access to your wallet. NEVER share or show this seed phrase to anyone else.</p>
 <p>Sobald Sie die Sicherungsphrase notiert haben, klicken Sie auf <code>Confirm Backup</code>.</p>
 <p><img src="images/wallet_setup_04.png" alt="" /></p>
 <p>Geben Sie die zuvor notierte Sicherungsphrase erneut ein und klicken Sie dann auf <code>Create Keystore</code>.</p>
@@ -272,14 +256,14 @@
 <p><img src="images/wallet_setup_06.png" alt="" /></p>
 <p>Klicken Sie auf <code>Apply</code>. Wenn Sie möchten, können Sie dem Wallet ein Passwort hinzufügen.</p>
 <p><img src="images/wallet_setup_07.png" alt="" /></p>
-<p>Sie haben jetzt ein Wallet, das mit <code>ord</code> kompatibel ist und mit Hilfe des BIP39 Seed Phrase in <code>ord</code> importiert werden kann. Um Ordinals oder Inschriften zu empfangen, klicken Sie auf die Registerkarte <code>Receive</code> und kopieren Sie eine neue Adresse.</p>
+<p>You now have a wallet which is compatible with <code>ord</code>, and can be imported into <code>ord</code> using the <a href="https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki">BIP39</a> Seed Phrase. To receive ordinals or inscriptions, click on the <code>Receive</code> tab and copy a new address.</p>
 <p>Jedes Mal, wenn Sie empfangen möchten, sollten Sie eine brandneue Adresse verwenden und keine vorhandenen Adressen erneut verwenden.</p>
 <p>Beachten Sie, dass Bitcoin sich von einigen anderen Blockchain-Wallets dadurch unterscheidet, dass dieses Wallet eine unbegrenzte Anzahl neuer Adressen generieren kann. Sie können eine neue Adresse generieren, indem Sie auf die Schaltfläche <code>Get Next Address</code> klicken. Sie können alle Ihre Adressen im Reiter <code>Addresses</code> der App sehen.</p>
 <p>Sie können jeder Adresse ein Etikett hinzufügen, um den Überblick darüber zu behalten, wofür sie verwendet wurde.</p>
 <p><img src="images/wallet_setup_08.png" alt="" /></p>
 <h2 id="Überprüfung--anzeige-empfangener-inscriptions"><a class="header" href="#Überprüfung--anzeige-empfangener-inscriptions">Überprüfung / Anzeige empfangener Inscriptions</a></h2>
 <p>Sobald Sie eine Anmeldung erhalten haben, sehen Sie eine neue Transaktion auf der Registerkarte <code>Transactions</code> von Sparrow sowie ein neues UTXO auf der Registerkarte <code>UTXOs</code>.</p>
-<p>Anfänglich hat diese Transaktion möglicherweise den Status &quot;Unconfirmed&quot; und Sie müssen warten, bis sie in einen Bitcoin-Block umgewandelt wurde, bevor sie vollständig empfangen wird.</p>
+<p>Anfänglich hat diese Transaktion möglicherweise den Status "Unconfirmed" und Sie müssen warten, bis sie in einen Bitcoin-Block umgewandelt wurde, bevor sie vollständig empfangen wird.</p>
 <p><img src="images/validating_viewing_01.png" alt="" /></p>
 <p>Um den Status Ihrer Transaktion zu verfolgen, können Sie mit der rechten Maustaste darauf klicken, <code>Copy Transaction ID</code> auswählen und diese Transaktions-ID dann in <a href="https://mempool.space">mempool.space</a> einfügen.</p>
 <p><img src="images/validating_viewing_02.png" alt="" /></p>
@@ -289,13 +273,13 @@
 <p>Gehen Sie dazu zur Registerkarte <code>UTXOs</code>, suchen Sie das UTXO, das Sie einfrieren möchten, klicken Sie mit der rechten Maustaste auf <code>Output</code> und wählen Sie <code>Freeze UTXO</code>.</p>
 <p>Dieses UTXO (Inscription) kann jetzt nicht mehr in der Sparrow-Wallet ausgegeben werden, bis Sie es entsperren.</p>
 <h2 id="importieren-in-die-ord-wallet"><a class="header" href="#importieren-in-die-ord-wallet">Importieren in die <code>ord</code> wallet</a></h2>
-<p>Einzelheiten zum Einrichten von Bitcoin Core und der <code>ord</code> Wallet finden Sie im <a href="../inscriptions.html">Inscriptions Guide</a></p>
-<p>Wenn Sie <code>ord</code> einrichten, können Sie, anstatt <code>ord wallet create</code> auszuführen, um ein brandneues Wallet zu erstellen, Ihr vorhandenes Wallet mit <code>ord wallet restore &quot;BIP39 SEED PHRASE&quot;</code> importieren und dabei die Seed-Phrase verwenden, die Sie mit Sparrow Wallet generiert haben.</p>
+<p>For details on setting up Bitcoin Core and the <code>ord</code> wallet check out the <a href="../wallet.html">Wallet Guide</a></p>
+<p>Wenn Sie <code>ord</code> einrichten, können Sie, anstatt <code>ord wallet create</code> auszuführen, um ein brandneues Wallet zu erstellen, Ihr vorhandenes Wallet mit <code>ord wallet restore "BIP39 SEED PHRASE"</code> importieren und dabei die Seed-Phrase verwenden, die Sie mit Sparrow Wallet generiert haben.</p>
 <p>Derzeit gibt es einen <a href="https://github.com/ordinals/ord/issues/1589">Fehler</a>, der dazu führt, dass eine importierte Wallet nicht automatisch erneut anhand der Blockchain gescannt wird. Um dies zu umgehen, müssen Sie manuell einen erneuten Scan mit der Bitcoin-Core-CLI auslösen: <code>bitcoin-cli -rpcwallet=ord rescanblockchain 767430</code></p>
 <p>Anschließend können Sie die Beschriftung Ihrer Brieftasche mithilfe von <code>ord wallet inscriptions</code> überprüfen</p>
 <p>Beachten Sie, dass Sie, wenn Sie zuvor ein Wallet mit <code>ord</code> erstellt haben, bereits über ein Wallet mit dem Standardnamen verfügen und Ihrem importierten Wallet einen anderen Namen geben müssen. Sie können den Parameter <code>--wallet</code> in allen <code>ord</code> -Befehlen verwenden, um auf eine andere Wallet zu verweisen, z. B.:</p>
-<p><code>ord --wallet ord_from_sparrow wallet restore &quot;BIP39 SEED PHRASE&quot;</code></p>
-<p><code>ord --wallet ord_from_sparrow wallet inscriptions</code></p>
+<p><code>ord wallet --name ord_from_sparrow wallet restore --from mnemonic</code></p>
+<p><code>ord wallet --name ord_from_sparrow wallet inscriptions</code></p>
 <p><code>bitcoin-cli -rpcwallet=ord_from_sparrow rescanblockchain 767430</code></p>
 <h2 id="inscriptions-mit-sparrow-wallet-versenden"><a class="header" href="#inscriptions-mit-sparrow-wallet-versenden">Inscriptions mit Sparrow Wallet versenden</a></h2>
 <h4 id="-achtung--1"><a class="header" href="#-achtung--1">⚠️⚠️ Achtung ⚠️⚠️</a></h4>
@@ -312,7 +296,7 @@
 <p>Um dies zu tun, können Sie dem oben beschriebenen <a href="./sparrow-wallet.html#validating--viewing-received-inscriptions">Validating / Viewing Received Inscriptions</a> folgen, um die inscription seite für Ihre inscription auf ordinals.com zu finden</p>
 <p>Dort finden Sie einige Metadaten zu Ihrer Inschrift, die wie folgt aussehen:</p>
 <p><img src="images/sending_01.png" alt="" /></p>
-<p>Hier gibt es einige wichtige Dinge zu überprüfen:</p>
+<p>There are a few of important things to check here:</p>
 <ul>
 <li>Die <code>output</code> Kennung entspricht der Kennung des UTXO, das Sie senden möchten</li>
 <li>Der <code>offset</code> der Inschrift ist <code>0</code> (das bedeutet, dass sich die inscription auf dem ersten Platz im UTXO befindet)</li>
@@ -322,10 +306,10 @@
 <p>⚠️⚠️ Seien Sie äußerst vorsichtig, wenn Sie Ihre inscription senden, insbesondere wenn der Wert von <code>offset</code> nicht <code>0</code> ist. Es wird nicht empfohlen, diese Methode zu verwenden, wenn dies der Fall ist, da Sie andernfalls Ihre inscription versehentlich an einen Bitcoin-Miner senden könnten, es sei denn, Sie wissen genau, was Sie tun.</p>
 <h4 id="senden-ihrer-inscription"><a class="header" href="#senden-ihrer-inscription">Senden Ihrer inscription</a></h4>
 <p>Um eine inscription zu senden, wechseln Sie zum Tab <code>UTXOs</code> und suchen Sie die UTXO, bei der Sie zuvor überprüft haben, dass sie Ihre inscription enthält.</p>
-<p>Wenn Sie das UXTO zuvor eingefroren haben, müssen Sie mit der rechten Maustaste darauf klicken und es entsperren.</p>
+<p>If you previously froze the UTXO you will need to right-click on it and unfreeze it.</p>
 <p>Wählen Sie die UTXO aus, die Sie senden möchten, und stellen Sie sicher, dass dies die <em>einzige</em> ausgewählte UTXO ist. Sie sollten in der Benutzeroberfläche <code>UTXOs 1/1</code> sehen. Sobald Sie sicher sind, dass dies der Fall ist, können Sie auf <code>Send Selected</code> klicken.</p>
 <p><img src="images/sending_02.png" alt="" /></p>
-<p>Anschließend wird Ihnen die Schnittstelle zur Transaktionskonstruktion angezeigt. Hier müssen Sie einige Dinge überprüfen, um sicherzustellen, dass es sich um einen sicheren Versand handelt:</p>
+<p>You will then be presented with the transaction construction interface. There are a few things you need to check here to make sure that this is a safe send:</p>
 <ul>
 <li>Die Transaktion sollte nur eine Eingabe haben, und dies sollte das UTXO mit der Bezeichnung sein, die Sie senden möchten</li>
 <li>Die Transaktion sollte nur eine Ausgabe haben, nämlich die Adresse/Etikett, an die Sie die Inschrift senden möchten</li>
@@ -358,7 +342,7 @@
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="../../guides/testing.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../../guides/explorer.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -372,7 +356,7 @@
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="../../guides/testing.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../../guides/explorer.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>

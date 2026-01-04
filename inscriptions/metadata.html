@@ -1,5 +1,5 @@
 <!DOCTYPE HTML>
-<html lang="en" class="coal" dir="ltr">
+<html lang="en" class="coal sidebar-visible" dir="ltr">
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
@@ -7,7 +7,7 @@
 
 
         <!-- Custom HTML head -->
-        
+
         <meta name="description" content="">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
@@ -29,17 +29,19 @@
         <link rel="stylesheet" href="../ayu-highlight.css">
 
         <!-- Custom theme stylesheets -->
-        <link rel="stylesheet" href="../language-picker.css">
+        <link rel="stylesheet" href="../index.css">
 
-    </head>
-    <body class="sidebar-visible no-js">
-    <div id="body-container">
+
         <!-- Provide site root to javascript -->
         <script>
             var path_to_root = "../";
             var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "coal" : "coal";
         </script>
-
+        <!-- Start loading toc.js asap -->
+        <script src="../toc.js"></script>
+    </head>
+    <body>
+    <div id="body-container">
         <!-- Work around some values being stored in localStorage wrapped in quotes -->
         <script>
             try {
@@ -61,19 +63,16 @@
             var theme;
             try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
             if (theme === null || theme === undefined) { theme = default_theme; }
-            var html = document.querySelector('html');
+            const html = document.documentElement;
             html.classList.remove('coal')
             html.classList.add(theme);
-            var body = document.querySelector('body');
-            body.classList.remove('no-js')
-            body.classList.add('js');
+            html.classList.add("js");
         </script>
 
         <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
 
         <!-- Hide / unhide sidebar before it is displayed -->
         <script>
-            var body = document.querySelector('body');
             var sidebar = null;
             var sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
             if (document.body.clientWidth >= 1080) {
@@ -83,43 +82,25 @@
                 sidebar = 'hidden';
             }
             sidebar_toggle.checked = sidebar === 'visible';
-            body.classList.remove('sidebar-visible');
-            body.classList.add("sidebar-" + sidebar);
+            html.classList.remove('sidebar-visible');
+            html.classList.add("sidebar-" + sidebar);
         </script>
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
-            <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded affix "><a href="../introduction.html">Introduction</a></li><li class="chapter-item expanded "><a href="../overview.html"><strong aria-hidden="true">1.</strong> Overview</a></li><li class="chapter-item expanded "><a href="../digital-artifacts.html"><strong aria-hidden="true">2.</strong> Digital Artifacts</a></li><li class="chapter-item expanded "><a href="../inscriptions.html"><strong aria-hidden="true">3.</strong> Inscriptions</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../inscriptions/delegate.html"><strong aria-hidden="true">3.1.</strong> Delegate</a></li><li class="chapter-item expanded "><a href="../inscriptions/metadata.html" class="active"><strong aria-hidden="true">3.2.</strong> Metadata</a></li><li class="chapter-item expanded "><a href="../inscriptions/pointer.html"><strong aria-hidden="true">3.3.</strong> Pointer</a></li><li class="chapter-item expanded "><a href="../inscriptions/provenance.html"><strong aria-hidden="true">3.4.</strong> Provenance</a></li><li class="chapter-item expanded "><a href="../inscriptions/recursion.html"><strong aria-hidden="true">3.5.</strong> Recursion</a></li></ol></li><li class="chapter-item expanded "><a href="../faq.html"><strong aria-hidden="true">4.</strong> FAQ</a></li><li class="chapter-item expanded "><a href="../contributing.html"><strong aria-hidden="true">5.</strong> Contributing</a></li><li class="chapter-item expanded "><a href="../donate.html"><strong aria-hidden="true">6.</strong> Donate</a></li><li class="chapter-item expanded "><a href="../guides.html"><strong aria-hidden="true">7.</strong> Guides</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../guides/explorer.html"><strong aria-hidden="true">7.1.</strong> Explorer</a></li><li class="chapter-item expanded "><a href="../guides/inscriptions.html"><strong aria-hidden="true">7.2.</strong> Inscriptions</a></li><li class="chapter-item expanded "><a href="../guides/batch-inscribing.html"><strong aria-hidden="true">7.3.</strong> Batch Inscribing</a></li><li class="chapter-item expanded "><a href="../guides/sat-hunting.html"><strong aria-hidden="true">7.4.</strong> Sat Hunting</a></li><li class="chapter-item expanded "><a href="../guides/teleburning.html"><strong aria-hidden="true">7.5.</strong> Teleburning</a></li><li class="chapter-item expanded "><a href="../guides/collecting.html"><strong aria-hidden="true">7.6.</strong> Collecting</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../guides/collecting/sparrow-wallet.html"><strong aria-hidden="true">7.6.1.</strong> Sparrow Wallet</a></li></ol></li><li class="chapter-item expanded "><a href="../guides/testing.html"><strong aria-hidden="true">7.7.</strong> Testing</a></li><li class="chapter-item expanded "><a href="../guides/moderation.html"><strong aria-hidden="true">7.8.</strong> Moderation</a></li><li class="chapter-item expanded "><a href="../guides/reindexing.html"><strong aria-hidden="true">7.9.</strong> Reindexing</a></li></ol></li><li class="chapter-item expanded "><a href="../bounties.html"><strong aria-hidden="true">8.</strong> Bounties</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../bounty/0.html"><strong aria-hidden="true">8.1.</strong> Bounty 0: 100,000 sats Claimed!</a></li><li class="chapter-item expanded "><a href="../bounty/1.html"><strong aria-hidden="true">8.2.</strong> Bounty 1: 200,000 sats Claimed!</a></li><li class="chapter-item expanded "><a href="../bounty/2.html"><strong aria-hidden="true">8.3.</strong> Bounty 2: 300,000 sats Claimed!</a></li><li class="chapter-item expanded "><a href="../bounty/3.html"><strong aria-hidden="true">8.4.</strong> Bounty 3: 400,000 sats</a></li></ol></li></ol>
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="../toc.html"></iframe>
+            </noscript>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
             </div>
-            <div id="sidebar-resize-handle" class="sidebar-resize-handle"></div>
         </nav>
-
-        <!-- Track and set sidebar scroll position -->
-        <script>
-            var sidebarScrollbox = document.querySelector('#sidebar .sidebar-scrollbox');
-            sidebarScrollbox.addEventListener('click', function(e) {
-                if (e.target.tagName === 'A') {
-                    sessionStorage.setItem('sidebar-scroll', sidebarScrollbox.scrollTop);
-                }
-            }, { passive: true });
-            var sidebarScrollTop = sessionStorage.getItem('sidebar-scroll');
-            sessionStorage.removeItem('sidebar-scroll');
-            if (sidebarScrollTop) {
-                // preserve sidebar scroll position when navigating via links within sidebar
-                sidebarScrollbox.scrollTop = sidebarScrollTop;
-            } else {
-                // scroll sidebar to current active section when navigating via "next/previous chapter" buttons
-                var activeSection = document.querySelector('#sidebar .active');
-                if (activeSection) {
-                    activeSection.scrollIntoView({ block: 'center' });
-                }
-            }
-        </script>
 
         <div id="page-wrapper" class="page-wrapper">
 
             <div class="page">
-                                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar-hover-placeholder"></div>
                 <div id="menu-bar" class="menu-bar sticky">
                     <div class="left-buttons">
                         <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
@@ -141,7 +122,6 @@
                     </div>
 
                     <h1 class="menu-title">Ordinal Theory Handbook</h1>
-
                     <div class="right-buttons">
                         <button id="language-toggle" class="icon-button" type="button"
                                 title="Change language" aria-label="Change language"
@@ -189,6 +169,9 @@
                           <li role="none"><button role="menuitem" class="theme">
                               <a id="it">Italiano</a>
                           </button></li>
+                          <li role="none"><button role="menuitem" class="theme">
+                              <a id="nl">Nederlands</a>
+                          </button></li>
                         </ul>
 
                         <script>
@@ -201,7 +184,6 @@
                           if (selectedLang) {
                               selectedLang.parentNode.classList.add("theme-selected");
                           }
-
                           // The path to the root, taking the current
                           // language into account.
                           let full_path_to_root = "../";
@@ -216,6 +198,8 @@
                               }
                           }
                         </script>
+
+
 
                         <a href="../print.html" title="Print this book" aria-label="Print this book">
                             <i id="print-button" class="fa fa-print"></i>
@@ -277,11 +261,11 @@ or at all. Contributions to <code>ord</code> to remedy this are welcome.</p>
 <p>Since CBOR is not human readable, in these examples it is represented as JSON.
 Keep in mind that this is <em>only</em> for these examples, and JSON metadata will
 <em>not</em> be displayed correctly.</p>
-<p>The metadata <code>{&quot;foo&quot;:&quot;bar&quot;,&quot;baz&quot;:[null,true,false,0]}</code> would be included in an inscription as:</p>
+<p>The metadata <code>{"foo":"bar","baz":[null,true,false,0]}</code> would be included in an inscription as:</p>
 <pre><code>OP_FALSE
 OP_IF
     ...
-    OP_PUSH 0x05 OP_PUSH '{&quot;foo&quot;:&quot;bar&quot;,&quot;baz&quot;:[null,true,false,0]}'
+    OP_PUSH 0x05 OP_PUSH '{"foo":"bar","baz":[null,true,false,0]}'
     ...
 OP_ENDIF
 </code></pre>
@@ -311,13 +295,15 @@ OP_ENDIF
 <pre><code>OP_FALSE
 OP_IF
     ...
-    OP_PUSH 0x05 OP_PUSH '{&quot;very&quot;:&quot;long&quot;,&quot;metadata&quot;:'
-    OP_PUSH 0x05 OP_PUSH '&quot;is&quot;,&quot;finally&quot;:&quot;done&quot;}'
+    OP_PUSH 0x05 OP_PUSH '{"very":"long","metadata":'
+    OP_PUSH 0x05 OP_PUSH '"is","finally":"done"}'
     ...
 OP_ENDIF
 </code></pre>
 <p>Which would then be concatenated into
-<code>{&quot;very&quot;:&quot;long&quot;,&quot;metadata&quot;:&quot;is&quot;,&quot;finally&quot;:&quot;done&quot;}</code>.</p>
+<code>{"very":"long","metadata":"is","finally":"done"}</code>.</p>
+<p>See
+<a href="examples.html#metadata">examples</a> for on-chain examples of inscriptions that feature this functionality.</p>
 
                     </main>
 

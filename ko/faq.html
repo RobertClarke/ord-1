@@ -1,5 +1,5 @@
 <!DOCTYPE HTML>
-<html lang="ko" class="coal" dir="ltr">
+<html lang="ko" class="coal sidebar-visible" dir="ltr">
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
@@ -7,7 +7,7 @@
 
 
         <!-- Custom HTML head -->
-        
+
         <meta name="description" content="">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
@@ -29,17 +29,19 @@
         <link rel="stylesheet" href="ayu-highlight.css">
 
         <!-- Custom theme stylesheets -->
-        <link rel="stylesheet" href="language-picker.css">
+        <link rel="stylesheet" href="index.css">
 
-    </head>
-    <body class="sidebar-visible no-js">
-    <div id="body-container">
+
         <!-- Provide site root to javascript -->
         <script>
             var path_to_root = "";
             var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "coal" : "coal";
         </script>
-
+        <!-- Start loading toc.js asap -->
+        <script src="toc.js"></script>
+    </head>
+    <body>
+    <div id="body-container">
         <!-- Work around some values being stored in localStorage wrapped in quotes -->
         <script>
             try {
@@ -61,19 +63,16 @@
             var theme;
             try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
             if (theme === null || theme === undefined) { theme = default_theme; }
-            var html = document.querySelector('html');
+            const html = document.documentElement;
             html.classList.remove('coal')
             html.classList.add(theme);
-            var body = document.querySelector('body');
-            body.classList.remove('no-js')
-            body.classList.add('js');
+            html.classList.add("js");
         </script>
 
         <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
 
         <!-- Hide / unhide sidebar before it is displayed -->
         <script>
-            var body = document.querySelector('body');
             var sidebar = null;
             var sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
             if (document.body.clientWidth >= 1080) {
@@ -83,43 +82,25 @@
                 sidebar = 'hidden';
             }
             sidebar_toggle.checked = sidebar === 'visible';
-            body.classList.remove('sidebar-visible');
-            body.classList.add("sidebar-" + sidebar);
+            html.classList.remove('sidebar-visible');
+            html.classList.add("sidebar-" + sidebar);
         </script>
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
-            <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded affix "><a href="introduction.html">서론</a></li><li class="chapter-item expanded "><a href="overview.html"><strong aria-hidden="true">1.</strong> 개요</a></li><li class="chapter-item expanded "><a href="digital-artifacts.html"><strong aria-hidden="true">2.</strong> 디지털 아티팩트</a></li><li class="chapter-item expanded "><a href="inscriptions.html"><strong aria-hidden="true">3.</strong> 인스크립션</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="inscriptions/delegate.html"><strong aria-hidden="true">3.1.</strong> Delegate</a></li><li class="chapter-item expanded "><a href="inscriptions/metadata.html"><strong aria-hidden="true">3.2.</strong> 메타 데이터</a></li><li class="chapter-item expanded "><a href="inscriptions/pointer.html"><strong aria-hidden="true">3.3.</strong> Pointer</a></li><li class="chapter-item expanded "><a href="inscriptions/provenance.html"><strong aria-hidden="true">3.4.</strong> 기원</a></li><li class="chapter-item expanded "><a href="inscriptions/recursion.html"><strong aria-hidden="true">3.5.</strong> 리커젼</a></li></ol></li><li class="chapter-item expanded "><a href="faq.html" class="active"><strong aria-hidden="true">4.</strong> 자주 묻는 질문</a></li><li class="chapter-item expanded "><a href="contributing.html"><strong aria-hidden="true">5.</strong> 기여하는 방법</a></li><li class="chapter-item expanded "><a href="donate.html"><strong aria-hidden="true">6.</strong> 기부하는 방법</a></li><li class="chapter-item expanded "><a href="guides.html"><strong aria-hidden="true">7.</strong> 안내서들</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="guides/explorer.html"><strong aria-hidden="true">7.1.</strong> 탐색기</a></li><li class="chapter-item expanded "><a href="guides/inscriptions.html"><strong aria-hidden="true">7.2.</strong> 인스크립션</a></li><li class="chapter-item expanded "><a href="guides/batch-inscribing.html"><strong aria-hidden="true">7.3.</strong> Batch Inscribing</a></li><li class="chapter-item expanded "><a href="guides/sat-hunting.html"><strong aria-hidden="true">7.4.</strong> SAT 헌팅</a></li><li class="chapter-item expanded "><a href="guides/teleburning.html"><strong aria-hidden="true">7.5.</strong> Teleburning</a></li><li class="chapter-item expanded "><a href="guides/collecting.html"><strong aria-hidden="true">7.6.</strong> 수집</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="guides/collecting/sparrow-wallet.html"><strong aria-hidden="true">7.6.1.</strong> 스패로우 월렛</a></li></ol></li><li class="chapter-item expanded "><a href="guides/testing.html"><strong aria-hidden="true">7.7.</strong> 테스팅</a></li><li class="chapter-item expanded "><a href="guides/moderation.html"><strong aria-hidden="true">7.8.</strong> 중재</a></li><li class="chapter-item expanded "><a href="guides/reindexing.html"><strong aria-hidden="true">7.9.</strong> 재인덱싱</a></li></ol></li><li class="chapter-item expanded "><a href="bounties.html"><strong aria-hidden="true">8.</strong> 현상금</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="bounty/0.html"><strong aria-hidden="true">8.1.</strong> 현상금 0: 100,000 SAT 획득!</a></li><li class="chapter-item expanded "><a href="bounty/1.html"><strong aria-hidden="true">8.2.</strong> 현상금 1: 200,000 SAT 획득!</a></li><li class="chapter-item expanded "><a href="bounty/2.html"><strong aria-hidden="true">8.3.</strong> 현상금 2: 300,000 SAT 획득!</a></li><li class="chapter-item expanded "><a href="bounty/3.html"><strong aria-hidden="true">8.4.</strong> 현상금 3: 400,000 SAT</a></li></ol></li></ol>
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+            </noscript>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
             </div>
-            <div id="sidebar-resize-handle" class="sidebar-resize-handle"></div>
         </nav>
-
-        <!-- Track and set sidebar scroll position -->
-        <script>
-            var sidebarScrollbox = document.querySelector('#sidebar .sidebar-scrollbox');
-            sidebarScrollbox.addEventListener('click', function(e) {
-                if (e.target.tagName === 'A') {
-                    sessionStorage.setItem('sidebar-scroll', sidebarScrollbox.scrollTop);
-                }
-            }, { passive: true });
-            var sidebarScrollTop = sessionStorage.getItem('sidebar-scroll');
-            sessionStorage.removeItem('sidebar-scroll');
-            if (sidebarScrollTop) {
-                // preserve sidebar scroll position when navigating via links within sidebar
-                sidebarScrollbox.scrollTop = sidebarScrollTop;
-            } else {
-                // scroll sidebar to current active section when navigating via "next/previous chapter" buttons
-                var activeSection = document.querySelector('#sidebar .active');
-                if (activeSection) {
-                    activeSection.scrollIntoView({ block: 'center' });
-                }
-            }
-        </script>
 
         <div id="page-wrapper" class="page-wrapper">
 
             <div class="page">
-                                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar-hover-placeholder"></div>
                 <div id="menu-bar" class="menu-bar sticky">
                     <div class="left-buttons">
                         <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
@@ -141,7 +122,6 @@
                     </div>
 
                     <h1 class="menu-title">Ordinal Theory Handbook</h1>
-
                     <div class="right-buttons">
                         <button id="language-toggle" class="icon-button" type="button"
                                 title="Change language" aria-label="Change language"
@@ -189,6 +169,9 @@
                           <li role="none"><button role="menuitem" class="theme">
                               <a id="it">Italiano</a>
                           </button></li>
+                          <li role="none"><button role="menuitem" class="theme">
+                              <a id="nl">Nederlands</a>
+                          </button></li>
                         </ul>
 
                         <script>
@@ -201,7 +184,6 @@
                           if (selectedLang) {
                               selectedLang.parentNode.classList.add("theme-selected");
                           }
-
                           // The path to the root, taking the current
                           // language into account.
                           let full_path_to_root = "../";
@@ -216,6 +198,8 @@
                               }
                           }
                         </script>
+
+
 
                         <a href="print.html" title="Print this book" aria-label="Print this book">
                             <i id="print-button" class="fa fa-print"></i>
@@ -275,7 +259,7 @@
 <p>수수료는 어떻게 되는가? 좋은 질문이다! 동일한 트랜잭션에 이번에는 2사토시 수수료가 있다고 가정해 보자. 수수료가 있는 트랜잭션은 출력에서 받는 것보다 더 많은 사토시를 입력으로 전송하므로, 수수료를 지불하는 트랜잭션으로 만들기 위해 두 번째 출력을 제거하자:</p>
 <pre><code>[2] [1] [3] → [4]
 </code></pre>
-<p>사토시 <var>e</var>그리고 <var>f</var>는 이제 출력에 갈 곳이 없다:</p>
+<p>The satoshis <var>e</var> and <var>f</var> now have nowhere to go in the outputs:</p>
 <pre><code>[a b] [c] [d e f] → [a b c d]
 </code></pre>
 <p>따라서 블록을 채굴한 채굴자에게 수수료로 지급된다. <a href="https://github.com/ordinals/ord/blob/master/bip.mediawiki">BIP</a>에 자세한 내용이 나와 있지만, 간단히 말해 트랜잭션이 지불한 수수료는 코인베이스 트랜잭션에 대한 추가 입력으로 취급되며, 이의 순서는 해당 트랜잭션이 블록에서 어떻게 정렬되는지에 따라서 정해진다. 해당 블록의 코인베이스 트랜잭션은 다음과 같이 보일 수 있다:</p>
@@ -283,10 +267,10 @@
 </code></pre>
 <h2 id="핵심적인-세부-정보는-어디에서-찾을-수-있는가"><a class="header" href="#핵심적인-세부-정보는-어디에서-찾을-수-있는가">핵심적인 세부 정보는 어디에서 찾을 수 있는가?</a></h2>
 <p><a href="https://github.com/ordinals/ord/blob/master/bip.mediawiki">BIP을 참조하자!</a></p>
-<h2 id="sat-인스크립션을-nft가-아닌-디지털-아티팩트라고-부르는-이유는-무엇인가"><a class="header" href="#sat-인스크립션을-nft가-아닌-디지털-아티팩트라고-부르는-이유는-무엇인가">SAT 인스크립션을 &quot;NFT&quot;가 아닌 &quot;디지털 아티팩트&quot;라고 부르는 이유는 무엇인가?</a></h2>
-<p>인스크립션은 NFT이지만, 단순하고 시사하는 바가 많으며 친숙하기 때문에 대신 &quot;디지털 아티팩트&quot;라는 용어를 사용한다.</p>
-<p>&quot;디지털 아티팩트&quot;라는 문구는 이 용어를 처음 들어본 사람에게도 매우 시사하는 바가 많은 표현이다. 이에 비해 NFT는 약어이며, 이 용어를 처음 들어본 사람이라면 무슨 뜻인지 알 수 없다.</p>
-<p>또한 “NFT”(대체 불가능 토큰)는 금융 용어처럼 느껴지며, 여기서 쓰여지는 “대체 가능한”이라는 단어와 “토큰”이라는 단어의 의미 모두 금융적인 상황을 제외하고는 그 쓰임이 흔하지 않다.</p>
+<h2 id="sat-인스크립션을-nft가-아닌-디지털-아티팩트라고-부르는-이유는-무엇인가"><a class="header" href="#sat-인스크립션을-nft가-아닌-디지털-아티팩트라고-부르는-이유는-무엇인가">SAT 인스크립션을 "NFT"가 아닌 "디지털 아티팩트"라고 부르는 이유는 무엇인가?</a></h2>
+<p>인스크립션은 NFT이지만, 단순하고 시사하는 바가 많으며 친숙하기 때문에 대신 "디지털 아티팩트"라는 용어를 사용한다.</p>
+<p>"디지털 아티팩트"라는 문구는 이 용어를 처음 들어본 사람에게도 매우 시사하는 바가 많은 표현이다. 이에 비해 NFT는 약어이며, 이 용어를 처음 들어본 사람이라면 무슨 뜻인지 알 수 없다.</p>
+<p>Additionally, "NFT" feels like financial terminology, and both the word "fungible" and sense of the word "token" as used in "NFT" is uncommon outside of financial contexts.</p>
 <h2 id="sat-인스크립션을-다음과-비교하면"><a class="header" href="#sat-인스크립션을-다음과-비교하면">SAT 인스크립션을 다음과 비교하면…</a></h2>
 <h3 id="이더리움-nft"><a class="header" href="#이더리움-nft">이더리움 NFT?</a></h3>
 <p><em>인스크립션은 항상 불변한다.</em></p>
@@ -352,7 +336,7 @@
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="inscriptions/recursion.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="security.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
@@ -366,7 +350,7 @@
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="inscriptions/recursion.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="security.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
