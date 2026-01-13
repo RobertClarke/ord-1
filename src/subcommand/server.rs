@@ -692,20 +692,27 @@ impl Server {
   ) -> ServerResult {
     task::block_in_place(|| {
       let inscriptions = index.get_inscription_ids_by_sat(sat)?;
-      let satpoint = index.rare_sat_satpoint(sat)?.or_else(|| {
-        inscriptions.first().and_then(|&first_inscription_id| {
-          index
-            .get_inscription_satpoint_by_id(first_inscription_id)
-            .ok()
-            .flatten()
+
+      // Use fast sat range lookup if available, otherwise fall back to rare sat lookup
+      let satpoint = if index.has_sat_range_index() {
+        index.find_sat_in_range_index(sat)?
+      } else {
+        index.rare_sat_satpoint(sat)?.or_else(|| {
+          inscriptions.first().and_then(|&first_inscription_id| {
+            index
+              .get_inscription_satpoint_by_id(first_inscription_id)
+              .ok()
+              .flatten()
+          })
         })
-      });
+      };
+
       let blocktime = index.block_time(sat.height())?;
 
       let charms = sat.charms();
 
       let address = if let Some(satpoint) = satpoint {
-        if satpoint.outpoint == unbound_outpoint() {
+        if satpoint.outpoint == unbound_outpoint() || satpoint.outpoint == OutPoint::null() {
           None
         } else {
           let tx = index
@@ -2252,6 +2259,10 @@ mod tests {
 
     fn index_sats(self) -> Self {
       self.ord_flag("--index-sats")
+    }
+
+    fn index_sat_ranges(self) -> Self {
+      self.ord_flag("--index-sat-ranges")
     }
 
     fn redirect_http_to_https(self) -> Self {
@@ -4288,6 +4299,53 @@ mod tests {
         StatusCode::OK,
         ".*>4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b:0:0<.*",
       );
+  }
+
+  #[test]
+  fn sat_location_with_sat_range_index() {
+    TestServer::builder()
+      .index_sats()
+      .index_sat_ranges()
+      .build()
+      .assert_response_regex(
+        "/sat/0",
+        StatusCode::OK,
+        ".*>4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b:0:0<.*",
+      );
+  }
+
+  #[test]
+  fn common_sat_location_with_sat_range_index() {
+    let server = TestServer::builder()
+      .index_sats()
+      .index_sat_ranges()
+      .build();
+
+    // Sat 1 is a common sat, not tracked in SAT_TO_SATPOINT
+    server.assert_response_regex(
+      "/sat/1",
+      StatusCode::OK,
+      ".*>4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b:0:1<.*",
+    );
+  }
+
+  #[test]
+  fn lost_sat_with_sat_range_index() {
+    let server = TestServer::builder()
+      .index_sats()
+      .index_sat_ranges()
+      .build();
+
+    // Mine a block with zero subsidy to create lost sats
+    server.mine_blocks_with_subsidy(1, 0);
+
+    // The first sat of the block (5000000000) should be "lost" and stored at OutPoint::null()
+    // This should not error - it should return the location but no address
+    server.assert_response_regex(
+      format!("/sat/{}", 50 * COIN_VALUE),
+      StatusCode::OK,
+      ".*<dt>location</dt><dd><a class=collapse href=/satpoint/0{64}:4294967295:0>0{64}:4294967295:0</a></dd>.*",
+    );
   }
 
   #[test]

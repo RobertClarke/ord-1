@@ -38,10 +38,19 @@ impl Find {
         }
         None => Err(anyhow!("range has not been mined as of index height")),
       },
-      None => match index.find(self.sat)? {
-        Some(satpoint) => Ok(Some(Box::new(Output { satpoint }))),
-        None => Err(anyhow!("sat has not been mined as of index height")),
-      },
+      None => {
+        // Use fast sat range lookup if available, otherwise fall back to slow full scan
+        let satpoint = if index.has_sat_range_index() {
+          index.find_sat_in_range_index(self.sat)?
+        } else {
+          index.find(self.sat)?
+        };
+
+        match satpoint {
+          Some(satpoint) => Ok(Some(Box::new(Output { satpoint }))),
+          None => Err(anyhow!("sat has not been mined as of index height")),
+        }
+      }
     }
   }
 }

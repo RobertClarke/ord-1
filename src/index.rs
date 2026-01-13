@@ -2,7 +2,8 @@ use {
   self::{
     entry::{
       Entry, HeaderValue, InscriptionEntry, InscriptionEntryValue, InscriptionIdValue,
-      OutPointValue, RuneEntryValue, RuneIdValue, SatPointValue, SatRange, TxidValue,
+      OutPointValue, RuneEntryValue, RuneIdValue, SatPointValue, SatRange, SatRangeEntry,
+      SatRangeEntryValue, TxidValue,
     },
     event::Event,
     lot::Lot,
@@ -53,7 +54,7 @@ mod utxo_entry;
 #[cfg(test)]
 pub(crate) mod testing;
 
-const SCHEMA_VERSION: u64 = 31;
+const SCHEMA_VERSION: u64 = 32;
 
 define_multimap_table! { SAT_TO_SEQUENCE_NUMBER, u64, u32 }
 define_multimap_table! { SCRIPT_PUBKEY_TO_OUTPOINT, &[u8], OutPointValue }
@@ -68,6 +69,7 @@ define_table! { OUTPOINT_TO_RUNE_BALANCES, &OutPointValue, &[u8] }
 define_table! { OUTPOINT_TO_UTXO_ENTRY, &OutPointValue, &UtxoEntry }
 define_table! { RUNE_ID_TO_RUNE_ENTRY, RuneIdValue, RuneEntryValue }
 define_table! { RUNE_TO_RUNE_ID, u128, RuneIdValue }
+define_table! { SAT_RANGE_TO_OUTPOINT, u64, &SatRangeEntryValue }
 define_table! { SAT_TO_SATPOINT, u64, &SatPointValue }
 define_table! { SEQUENCE_NUMBER_TO_INSCRIPTION_ENTRY, u32, InscriptionEntryValue }
 define_table! { SEQUENCE_NUMBER_TO_RUNE_ID, u32, RuneIdValue }
@@ -87,6 +89,7 @@ pub(crate) enum Statistic {
   IndexInscriptions = 5,
   IndexRunes = 6,
   IndexSats = 7,
+  IndexSatRanges = 18,
   IndexTransactions = 8,
   InitialSyncTime = 9,
   LostSats = 10,
@@ -206,6 +209,7 @@ pub struct Index {
   index_addresses: bool,
   index_inscriptions: bool,
   index_runes: bool,
+  index_sat_ranges: bool,
   index_sats: bool,
   index_transactions: bool,
   path: PathBuf,
@@ -328,6 +332,7 @@ impl Index {
         tx.open_table(OUTPOINT_TO_UTXO_ENTRY)?;
         tx.open_table(RUNE_ID_TO_RUNE_ENTRY)?;
         tx.open_table(RUNE_TO_RUNE_ID)?;
+        tx.open_table(SAT_RANGE_TO_OUTPOINT)?;
         tx.open_table(SAT_TO_SATPOINT)?;
         tx.open_table(SEQUENCE_NUMBER_TO_INSCRIPTION_ENTRY)?;
         tx.open_table(SEQUENCE_NUMBER_TO_RUNE_ID)?;
@@ -360,6 +365,12 @@ impl Index {
             &mut statistics,
             Statistic::IndexSats,
             u64::from(settings.index_sats_raw()),
+          )?;
+
+          Self::set_statistic(
+            &mut statistics,
+            Statistic::IndexSatRanges,
+            u64::from(settings.index_sat_ranges_raw()),
           )?;
 
           Self::set_statistic(
@@ -424,6 +435,7 @@ impl Index {
 
     let index_addresses;
     let index_runes;
+    let index_sat_ranges;
     let index_sats;
     let index_transactions;
     let index_inscriptions;
@@ -434,8 +446,13 @@ impl Index {
       index_addresses = Self::is_statistic_set(&statistics, Statistic::IndexAddresses)?;
       index_inscriptions = Self::is_statistic_set(&statistics, Statistic::IndexInscriptions)?;
       index_runes = Self::is_statistic_set(&statistics, Statistic::IndexRunes)?;
+      index_sat_ranges = Self::is_statistic_set(&statistics, Statistic::IndexSatRanges)?;
       index_sats = Self::is_statistic_set(&statistics, Statistic::IndexSats)?;
       index_transactions = Self::is_statistic_set(&statistics, Statistic::IndexTransactions)?;
+    }
+
+    if index_sat_ranges && !index_sats {
+      bail!("--index-sat-ranges requires --index-sats");
     }
 
     let genesis_block_coinbase_transaction =
@@ -462,6 +479,7 @@ impl Index {
       height_limit: settings.height_limit(),
       index_addresses,
       index_runes,
+      index_sat_ranges,
       index_sats,
       index_transactions,
       index_inscriptions,
@@ -520,6 +538,48 @@ impl Index {
 
   pub fn has_sat_index(&self) -> bool {
     self.index_sats
+  }
+
+  pub fn has_sat_range_index(&self) -> bool {
+    self.index_sat_ranges
+  }
+
+  /// Fast O(log n) lookup of a sat's location using the sat range index.
+  /// Returns None if the sat has not been mined yet.
+  pub fn find_sat_in_range_index(&self, sat: Sat) -> Result<Option<SatPoint>> {
+    if !self.index_sat_ranges {
+      bail!("sat range index not available, use --index-sat-ranges");
+    }
+
+    let sat = sat.n();
+    let rtx = self.begin_read()?;
+
+    if rtx.block_count()? <= Sat(sat).height().n() {
+      return Ok(None);
+    }
+
+    let sat_range_to_outpoint = rtx.0.open_table(SAT_RANGE_TO_OUTPOINT)?;
+
+    // Find the largest key <= sat using range query
+    let mut iter = sat_range_to_outpoint.range(..=sat)?;
+
+    if let Some(result) = iter.next_back() {
+      let (start_key, entry_value) = result?;
+      let start = start_key.value();
+      let entry: SatRangeEntry = Entry::load(*entry_value.value());
+
+      // Check if sat falls within this range [start, end)
+      if sat < entry.end {
+        // The offset is the stored base offset plus the position within this range
+        let offset = entry.offset + (sat - start);
+        return Ok(Some(SatPoint {
+          outpoint: entry.outpoint,
+          offset,
+        }));
+      }
+    }
+
+    Ok(None)
   }
 
   pub fn status(&self, json_api: bool) -> Result<StatusHtml> {
@@ -3016,6 +3076,192 @@ mod tests {
         offset: 0,
       }
     )
+  }
+
+  #[test]
+  fn find_sat_in_range_index_first_sat() {
+    let context = Context::builder()
+      .arg("--index-sats")
+      .arg("--index-sat-ranges")
+      .build();
+    assert!(context.index.has_sat_range_index());
+    assert_eq!(
+      context
+        .index
+        .find_sat_in_range_index(Sat(0))
+        .unwrap()
+        .unwrap(),
+      SatPoint {
+        outpoint: "4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b:0"
+          .parse()
+          .unwrap(),
+        offset: 0,
+      }
+    )
+  }
+
+  #[test]
+  fn find_sat_in_range_index_second_sat() {
+    let context = Context::builder()
+      .arg("--index-sats")
+      .arg("--index-sat-ranges")
+      .build();
+    assert_eq!(
+      context
+        .index
+        .find_sat_in_range_index(Sat(1))
+        .unwrap()
+        .unwrap(),
+      SatPoint {
+        outpoint: "4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b:0"
+          .parse()
+          .unwrap(),
+        offset: 1,
+      }
+    )
+  }
+
+  #[test]
+  fn find_sat_in_range_index_first_sat_of_second_block() {
+    let context = Context::builder()
+      .arg("--index-sats")
+      .arg("--index-sat-ranges")
+      .build();
+    context.mine_blocks(1);
+    let tx = context.core.tx(1, 0);
+    assert_eq!(
+      context
+        .index
+        .find_sat_in_range_index(Sat(50 * COIN_VALUE))
+        .unwrap()
+        .unwrap(),
+      SatPoint {
+        outpoint: OutPoint {
+          txid: tx.compute_txid(),
+          vout: 0,
+        },
+        offset: 0,
+      }
+    )
+  }
+
+  #[test]
+  fn find_sat_in_range_index_unmined_sat() {
+    let context = Context::builder()
+      .arg("--index-sats")
+      .arg("--index-sat-ranges")
+      .build();
+    assert_eq!(
+      context
+        .index
+        .find_sat_in_range_index(Sat(50 * COIN_VALUE))
+        .unwrap(),
+      None
+    );
+  }
+
+  #[test]
+  fn find_sat_in_range_index_after_spending() {
+    let context = Context::builder()
+      .arg("--index-sats")
+      .arg("--index-sat-ranges")
+      .build();
+    context.mine_blocks(1);
+    let spend_txid = context.core.broadcast_tx(TransactionTemplate {
+      inputs: &[(1, 0, 0, Default::default())],
+      fee: 0,
+      ..default()
+    });
+    context.mine_blocks(1);
+    assert_eq!(
+      context
+        .index
+        .find_sat_in_range_index(Sat(50 * COIN_VALUE))
+        .unwrap()
+        .unwrap(),
+      SatPoint {
+        outpoint: OutPoint::new(spend_txid, 0),
+        offset: 0,
+      }
+    )
+  }
+
+  #[test]
+  fn find_sat_in_range_index_multi_range_output() {
+    // Test that offset is correctly calculated when an output contains multiple sat ranges
+    let context = Context::builder()
+      .arg("--index-sats")
+      .arg("--index-sat-ranges")
+      .build();
+
+    // Mine two blocks to get two separate sat ranges
+    context.mine_blocks(2);
+
+    // Spend both coinbase outputs into a single output, creating a multi-range UTXO
+    // Block 1 coinbase: sats 50*COIN_VALUE to 100*COIN_VALUE (range 1)
+    // Block 2 coinbase: sats 100*COIN_VALUE to 150*COIN_VALUE (range 2)
+    let merge_txid = context.core.broadcast_tx(TransactionTemplate {
+      inputs: &[(1, 0, 0, Default::default()), (2, 0, 0, Default::default())],
+      fee: 0,
+      ..default()
+    });
+    context.mine_blocks(1);
+
+    // The merged output should have:
+    // - Range 1: sats 50*COIN_VALUE to 100*COIN_VALUE at offset 0
+    // - Range 2: sats 100*COIN_VALUE to 150*COIN_VALUE at offset 50*COIN_VALUE
+
+    // Check first sat of first range (offset should be 0)
+    assert_eq!(
+      context
+        .index
+        .find_sat_in_range_index(Sat(50 * COIN_VALUE))
+        .unwrap()
+        .unwrap(),
+      SatPoint {
+        outpoint: OutPoint::new(merge_txid, 0),
+        offset: 0,
+      }
+    );
+
+    // Check last sat of first range (offset should be 50*COIN_VALUE - 1)
+    assert_eq!(
+      context
+        .index
+        .find_sat_in_range_index(Sat(100 * COIN_VALUE - 1))
+        .unwrap()
+        .unwrap(),
+      SatPoint {
+        outpoint: OutPoint::new(merge_txid, 0),
+        offset: 50 * COIN_VALUE - 1,
+      }
+    );
+
+    // Check first sat of second range (offset should be 50*COIN_VALUE)
+    assert_eq!(
+      context
+        .index
+        .find_sat_in_range_index(Sat(100 * COIN_VALUE))
+        .unwrap()
+        .unwrap(),
+      SatPoint {
+        outpoint: OutPoint::new(merge_txid, 0),
+        offset: 50 * COIN_VALUE,
+      }
+    );
+
+    // Check a sat in the middle of second range
+    assert_eq!(
+      context
+        .index
+        .find_sat_in_range_index(Sat(125 * COIN_VALUE))
+        .unwrap()
+        .unwrap(),
+      SatPoint {
+        outpoint: OutPoint::new(merge_txid, 0),
+        offset: 75 * COIN_VALUE,
+      }
+    );
   }
 
   #[test]

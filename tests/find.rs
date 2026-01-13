@@ -89,3 +89,71 @@ fn no_satoshi_index() {
     .expected_exit_code(1)
     .run_and_extract_stdout();
 }
+
+#[test]
+fn find_with_sat_range_index() {
+  let core = mockcore::spawn();
+  assert_eq!(
+    CommandBuilder::new("--index-sats --index-sat-ranges find 0")
+      .core(&core)
+      .run_and_deserialize_output::<Output>(),
+    Output {
+      satpoint: "4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b:0:0"
+        .parse()
+        .unwrap()
+    }
+  );
+}
+
+#[test]
+fn find_with_sat_range_index_second_block() {
+  let core = mockcore::spawn();
+  core.mine_blocks(1);
+
+  assert_eq!(
+    CommandBuilder::new(format!(
+      "--index-sats --index-sat-ranges find {}",
+      50 * COIN_VALUE
+    ))
+    .core(&core)
+    .run_and_deserialize_output::<Output>(),
+    Output {
+      satpoint: SatPoint {
+        outpoint: OutPoint {
+          txid: core.tx(1, 0).into(),
+          vout: 0,
+        },
+        offset: 0,
+      }
+    }
+  );
+}
+
+#[test]
+fn find_with_sat_range_index_after_spending() {
+  let core = mockcore::spawn();
+  core.mine_blocks(1);
+
+  let txid = core.broadcast_tx(TransactionTemplate {
+    inputs: &[(1, 0, 0, Default::default())],
+    fee: 0,
+    ..default()
+  });
+
+  core.mine_blocks(1);
+
+  assert_eq!(
+    CommandBuilder::new(format!(
+      "--index-sats --index-sat-ranges find {}",
+      50 * COIN_VALUE
+    ))
+    .core(&core)
+    .run_and_deserialize_output::<Output>(),
+    Output {
+      satpoint: SatPoint {
+        outpoint: OutPoint { txid, vout: 0 },
+        offset: 0,
+      }
+    }
+  );
+}

@@ -420,6 +420,7 @@ impl Updater<'_> {
     let mut inscription_number_to_sequence_number =
       wtx.open_table(INSCRIPTION_NUMBER_TO_SEQUENCE_NUMBER)?;
     let mut outpoint_to_utxo_entry = wtx.open_table(OUTPOINT_TO_UTXO_ENTRY)?;
+    let mut sat_range_to_outpoint = wtx.open_table(SAT_RANGE_TO_OUTPOINT)?;
     let mut sat_to_satpoint = wtx.open_table(SAT_TO_SATPOINT)?;
     let mut sat_to_sequence_number = wtx.open_multimap_table(SAT_TO_SEQUENCE_NUMBER)?;
     let mut script_pubkey_to_outpoint = wtx.open_multimap_table(SCRIPT_PUBKEY_TO_OUTPOINT)?;
@@ -620,6 +621,7 @@ impl Updater<'_> {
           tx,
           *txid,
           &mut sat_to_satpoint,
+          &mut sat_range_to_outpoint,
           &mut output_utxo_entries,
           input_sat_ranges.as_ref().unwrap(),
           leftover_sat_ranges,
@@ -682,6 +684,20 @@ impl Updater<'_> {
           )?;
         }
 
+        // Insert lost sat ranges into sat range lookup index
+        // The offset is the current lost_sats count (before adding this range)
+        if self.index.index_sat_ranges {
+          sat_range_to_outpoint.insert(
+            &start,
+            &SatRangeEntry {
+              end,
+              offset: lost_sats,
+              outpoint: OutPoint::null(),
+            }
+            .store(),
+          )?;
+        }
+
         lost_sats += end - start;
       }
 
@@ -736,6 +752,7 @@ impl Updater<'_> {
     tx: &Transaction,
     txid: Txid,
     sat_to_satpoint: &mut Table<u64, &SatPointValue>,
+    sat_range_to_outpoint: &mut Table<u64, &SatRangeEntryValue>,
     output_utxo_entries: &mut [UtxoEntryBuf],
     input_sat_ranges: &[&[u8]],
     leftover_sat_ranges: &mut Vec<u8>,
@@ -798,6 +815,21 @@ impl Updater<'_> {
         };
 
         sats.extend_from_slice(&assigned.store());
+
+        // Insert into sat range lookup index if enabled
+        // The offset is the position of this range's start within the output
+        if self.index.index_sat_ranges {
+          let range_offset = output.value.to_sat() - remaining;
+          sat_range_to_outpoint.insert(
+            &assigned.0,
+            &SatRangeEntry {
+              end: assigned.1,
+              offset: range_offset,
+              outpoint,
+            }
+            .store(),
+          )?;
+        }
 
         remaining -= assigned.1 - assigned.0;
 

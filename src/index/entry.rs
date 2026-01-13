@@ -447,6 +447,37 @@ impl Entry for SatPoint {
   }
 }
 
+/// Entry for the SAT_RANGE_TO_OUTPOINT table.
+/// Stores the end of a sat range, the offset within the output, and the outpoint containing it.
+/// The key is the start of the sat range.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(super) struct SatRangeEntry {
+  pub end: u64,
+  pub offset: u64,
+  pub outpoint: OutPoint,
+}
+
+pub(super) type SatRangeEntryValue = [u8; 52]; // 8 bytes for end + 8 bytes for offset + 36 bytes for outpoint
+
+impl Entry for SatRangeEntry {
+  type Value = SatRangeEntryValue;
+
+  fn load(value: Self::Value) -> Self {
+    let end = u64::from_le_bytes(value[0..8].try_into().unwrap());
+    let offset = u64::from_le_bytes(value[8..16].try_into().unwrap());
+    let outpoint = OutPoint::load(value[16..52].try_into().unwrap());
+    Self { end, offset, outpoint }
+  }
+
+  fn store(self) -> Self::Value {
+    let mut value = [0u8; 52];
+    value[0..8].copy_from_slice(&self.end.to_le_bytes());
+    value[8..16].copy_from_slice(&self.offset.to_le_bytes());
+    value[16..52].copy_from_slice(&self.outpoint.store());
+    value
+  }
+}
+
 pub(super) type SatRange = (u64, u64);
 
 impl Entry for SatRange {
@@ -921,5 +952,38 @@ mod tests {
       .supply(),
       1001
     );
+  }
+
+  #[test]
+  fn sat_range_entry_roundtrip() {
+    let entry = SatRangeEntry {
+      end: 1000000,
+      offset: 500,
+      outpoint: "4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b:0"
+        .parse()
+        .unwrap(),
+    };
+
+    let stored = entry.store();
+    let loaded = SatRangeEntry::load(stored);
+
+    assert_eq!(entry, loaded);
+  }
+
+  #[test]
+  fn sat_range_entry_large_values() {
+    let entry = SatRangeEntry {
+      end: u64::MAX,
+      offset: u64::MAX,
+      outpoint: OutPoint {
+        txid: Txid::from_byte_array([0xff; 32]),
+        vout: u32::MAX,
+      },
+    };
+
+    let stored = entry.store();
+    let loaded = SatRangeEntry::load(stored);
+
+    assert_eq!(entry, loaded);
   }
 }

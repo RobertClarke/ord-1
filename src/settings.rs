@@ -21,6 +21,7 @@ pub struct Settings {
   index_addresses: bool,
   index_cache_size: Option<usize>,
   index_runes: bool,
+  index_sat_ranges: bool,
   index_sats: bool,
   index_transactions: bool,
   integration_test: bool,
@@ -136,6 +137,7 @@ impl Settings {
       index_addresses: self.index_addresses || source.index_addresses,
       index_cache_size: self.index_cache_size.or(source.index_cache_size),
       index_runes: self.index_runes || source.index_runes,
+      index_sat_ranges: self.index_sat_ranges || source.index_sat_ranges,
       index_sats: self.index_sats || source.index_sats,
       index_transactions: self.index_transactions || source.index_transactions,
       integration_test: self.integration_test || source.integration_test,
@@ -174,6 +176,7 @@ impl Settings {
       index_addresses: options.index_addresses,
       index_cache_size: options.index_cache_size,
       index_runes: options.index_runes,
+      index_sat_ranges: options.index_sat_ranges,
       index_sats: options.index_sats,
       index_transactions: options.index_transactions,
       integration_test: options.integration_test,
@@ -264,6 +267,7 @@ impl Settings {
       index_addresses: get_bool("INDEX_ADDRESSES"),
       index_cache_size: get_usize("INDEX_CACHE_SIZE")?,
       index_runes: get_bool("INDEX_RUNES"),
+      index_sat_ranges: get_bool("INDEX_SAT_RANGES"),
       index_sats: get_bool("INDEX_SATS"),
       index_transactions: get_bool("INDEX_TRANSACTIONS"),
       integration_test: get_bool("INTEGRATION_TEST"),
@@ -296,6 +300,7 @@ impl Settings {
       index_addresses: true,
       index_cache_size: None,
       index_runes: true,
+      index_sat_ranges: true,
       index_sats: true,
       index_transactions: false,
       integration_test: false,
@@ -372,6 +377,7 @@ impl Settings {
         }
       }),
       index_runes: self.index_runes,
+      index_sat_ranges: self.index_sat_ranges,
       index_sats: self.index_sats,
       index_transactions: self.index_transactions,
       integration_test: self.integration_test,
@@ -566,6 +572,10 @@ impl Settings {
 
   pub fn index_sats_raw(&self) -> bool {
     self.index_sats
+  }
+
+  pub fn index_sat_ranges_raw(&self) -> bool {
+    self.index_sat_ranges
   }
 
   pub fn index_transactions_raw(&self) -> bool {
@@ -1128,6 +1138,7 @@ mod tests {
         index_addresses: true,
         index_cache_size: Some(4),
         index_runes: true,
+        index_sat_ranges: true,
         index_sats: true,
         index_transactions: true,
         integration_test: true,
@@ -1193,6 +1204,7 @@ mod tests {
         index_addresses: true,
         index_cache_size: Some(4),
         index_runes: true,
+        index_sat_ranges: true,
         index_sats: true,
         index_transactions: true,
         integration_test: true,
