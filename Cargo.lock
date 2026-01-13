@@ -2693,6 +2693,7 @@ dependencies = [
  "nix",
  "ordinals",
  "pretty_assertions",
+ "rayon",
  "redb",
  "ref-cast",
  "regex",

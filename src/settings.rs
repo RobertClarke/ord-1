@@ -24,6 +24,7 @@ pub struct Settings {
   index_sat_ranges: bool,
   index_sats: bool,
   index_transactions: bool,
+  index_parallel_block_buffer: Option<usize>,
   integration_test: bool,
   max_savepoints: Option<usize>,
   no_index_inscriptions: bool,
@@ -140,6 +141,7 @@ impl Settings {
       index_sat_ranges: self.index_sat_ranges || source.index_sat_ranges,
       index_sats: self.index_sats || source.index_sats,
       index_transactions: self.index_transactions || source.index_transactions,
+      index_parallel_block_buffer: self.index_parallel_block_buffer.or(source.index_parallel_block_buffer),
       integration_test: self.integration_test || source.integration_test,
       max_savepoints: self.max_savepoints.or(source.max_savepoints),
       no_index_inscriptions: self.no_index_inscriptions || source.no_index_inscriptions,
@@ -179,6 +181,7 @@ impl Settings {
       index_sat_ranges: options.index_sat_ranges,
       index_sats: options.index_sats,
       index_transactions: options.index_transactions,
+      index_parallel_block_buffer: options.index_parallel_block_buffer,
       integration_test: options.integration_test,
       max_savepoints: options.max_savepoints,
       no_index_inscriptions: options.no_index_inscriptions,
@@ -270,6 +273,7 @@ impl Settings {
       index_sat_ranges: get_bool("INDEX_SAT_RANGES"),
       index_sats: get_bool("INDEX_SATS"),
       index_transactions: get_bool("INDEX_TRANSACTIONS"),
+      index_parallel_block_buffer: get_usize("INDEX_PARALLEL_BLOCK_BUFFER")?,
       integration_test: get_bool("INTEGRATION_TEST"),
       max_savepoints: get_usize("MAX_SAVEPOINTS")?,
       no_index_inscriptions: get_bool("NO_INDEX_INSCRIPTIONS"),
@@ -303,6 +307,7 @@ impl Settings {
       index_sat_ranges: true,
       index_sats: true,
       index_transactions: false,
+      index_parallel_block_buffer: None,
       integration_test: false,
       max_savepoints: None,
       no_index_inscriptions: false,
@@ -380,6 +385,7 @@ impl Settings {
       index_sat_ranges: self.index_sat_ranges,
       index_sats: self.index_sats,
       index_transactions: self.index_transactions,
+      index_parallel_block_buffer: Some(self.index_parallel_block_buffer.unwrap_or(128)),
       integration_test: self.integration_test,
       max_savepoints: Some(self.max_savepoints.unwrap_or(2)),
       no_index_inscriptions: self.no_index_inscriptions,
@@ -580,6 +586,10 @@ impl Settings {
 
   pub fn index_transactions_raw(&self) -> bool {
     self.index_transactions
+  }
+
+  pub fn index_parallel_block_buffer(&self) -> usize {
+    self.index_parallel_block_buffer.unwrap()
   }
 
   pub fn integration_test(&self) -> bool {
@@ -1138,9 +1148,10 @@ mod tests {
         index_addresses: true,
         index_cache_size: Some(4),
         index_runes: true,
-        index_sat_ranges: true,
+        index_sat_ranges: false,
         index_sats: true,
         index_transactions: true,
+        index_parallel_block_buffer: None,
         integration_test: true,
         no_index_inscriptions: true,
         server_password: Some("server password".into()),
@@ -1204,9 +1215,10 @@ mod tests {
         index_addresses: true,
         index_cache_size: Some(4),
         index_runes: true,
-        index_sat_ranges: true,
+        index_sat_ranges: false,
         index_sats: true,
         index_transactions: true,
+        index_parallel_block_buffer: None,
         integration_test: true,
         no_index_inscriptions: true,
         server_password: Some("server password".into()),

@@ -64,6 +64,8 @@ pub struct Options {
   pub(crate) index_sat_ranges: bool,
   #[arg(long, help = "Store transactions in index.")]
   pub(crate) index_transactions: bool,
+  #[arg(long, help = "Number of blocks to prefetch during indexing. [default: 128]")]
+  pub(crate) index_parallel_block_buffer: Option<usize>,
   #[arg(long, help = "Run in integration test mode.")]
   pub(crate) integration_test: bool,
   #[clap(long, short, long, help = "Specify output format. [default: json]")]

@@ -2,6 +2,7 @@ use {
   self::{inscription_updater::InscriptionUpdater, rune_updater::RuneUpdater},
   super::{fetcher::Fetcher, *},
   futures::future::try_join_all,
+  rayon::prelude::*,
   tokio::sync::{
     broadcast::{self, error::TryRecvError},
     mpsc::{self},
@@ -22,7 +23,7 @@ impl From<Block> for BlockData {
       header: block.header,
       txdata: block
         .txdata
-        .into_iter()
+        .into_par_iter()
         .map(|transaction| {
           let txid = transaction.compute_txid();
           (transaction, txid)
@@ -157,7 +158,8 @@ impl Updater<'_> {
     index: &Index,
     mut height: u32,
   ) -> Result<std::sync::mpsc::Receiver<BlockData>> {
-    let (tx, rx) = std::sync::mpsc::sync_channel(32);
+    let buffer_size = index.settings.index_parallel_block_buffer();
+    let (tx, rx) = std::sync::mpsc::sync_channel(buffer_size);
 
     let first_index_height = index.first_index_height;
 
