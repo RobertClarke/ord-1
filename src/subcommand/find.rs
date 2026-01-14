@@ -39,8 +39,8 @@ impl Find {
         None => Err(anyhow!("range has not been mined as of index height")),
       },
       None => {
-        // Use fast sat range lookup if available, otherwise fall back to slow full scan
-        let satpoint = if index.has_sat_range_index() {
+        // Use fast sat range lookup if available and ready, otherwise fall back to slow full scan
+        let satpoint = if index.is_sat_range_index_ready()? {
           index.find_sat_in_range_index(self.sat)?
         } else {
           index.find(self.sat)?

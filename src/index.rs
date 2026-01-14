@@ -90,6 +90,7 @@ pub(crate) enum Statistic {
   IndexRunes = 6,
   IndexSats = 7,
   IndexSatRanges = 18,
+  SatRangeIndexHeight = 19,
   IndexTransactions = 8,
   InitialSyncTime = 9,
   LostSats = 10,
@@ -544,8 +545,96 @@ impl Index {
     self.index_sat_ranges
   }
 
+  /// Returns true if the sat range index is enabled AND fully built (ready for queries).
+  /// 
+  /// This prevents returning partial results during an in-progress build command.
+  /// 
+  /// Ready when:
+  /// - Table has data AND
+  /// - SatRangeIndexHeight != u64::MAX (not currently building) AND
+  /// - Either SatRangeIndexHeight > 0 (build complete) OR SatRangeIndexHeight == 0 (fresh start)
+  pub fn is_sat_range_index_ready(&self) -> Result<bool> {
+    if !self.index_sat_ranges {
+      return Ok(false);
+    }
+    
+    let rtx = self.database.begin_read()?;
+    let sat_range_to_outpoint = rtx.open_table(SAT_RANGE_TO_OUTPOINT)?;
+    
+    // Table must have data
+    if sat_range_to_outpoint.is_empty()? {
+      return Ok(false);
+    }
+    
+    // Check build status
+    let statistics = rtx.open_table(STATISTIC_TO_COUNT)?;
+    let sat_range_index_height = statistics
+      .get(Statistic::SatRangeIndexHeight.key())?
+      .map(|guard| guard.value())
+      .unwrap_or(0);
+    
+    // u64::MAX means build is in progress - not ready
+    if sat_range_index_height == u64::MAX {
+      return Ok(false);
+    }
+    
+    // Ready: either build completed (height > 0) or fresh start (height == 0 with inline writes)
+    Ok(true)
+  }
+
+  /// Returns true if the sat range index should receive inline writes.
+  /// 
+  /// Returns true in these cases:
+  /// - SAT_RANGE_TO_OUTPOINT table has data AND not currently building
+  /// - Table is empty AND current_height == 0 (fresh start with --index-sat-ranges)
+  /// 
+  /// Returns false when:
+  /// - SatRangeIndexHeight == u64::MAX (build command in progress)
+  /// - Table is empty AND current_height > 0 (--index-sat-ranges added to existing db,
+  ///   user must run `ord index build-sat-ranges` first)
+  pub fn sat_range_index_caught_up(&self) -> Result<bool> {
+    if !self.index_sat_ranges {
+      return Ok(false);
+    }
+
+    let rtx = self.database.begin_read()?;
+    
+    // Check if build command is in progress
+    let statistics = rtx.open_table(STATISTIC_TO_COUNT)?;
+    let sat_range_index_height = statistics
+      .get(Statistic::SatRangeIndexHeight.key())?
+      .map(|guard| guard.value())
+      .unwrap_or(0);
+    
+    // u64::MAX means build is in progress - don't do inline writes
+    if sat_range_index_height == u64::MAX {
+      return Ok(false);
+    }
+    
+    let sat_range_to_outpoint = rtx.open_table(SAT_RANGE_TO_OUTPOINT)?;
+    
+    // If the table has data, the index is active - continue inline writes
+    if !sat_range_to_outpoint.is_empty()? {
+      return Ok(true);
+    }
+
+    // Table is empty - check if this is a fresh start or existing database
+    let current_height = rtx
+      .open_table(HEIGHT_TO_BLOCK_HEADER)?
+      .range(0..)?
+      .next_back()
+      .transpose()?
+      .map(|(height, _)| height.value() + 1)
+      .unwrap_or(0);
+
+    // Fresh start (no blocks indexed yet): do inline writes
+    // Existing database (blocks exist but no sat range data): need to run build command
+    Ok(current_height == 0)
+  }
+
   /// Fast O(log n) lookup of a sat's location using the sat range index.
   /// Returns None if the sat has not been mined yet.
+  /// Returns an error if the index needs to be built first.
   pub fn find_sat_in_range_index(&self, sat: Sat) -> Result<Option<SatPoint>> {
     if !self.index_sat_ranges {
       bail!("sat range index not available, use --index-sat-ranges");
@@ -559,6 +648,13 @@ impl Index {
     }
 
     let sat_range_to_outpoint = rtx.0.open_table(SAT_RANGE_TO_OUTPOINT)?;
+
+    // Bug #4: Check if the index has been built
+    if sat_range_to_outpoint.is_empty()? {
+      bail!(
+        "sat range index is empty, run `ord index build-sat-ranges` to build it"
+      );
+    }
 
     // Find the largest key <= sat using range query
     let mut iter = sat_range_to_outpoint.range(..=sat)?;
@@ -580,6 +676,223 @@ impl Index {
     }
 
     Ok(None)
+  }
+
+  /// Build the SAT_RANGE_TO_OUTPOINT index by iterating through all UTXOs.
+  /// This is much faster than building during sync because it only processes
+  /// the final state (current UTXOs) rather than every historical movement.
+  pub fn build_sat_range_index(&self, commit_interval: u64, force: bool) -> Result {
+    if !self.index_sats {
+      bail!("--index-sats is required to build sat range index");
+    }
+
+    if !self.index_sat_ranges {
+      bail!("--index-sat-ranges is required to build sat range index");
+    }
+
+    // Check if index already has data
+    let (current_height, index_is_empty, bitcoin_height) = {
+      let rtx = self.database.begin_read()?;
+      
+      let current_height = rtx
+        .open_table(HEIGHT_TO_BLOCK_HEADER)?
+        .range(0..)?
+        .next_back()
+        .transpose()?
+        .map(|(height, _)| height.value() + 1)
+        .unwrap_or(0);
+      
+      let index_is_empty = rtx.open_table(SAT_RANGE_TO_OUTPOINT)?.is_empty()?;
+      
+      let bitcoin_height = self.client.get_block_count().ok();
+      
+      (current_height, index_is_empty, bitcoin_height)
+    };
+
+    // Bug #5: Warn if index already has data
+    if !index_is_empty {
+      if force {
+        log::warn!("SAT_RANGE_TO_OUTPOINT table already has data, rebuilding with --force");
+      } else {
+        bail!(
+          "SAT_RANGE_TO_OUTPOINT table already has data. \
+           Use --force to rebuild, or this index is already active."
+        );
+      }
+    }
+
+    // Bug #3: Check if ord index is synced with Bitcoin Core
+    if let Some(btc_height) = bitcoin_height {
+      let btc_height = u32::try_from(btc_height).unwrap_or(u32::MAX);
+      if current_height < btc_height {
+        log::warn!(
+          "Index is behind Bitcoin Core ({} vs {}). \
+           Run `ord index update` first, or results may be incomplete.",
+          current_height,
+          btc_height
+        );
+      }
+    }
+
+    log::info!("Building sat range index from UTXO set...");
+    log::info!("Current indexed height: {}", current_height);
+
+    // Count total UTXOs for progress bar
+    let total_utxos = {
+      let rtx = self.database.begin_read()?;
+      rtx.open_table(OUTPOINT_TO_UTXO_ENTRY)?.len()?
+    };
+
+    log::info!("Total UTXOs to process: {}", total_utxos);
+
+    // Mark build as in-progress (u64::MAX signals "building")
+    // This prevents queries from seeing partial data during build
+    {
+      let wtx = self.begin_write()?;
+      let mut statistics = wtx.open_table(STATISTIC_TO_COUNT)?;
+      statistics.insert(Statistic::SatRangeIndexHeight.key(), &u64::MAX)?;
+      drop(statistics);
+      wtx.commit()?;
+    }
+
+    let progress_bar = ProgressBar::new(total_utxos);
+    progress_bar.set_style(
+      ProgressStyle::with_template("[building sat range index] {wide_bar} {pos}/{len} UTXOs")
+        .unwrap(),
+    );
+
+    // First, collect all outpoints we need to process
+    // This allows us to commit in batches
+    let outpoints: Vec<OutPoint> = {
+      let rtx = self.database.begin_read()?;
+      let outpoint_to_utxo_entry = rtx.open_table(OUTPOINT_TO_UTXO_ENTRY)?;
+      outpoint_to_utxo_entry
+        .iter()?
+        .map(|result| {
+          let (outpoint_value, _) = result?;
+          Ok(OutPoint::load(*outpoint_value.value()))
+        })
+        .collect::<Result<Vec<_>>>()?
+    };
+
+    let mut wtx = self.begin_write()?;
+    let mut sat_ranges_written: u64 = 0;
+    let mut utxos_processed: u64 = 0;
+
+    for outpoint in outpoints {
+      {
+        let outpoint_to_utxo_entry = wtx.open_table(OUTPOINT_TO_UTXO_ENTRY)?;
+        let mut sat_range_to_outpoint = wtx.open_table(SAT_RANGE_TO_OUTPOINT)?;
+
+        if let Some(utxo_entry) = outpoint_to_utxo_entry.get(&outpoint.store())? {
+          // Parse the UTXO entry to extract sat ranges
+          let parsed = utxo_entry.value().parse(self);
+          let sat_ranges = parsed.sat_ranges();
+
+          // Iterate through sat ranges and insert into SAT_RANGE_TO_OUTPOINT
+          let mut offset: u64 = 0;
+          for chunk in sat_ranges.chunks_exact(11) {
+            let (start, end) = SatRange::load(chunk.try_into().unwrap());
+
+            sat_range_to_outpoint.insert(
+              &start,
+              &SatRangeEntry {
+                end,
+                offset,
+                outpoint,
+              }
+              .store(),
+            )?;
+
+            offset += end - start;
+            sat_ranges_written += 1;
+          }
+        }
+      }
+
+      utxos_processed += 1;
+      progress_bar.set_position(utxos_processed);
+
+      // Commit periodically (but not on first iteration when count is 0)
+      if utxos_processed > 0 && utxos_processed.is_multiple_of(commit_interval) {
+        wtx.commit()?;
+        log::info!(
+          "Committed {} sat ranges from {} UTXOs",
+          sat_ranges_written,
+          utxos_processed
+        );
+        wtx = self.begin_write()?;
+      }
+    }
+
+    // Check if index height changed during build (new blocks were indexed)
+    let final_height = {
+      let rtx = self.database.begin_read()?;
+      rtx
+        .open_table(HEIGHT_TO_BLOCK_HEADER)?
+        .range(0..)?
+        .next_back()
+        .transpose()?
+        .map(|(height, _)| height.value() + 1)
+        .unwrap_or(0)
+    };
+
+    if final_height > current_height {
+      // New blocks were indexed during build - the index is now inconsistent
+      // Clear the table and reset the height marker
+      log::warn!(
+        "Index height changed during build ({} -> {}). Clearing partial data.",
+        current_height,
+        final_height
+      );
+      
+      // Clear the sat range table to remove inconsistent partial data
+      {
+        let mut sat_range_to_outpoint = wtx.open_table(SAT_RANGE_TO_OUTPOINT)?;
+        // Drain all entries - redb doesn't have a clear() method, so we iterate and remove
+        let keys: Vec<u64> = sat_range_to_outpoint
+          .iter()?
+          .map(|r| r.map(|(k, _)| k.value()))
+          .collect::<std::result::Result<Vec<_>, _>>()?;
+        for key in keys {
+          sat_range_to_outpoint.remove(&key)?;
+        }
+      }
+      
+      {
+        let mut statistics = wtx.open_table(STATISTIC_TO_COUNT)?;
+        // Reset to 0 - table is now empty, need to run build again
+        statistics.insert(Statistic::SatRangeIndexHeight.key(), &0u64)?;
+      }
+      wtx.commit()?;
+      
+      progress_bar.finish_and_clear();
+      
+      bail!(
+        "Index height changed during build ({} -> {}). \
+         Partial data has been cleared. \
+         Please stop the server and run build-sat-ranges again.",
+        current_height,
+        final_height
+      );
+    }
+
+    // Final commit with statistics update
+    {
+      let mut statistics = wtx.open_table(STATISTIC_TO_COUNT)?;
+      statistics.insert(Statistic::SatRangeIndexHeight.key(), &u64::from(current_height))?;
+    }
+    wtx.commit()?;
+
+    progress_bar.finish_and_clear();
+
+    log::info!(
+      "Built sat range index: {} sat ranges from {} UTXOs",
+      sat_ranges_written,
+      utxos_processed
+    );
+
+    Ok(())
   }
 
   pub fn status(&self, json_api: bool) -> Result<StatusHtml> {
@@ -724,6 +1037,8 @@ impl Index {
     loop {
       let wtx = self.begin_write()?;
 
+      let sat_range_index_caught_up = self.sat_range_index_caught_up()?;
+
       let mut updater = Updater {
         height: wtx
           .open_table(HEIGHT_TO_BLOCK_HEADER)?
@@ -736,6 +1051,7 @@ impl Index {
         outputs_cached: 0,
         outputs_traversed: 0,
         sat_ranges_since_flush: 0,
+        sat_range_index_caught_up,
       };
 
       match updater.update_index(wtx) {
@@ -3262,6 +3578,62 @@ mod tests {
         offset: 75 * COIN_VALUE,
       }
     );
+  }
+
+  #[test]
+  fn sat_range_index_fresh_start_does_inline_writes() {
+    let context = Context::builder()
+      .arg("--index-sats")
+      .arg("--index-sat-ranges")
+      .build();
+
+    // Fresh start: index should be ready for writes (caught_up = true)
+    assert!(context.index.has_sat_range_index());
+    assert!(context.index.sat_range_index_caught_up().unwrap());
+    
+    // After mining, index should be ready for queries
+    context.mine_blocks(1);
+    assert!(context.index.is_sat_range_index_ready().unwrap());
+    
+    // And lookups should work
+    assert!(context.index.find_sat_in_range_index(Sat(50 * COIN_VALUE)).unwrap().is_some());
+  }
+
+  #[test]
+  fn build_sat_range_index_from_utxos() {
+    let context = Context::builder()
+      .arg("--index-sats")
+      .arg("--index-sat-ranges")
+      .build();
+
+    // Mine some blocks and create transactions
+    context.mine_blocks(2);
+
+    let spend_txid = context.core.broadcast_tx(TransactionTemplate {
+      inputs: &[(1, 0, 0, Default::default())],
+      fee: 0,
+      ..default()
+    });
+    context.mine_blocks(1);
+
+    // Manually build the sat range index (force=true since inline writes already happened)
+    context.index.build_sat_range_index(1000, true).unwrap();
+
+    // Verify we can still look up sats
+    assert_eq!(
+      context
+        .index
+        .find_sat_in_range_index(Sat(50 * COIN_VALUE))
+        .unwrap()
+        .unwrap(),
+      SatPoint {
+        outpoint: OutPoint::new(spend_txid, 0),
+        offset: 0,
+      }
+    );
+
+    // After build, the index should be caught up
+    assert!(context.index.sat_range_index_caught_up().unwrap());
   }
 
   #[test]

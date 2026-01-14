@@ -39,6 +39,7 @@ pub(crate) struct Updater<'index> {
   pub(super) outputs_cached: u64,
   pub(super) outputs_traversed: u64,
   pub(super) sat_ranges_since_flush: u64,
+  pub(super) sat_range_index_caught_up: bool,
 }
 
 impl Updater<'_> {
@@ -688,7 +689,8 @@ impl Updater<'_> {
 
         // Insert lost sat ranges into sat range lookup index
         // The offset is the current lost_sats count (before adding this range)
-        if self.index.index_sat_ranges {
+        // Only write if the sat range index has been built (caught up)
+        if self.index.index_sat_ranges && self.sat_range_index_caught_up {
           sat_range_to_outpoint.insert(
             &start,
             &SatRangeEntry {
@@ -820,7 +822,8 @@ impl Updater<'_> {
 
         // Insert into sat range lookup index if enabled
         // The offset is the position of this range's start within the output
-        if self.index.index_sat_ranges {
+        // Only write if the sat range index has been built (caught up)
+        if self.index.index_sat_ranges && self.sat_range_index_caught_up {
           let range_offset = output.value.to_sat() - remaining;
           sat_range_to_outpoint.insert(
             &assigned.0,

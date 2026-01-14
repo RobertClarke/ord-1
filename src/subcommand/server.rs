@@ -693,8 +693,8 @@ impl Server {
     task::block_in_place(|| {
       let inscriptions = index.get_inscription_ids_by_sat(sat)?;
 
-      // Use fast sat range lookup if available, otherwise fall back to rare sat lookup
-      let satpoint = if index.has_sat_range_index() {
+      // Use fast sat range lookup if available and ready, otherwise fall back to rare sat lookup
+      let satpoint = if index.is_sat_range_index_ready()? {
         index.find_sat_in_range_index(sat)?
       } else {
         index.rare_sat_satpoint(sat)?.or_else(|| {
