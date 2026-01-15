@@ -79,6 +79,8 @@ define_table! { RUNE_TO_RUNE_ID, u128, RuneIdValue }
 // This is an acceptable space tradeoff (~40 bytes per unique outpoint ever indexed).
 define_table! { OUTPOINT_ID_TO_OUTPOINT, u32, &OutPointValue }
 define_table! { SAT_RANGE_TO_OUTPOINT, u64, &SatRangeEntryValue }
+// Old table definition for migration from [u8; 52] to [u8; 9] format
+define_table! { SAT_RANGE_TO_OUTPOINT_OLD, u64, &[u8; 52] }
 define_table! { SAT_TO_SATPOINT, u64, &SatPointValue }
 define_table! { SEQUENCE_NUMBER_TO_INSCRIPTION_ENTRY, u32, InscriptionEntryValue }
 define_table! { SEQUENCE_NUMBER_TO_RUNE_ID, u32, RuneIdValue }
@@ -466,6 +468,20 @@ impl Index {
     // Allow upgrading an existing --index-sats database to also have --index-sat-ranges
     if settings.index_sat_ranges_raw() && !index_sat_ranges && index_sats {
       log::info!("Enabling --index-sat-ranges on existing database");
+
+      // Check for and migrate old table format ([u8; 52] -> [u8; 9])
+      // This handles databases that had the old sat range index schema
+      {
+        let wtx = database.begin_write()?;
+        // Try to open the old-format table - if it exists, we need to delete it
+        if wtx.open_table(SAT_RANGE_TO_OUTPOINT_OLD).is_ok() {
+          log::info!("Found old SAT_RANGE_TO_OUTPOINT table format, migrating to new format");
+          wtx.delete_table(SAT_RANGE_TO_OUTPOINT_OLD)?;
+          log::info!("Deleted old SAT_RANGE_TO_OUTPOINT table");
+        }
+        wtx.commit()?;
+      }
+
       let wtx = database.begin_write()?;
       wtx
         .open_table(STATISTIC_TO_COUNT)?
@@ -479,6 +495,21 @@ impl Index {
 
     if index_sat_ranges && !index_sats {
       bail!("--index-sat-ranges requires --index-sats");
+    }
+
+    // Check for old table format even if index_sat_ranges was already set
+    // This handles databases that were configured with the old schema
+    if index_sat_ranges {
+      let wtx = database.begin_write()?;
+      if wtx.open_table(SAT_RANGE_TO_OUTPOINT_OLD).is_ok() {
+        log::info!("Found old SAT_RANGE_TO_OUTPOINT table format, migrating to new format");
+        wtx.delete_table(SAT_RANGE_TO_OUTPOINT_OLD)?;
+        log::info!("Deleted old SAT_RANGE_TO_OUTPOINT table, will recreate with new schema");
+        // Create the new tables
+        wtx.open_table(SAT_RANGE_TO_OUTPOINT)?;
+        wtx.open_table(OUTPOINT_ID_TO_OUTPOINT)?;
+      }
+      wtx.commit()?;
     }
 
     let genesis_block_coinbase_transaction =
