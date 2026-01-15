@@ -80,7 +80,9 @@ define_table! { RUNE_TO_RUNE_ID, u128, RuneIdValue }
 define_table! { OUTPOINT_ID_TO_OUTPOINT, u32, &OutPointValue }
 define_table! { SAT_RANGE_TO_OUTPOINT, u64, &SatRangeEntryValue }
 // Old table definition for migration from [u8; 52] to [u8; 9] format
-define_table! { SAT_RANGE_TO_OUTPOINT_OLD, u64, &[u8; 52] }
+// Must use same table name "SAT_RANGE_TO_OUTPOINT" but with old value type
+const SAT_RANGE_TO_OUTPOINT_V1: TableDefinition<u64, &[u8; 52]> =
+  TableDefinition::new("SAT_RANGE_TO_OUTPOINT");
 define_table! { SAT_TO_SATPOINT, u64, &SatPointValue }
 define_table! { SEQUENCE_NUMBER_TO_INSCRIPTION_ENTRY, u32, InscriptionEntryValue }
 define_table! { SEQUENCE_NUMBER_TO_RUNE_ID, u32, RuneIdValue }
@@ -474,9 +476,9 @@ impl Index {
       {
         let wtx = database.begin_write()?;
         // Try to open the old-format table - if it exists, we need to delete it
-        if wtx.open_table(SAT_RANGE_TO_OUTPOINT_OLD).is_ok() {
+        if wtx.open_table(SAT_RANGE_TO_OUTPOINT_V1).is_ok() {
           log::info!("Found old SAT_RANGE_TO_OUTPOINT table format, migrating to new format");
-          wtx.delete_table(SAT_RANGE_TO_OUTPOINT_OLD)?;
+          wtx.delete_table(SAT_RANGE_TO_OUTPOINT_V1)?;
           log::info!("Deleted old SAT_RANGE_TO_OUTPOINT table");
         }
         wtx.commit()?;
@@ -501,9 +503,9 @@ impl Index {
     // This handles databases that were configured with the old schema
     if index_sat_ranges {
       let wtx = database.begin_write()?;
-      if wtx.open_table(SAT_RANGE_TO_OUTPOINT_OLD).is_ok() {
+      if wtx.open_table(SAT_RANGE_TO_OUTPOINT_V1).is_ok() {
         log::info!("Found old SAT_RANGE_TO_OUTPOINT table format, migrating to new format");
-        wtx.delete_table(SAT_RANGE_TO_OUTPOINT_OLD)?;
+        wtx.delete_table(SAT_RANGE_TO_OUTPOINT_V1)?;
         log::info!("Deleted old SAT_RANGE_TO_OUTPOINT table, will recreate with new schema");
         // Create the new tables
         wtx.open_table(SAT_RANGE_TO_OUTPOINT)?;
