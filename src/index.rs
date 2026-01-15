@@ -436,7 +436,7 @@ impl Index {
 
     let index_addresses;
     let index_runes;
-    let index_sat_ranges;
+    let mut index_sat_ranges;
     let index_sats;
     let index_transactions;
     let index_inscriptions;
@@ -450,6 +450,17 @@ impl Index {
       index_sat_ranges = Self::is_statistic_set(&statistics, Statistic::IndexSatRanges)?;
       index_sats = Self::is_statistic_set(&statistics, Statistic::IndexSats)?;
       index_transactions = Self::is_statistic_set(&statistics, Statistic::IndexTransactions)?;
+    }
+
+    // Allow upgrading an existing --index-sats database to also have --index-sat-ranges
+    if settings.index_sat_ranges_raw() && !index_sat_ranges && index_sats {
+      log::info!("Enabling --index-sat-ranges on existing database");
+      let wtx = database.begin_write()?;
+      wtx
+        .open_table(STATISTIC_TO_COUNT)?
+        .insert(Statistic::IndexSatRanges.key(), &1)?;
+      wtx.commit()?;
+      index_sat_ranges = true;
     }
 
     if index_sat_ranges && !index_sats {
