@@ -448,32 +448,58 @@ impl Entry for SatPoint {
 }
 
 /// Entry for the SAT_RANGE_TO_OUTPOINT table.
-/// Stores the end of a sat range, the offset within the output, and the outpoint containing it.
+/// Stores the range size (delta) and an outpoint ID reference.
 /// The key is the start of the sat range.
+/// Offset is computed at query time by looking up the UTXO's sat ranges.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(super) struct SatRangeEntry {
-  pub end: u64,
-  pub offset: u64,
-  pub outpoint: OutPoint,
+  /// Range size: end - start (stored as 5 bytes, max ~1 trillion sats per range)
+  pub delta: u64,
+  /// Reference to OUTPOINT_ID_TO_OUTPOINT table
+  pub outpoint_id: u32,
 }
 
-pub(super) type SatRangeEntryValue = [u8; 52]; // 8 bytes for end + 8 bytes for offset + 36 bytes for outpoint
+impl SatRangeEntry {
+  /// Maximum delta value that can be stored (40 bits = 5 bytes).
+  /// This is ~1.1 trillion sats, or ~10,995 BTC.
+  pub const MAX_DELTA: u64 = (1u64 << 40) - 1;
+
+  /// Compute the end of the range given the start
+  pub fn end(&self, start: u64) -> u64 {
+    start + self.delta
+  }
+
+}
+
+pub(super) type SatRangeEntryValue = [u8; 9]; // 5 bytes for delta + 4 bytes for outpoint_id
 
 impl Entry for SatRangeEntry {
   type Value = SatRangeEntryValue;
 
   fn load(value: Self::Value) -> Self {
-    let end = u64::from_le_bytes(value[0..8].try_into().unwrap());
-    let offset = u64::from_le_bytes(value[8..16].try_into().unwrap());
-    let outpoint = OutPoint::load(value[16..52].try_into().unwrap());
-    Self { end, offset, outpoint }
+    // Delta is stored in first 5 bytes (40 bits, max ~1 trillion)
+    let delta = u64::from_le_bytes([
+      value[0], value[1], value[2], value[3], value[4], 0, 0, 0,
+    ]);
+    // OutPoint ID is stored in last 4 bytes
+    let outpoint_id = u32::from_le_bytes(value[5..9].try_into().unwrap());
+    Self { delta, outpoint_id }
   }
 
   fn store(self) -> Self::Value {
-    let mut value = [0u8; 52];
-    value[0..8].copy_from_slice(&self.end.to_le_bytes());
-    value[8..16].copy_from_slice(&self.offset.to_le_bytes());
-    value[16..52].copy_from_slice(&self.outpoint.store());
+    // Assert that delta fits in 40 bits - this should never happen in practice
+    // as it would require a UTXO with >10,995 BTC in a single range
+    assert!(
+      self.delta <= Self::MAX_DELTA,
+      "delta {} exceeds maximum storable value {} (~10,995 BTC)",
+      self.delta,
+      Self::MAX_DELTA
+    );
+
+    let mut value = [0u8; 9];
+    let delta_bytes = self.delta.to_le_bytes();
+    value[0..5].copy_from_slice(&delta_bytes[0..5]);
+    value[5..9].copy_from_slice(&self.outpoint_id.to_le_bytes());
     value
   }
 }
@@ -957,11 +983,8 @@ mod tests {
   #[test]
   fn sat_range_entry_roundtrip() {
     let entry = SatRangeEntry {
-      end: 1000000,
-      offset: 500,
-      outpoint: "4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b:0"
-        .parse()
-        .unwrap(),
+      delta: 1000000,
+      outpoint_id: 42,
     };
 
     let stored = entry.store();
@@ -972,18 +995,26 @@ mod tests {
 
   #[test]
   fn sat_range_entry_large_values() {
+    // delta is stored as 5 bytes (40 bits), max value is 2^40 - 1 = 1,099,511,627,775
     let entry = SatRangeEntry {
-      end: u64::MAX,
-      offset: u64::MAX,
-      outpoint: OutPoint {
-        txid: Txid::from_byte_array([0xff; 32]),
-        vout: u32::MAX,
-      },
+      delta: (1u64 << 40) - 1, // max 40-bit value
+      outpoint_id: u32::MAX,
     };
 
     let stored = entry.store();
     let loaded = SatRangeEntry::load(stored);
 
     assert_eq!(entry, loaded);
+  }
+
+  #[test]
+  fn sat_range_entry_end_calculation() {
+    let entry = SatRangeEntry {
+      delta: 50_000_000_000, // 50 BTC worth of sats
+      outpoint_id: 123,
+    };
+
+    let start = 100_000_000_000u64; // 100 BTC
+    assert_eq!(entry.end(start), 150_000_000_000u64); // 150 BTC
   }
 }

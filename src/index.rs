@@ -56,6 +56,11 @@ pub(crate) mod testing;
 
 const SCHEMA_VERSION: u64 = 32;
 
+/// Reserved outpoint ID for the null outpoint (lost sats).
+/// This avoids expensive table scans to find if null outpoint has an ID.
+/// Regular outpoint IDs start from 1.
+const NULL_OUTPOINT_ID: u32 = 0;
+
 define_multimap_table! { SAT_TO_SEQUENCE_NUMBER, u64, u32 }
 define_multimap_table! { SCRIPT_PUBKEY_TO_OUTPOINT, &[u8], OutPointValue }
 define_multimap_table! { SEQUENCE_NUMBER_TO_CHILDREN, u32, u32 }
@@ -69,6 +74,10 @@ define_table! { OUTPOINT_TO_RUNE_BALANCES, &OutPointValue, &[u8] }
 define_table! { OUTPOINT_TO_UTXO_ENTRY, &OutPointValue, &UtxoEntry }
 define_table! { RUNE_ID_TO_RUNE_ENTRY, RuneIdValue, RuneEntryValue }
 define_table! { RUNE_TO_RUNE_ID, u128, RuneIdValue }
+// OUTPOINT_ID_TO_OUTPOINT: Maps compact outpoint IDs to full OutPoints for the sat range index.
+// Note: This table is append-only and entries are never deleted even when UTXOs are spent.
+// This is an acceptable space tradeoff (~40 bytes per unique outpoint ever indexed).
+define_table! { OUTPOINT_ID_TO_OUTPOINT, u32, &OutPointValue }
 define_table! { SAT_RANGE_TO_OUTPOINT, u64, &SatRangeEntryValue }
 define_table! { SAT_TO_SATPOINT, u64, &SatPointValue }
 define_table! { SEQUENCE_NUMBER_TO_INSCRIPTION_ENTRY, u32, InscriptionEntryValue }
@@ -91,6 +100,7 @@ pub(crate) enum Statistic {
   IndexSats = 7,
   IndexSatRanges = 18,
   SatRangeIndexHeight = 19,
+  NextOutpointId = 20,
   IndexTransactions = 8,
   InitialSyncTime = 9,
   LostSats = 10,
@@ -333,6 +343,7 @@ impl Index {
         tx.open_table(OUTPOINT_TO_UTXO_ENTRY)?;
         tx.open_table(RUNE_ID_TO_RUNE_ENTRY)?;
         tx.open_table(RUNE_TO_RUNE_ID)?;
+        tx.open_table(OUTPOINT_ID_TO_OUTPOINT)?;
         tx.open_table(SAT_RANGE_TO_OUTPOINT)?;
         tx.open_table(SAT_TO_SATPOINT)?;
         tx.open_table(SEQUENCE_NUMBER_TO_INSCRIPTION_ENTRY)?;
@@ -459,6 +470,9 @@ impl Index {
       wtx
         .open_table(STATISTIC_TO_COUNT)?
         .insert(Statistic::IndexSatRanges.key(), &1)?;
+      // Create the new tables needed for sat range indexing
+      wtx.open_table(SAT_RANGE_TO_OUTPOINT)?;
+      wtx.open_table(OUTPOINT_ID_TO_OUTPOINT)?;
       wtx.commit()?;
       index_sat_ranges = true;
     }
@@ -646,52 +660,90 @@ impl Index {
   /// Fast O(log n) lookup of a sat's location using the sat range index.
   /// Returns None if the sat has not been mined yet.
   /// Returns an error if the index needs to be built first.
+  ///
+  /// This performs three lookups:
+  /// 1. SAT_RANGE_TO_OUTPOINT: find the range containing the sat -> get outpoint_id
+  /// 2. OUTPOINT_ID_TO_OUTPOINT: resolve outpoint_id -> OutPoint
+  /// 3. OUTPOINT_TO_UTXO_ENTRY: get sat ranges -> compute exact offset
   pub fn find_sat_in_range_index(&self, sat: Sat) -> Result<Option<SatPoint>> {
     if !self.index_sat_ranges {
       bail!("sat range index not available, use --index-sat-ranges");
     }
 
-    let sat = sat.n();
+    let sat_n = sat.n();
     let rtx = self.begin_read()?;
 
-    if rtx.block_count()? <= Sat(sat).height().n() {
+    if rtx.block_count()? <= sat.height().n() {
       return Ok(None);
     }
 
     let sat_range_to_outpoint = rtx.0.open_table(SAT_RANGE_TO_OUTPOINT)?;
 
-    // Bug #4: Check if the index has been built
+    // Check if the index has been built
     if sat_range_to_outpoint.is_empty()? {
       bail!(
         "sat range index is empty, run `ord index build-sat-ranges` to build it"
       );
     }
 
-    // Find the largest key <= sat using range query
-    let mut iter = sat_range_to_outpoint.range(..=sat)?;
+    // Step 1: Find the range containing this sat
+    let mut iter = sat_range_to_outpoint.range(..=sat_n)?;
 
     if let Some(result) = iter.next_back() {
       let (start_key, entry_value) = result?;
       let start = start_key.value();
       let entry: SatRangeEntry = Entry::load(*entry_value.value());
+      let end = entry.end(start);
 
       // Check if sat falls within this range [start, end)
-      if sat < entry.end {
-        // The offset is the stored base offset plus the position within this range
-        let offset = entry.offset + (sat - start);
-        return Ok(Some(SatPoint {
-          outpoint: entry.outpoint,
-          offset,
-        }));
+      if sat_n < end {
+        // Step 2: Resolve outpoint_id to actual OutPoint
+        let outpoint_id_to_outpoint = rtx.0.open_table(OUTPOINT_ID_TO_OUTPOINT)?;
+        let outpoint = outpoint_id_to_outpoint
+          .get(&entry.outpoint_id)?
+          .map(|v| OutPoint::load(*v.value()))
+          .ok_or_else(|| anyhow!("outpoint_id {} not found in lookup table", entry.outpoint_id))?;
+
+        // Step 3: Get UTXO sat ranges to compute offset
+        let outpoint_to_utxo_entry = rtx.0.open_table(OUTPOINT_TO_UTXO_ENTRY)?;
+        let utxo_entry = outpoint_to_utxo_entry
+          .get(&outpoint.store())?
+          .ok_or_else(|| anyhow!("UTXO not found for outpoint {:?}", outpoint))?;
+
+        let parsed = utxo_entry.value().parse(self);
+        let sat_ranges = parsed.sat_ranges();
+
+        // Compute offset by finding the sat in the UTXO's ranges
+        let offset = Self::compute_offset_for_sat(sat_n, sat_ranges)?;
+
+        return Ok(Some(SatPoint { outpoint, offset }));
       }
     }
 
     Ok(None)
   }
 
+  /// Compute the offset of a sat within a UTXO given its sat ranges.
+  /// The offset is the sum of all preceding range lengths plus the position within the current range.
+  fn compute_offset_for_sat(sat: u64, sat_ranges: &[u8]) -> Result<u64> {
+    let mut offset = 0u64;
+    for chunk in sat_ranges.chunks_exact(11) {
+      let (start, end) = SatRange::load(chunk.try_into().unwrap());
+      if sat >= start && sat < end {
+        return Ok(offset + (sat - start));
+      }
+      offset += end - start;
+    }
+    bail!("sat {} not found in UTXO sat ranges", sat);
+  }
+
   /// Build the SAT_RANGE_TO_OUTPOINT index by iterating through all UTXOs.
   /// This is much faster than building during sync because it only processes
   /// the final state (current UTXOs) rather than every historical movement.
+  ///
+  /// Uses compact storage: each sat range stores only a 4-byte outpoint ID
+  /// (reference to OUTPOINT_ID_TO_OUTPOINT table) and 5-byte delta (range size).
+  /// Offset is computed at query time from the UTXO's sat ranges.
   pub fn build_sat_range_index(&self, commit_interval: u64, force: bool) -> Result {
     if !self.index_sats {
       bail!("--index-sats is required to build sat range index");
@@ -704,7 +756,7 @@ impl Index {
     // Check if index already has data
     let (current_height, index_is_empty, bitcoin_height) = {
       let rtx = self.database.begin_read()?;
-      
+
       let current_height = rtx
         .open_table(HEIGHT_TO_BLOCK_HEADER)?
         .range(0..)?
@@ -712,18 +764,45 @@ impl Index {
         .transpose()?
         .map(|(height, _)| height.value() + 1)
         .unwrap_or(0);
-      
+
       let index_is_empty = rtx.open_table(SAT_RANGE_TO_OUTPOINT)?.is_empty()?;
-      
+
       let bitcoin_height = self.client.get_block_count().ok();
-      
+
       (current_height, index_is_empty, bitcoin_height)
     };
 
-    // Bug #5: Warn if index already has data
+    // Warn if index already has data
     if !index_is_empty {
       if force {
         log::warn!("SAT_RANGE_TO_OUTPOINT table already has data, rebuilding with --force");
+        // Clear existing tables when forcing rebuild
+        let wtx = self.begin_write()?;
+        {
+          let mut sat_range_to_outpoint = wtx.open_table(SAT_RANGE_TO_OUTPOINT)?;
+          let keys: Vec<u64> = sat_range_to_outpoint
+            .iter()?
+            .map(|r| r.map(|(k, _)| k.value()))
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+          for key in keys {
+            sat_range_to_outpoint.remove(&key)?;
+          }
+        }
+        {
+          let mut outpoint_id_to_outpoint = wtx.open_table(OUTPOINT_ID_TO_OUTPOINT)?;
+          let keys: Vec<u32> = outpoint_id_to_outpoint
+            .iter()?
+            .map(|r| r.map(|(k, _)| k.value()))
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+          for key in keys {
+            outpoint_id_to_outpoint.remove(&key)?;
+          }
+        }
+        {
+          let mut statistics = wtx.open_table(STATISTIC_TO_COUNT)?;
+          statistics.insert(Statistic::NextOutpointId.key(), &0u64)?;
+        }
+        wtx.commit()?;
       } else {
         bail!(
           "SAT_RANGE_TO_OUTPOINT table already has data. \
@@ -732,7 +811,7 @@ impl Index {
       }
     }
 
-    // Bug #3: Check if ord index is synced with Bitcoin Core
+    // Check if ord index is synced with Bitcoin Core
     if let Some(btc_height) = bitcoin_height {
       let btc_height = u32::try_from(btc_height).unwrap_or(u32::MAX);
       if current_height < btc_height {
@@ -786,7 +865,20 @@ impl Index {
         .collect::<Result<Vec<_>>>()?
     };
 
+    // In-memory mapping of OutPoint -> ID for fast lookup during build
+    // This avoids repeated DB lookups and allows us to assign IDs efficiently
+    let mut outpoint_to_id: HashMap<OutPoint, u32> = HashMap::new();
+    // Start from 1 since ID 0 is reserved for null outpoint (lost sats)
+    let mut next_outpoint_id: u32 = 1;
+
     let mut wtx = self.begin_write()?;
+
+    // Pre-insert the reserved null outpoint mapping
+    {
+      let mut outpoint_id_to_outpoint = wtx.open_table(OUTPOINT_ID_TO_OUTPOINT)?;
+      outpoint_id_to_outpoint.insert(&NULL_OUTPOINT_ID, &OutPoint::null().store())?;
+      outpoint_to_id.insert(OutPoint::null(), NULL_OUTPOINT_ID);
+    }
     let mut sat_ranges_written: u64 = 0;
     let mut utxos_processed: u64 = 0;
 
@@ -794,28 +886,38 @@ impl Index {
       {
         let outpoint_to_utxo_entry = wtx.open_table(OUTPOINT_TO_UTXO_ENTRY)?;
         let mut sat_range_to_outpoint = wtx.open_table(SAT_RANGE_TO_OUTPOINT)?;
+        let mut outpoint_id_to_outpoint = wtx.open_table(OUTPOINT_ID_TO_OUTPOINT)?;
 
         if let Some(utxo_entry) = outpoint_to_utxo_entry.get(&outpoint.store())? {
+          // Get or assign outpoint ID
+          let outpoint_id = match outpoint_to_id.get(&outpoint) {
+            Some(&id) => id,
+            None => {
+              let id = next_outpoint_id;
+              next_outpoint_id = next_outpoint_id.checked_add(1).ok_or_else(|| {
+                anyhow!("outpoint ID overflow: more than {} unique outpoints", u32::MAX)
+              })?;
+              outpoint_to_id.insert(outpoint, id);
+              // Store in OUTPOINT_ID_TO_OUTPOINT table
+              outpoint_id_to_outpoint.insert(&id, &outpoint.store())?;
+              id
+            }
+          };
+
           // Parse the UTXO entry to extract sat ranges
           let parsed = utxo_entry.value().parse(self);
           let sat_ranges = parsed.sat_ranges();
 
           // Iterate through sat ranges and insert into SAT_RANGE_TO_OUTPOINT
-          let mut offset: u64 = 0;
           for chunk in sat_ranges.chunks_exact(11) {
             let (start, end) = SatRange::load(chunk.try_into().unwrap());
+            let delta = end - start;
 
             sat_range_to_outpoint.insert(
               &start,
-              &SatRangeEntry {
-                end,
-                offset,
-                outpoint,
-              }
-              .store(),
+              &SatRangeEntry { delta, outpoint_id }.store(),
             )?;
 
-            offset += end - start;
             sat_ranges_written += 1;
           }
         }
@@ -826,11 +928,17 @@ impl Index {
 
       // Commit periodically (but not on first iteration when count is 0)
       if utxos_processed > 0 && utxos_processed.is_multiple_of(commit_interval) {
+        // Save next_outpoint_id before committing
+        {
+          let mut statistics = wtx.open_table(STATISTIC_TO_COUNT)?;
+          statistics.insert(Statistic::NextOutpointId.key(), &u64::from(next_outpoint_id))?;
+        }
         wtx.commit()?;
         log::info!(
-          "Committed {} sat ranges from {} UTXOs",
+          "Committed {} sat ranges from {} UTXOs ({} unique outpoints)",
           sat_ranges_written,
-          utxos_processed
+          utxos_processed,
+          next_outpoint_id
         );
         wtx = self.begin_write()?;
       }
@@ -850,17 +958,16 @@ impl Index {
 
     if final_height > current_height {
       // New blocks were indexed during build - the index is now inconsistent
-      // Clear the table and reset the height marker
+      // Clear the tables and reset the height marker
       log::warn!(
         "Index height changed during build ({} -> {}). Clearing partial data.",
         current_height,
         final_height
       );
-      
+
       // Clear the sat range table to remove inconsistent partial data
       {
         let mut sat_range_to_outpoint = wtx.open_table(SAT_RANGE_TO_OUTPOINT)?;
-        // Drain all entries - redb doesn't have a clear() method, so we iterate and remove
         let keys: Vec<u64> = sat_range_to_outpoint
           .iter()?
           .map(|r| r.map(|(k, _)| k.value()))
@@ -869,16 +976,29 @@ impl Index {
           sat_range_to_outpoint.remove(&key)?;
         }
       }
-      
+
+      // Clear the outpoint ID table too
+      {
+        let mut outpoint_id_to_outpoint = wtx.open_table(OUTPOINT_ID_TO_OUTPOINT)?;
+        let keys: Vec<u32> = outpoint_id_to_outpoint
+          .iter()?
+          .map(|r| r.map(|(k, _)| k.value()))
+          .collect::<std::result::Result<Vec<_>, _>>()?;
+        for key in keys {
+          outpoint_id_to_outpoint.remove(&key)?;
+        }
+      }
+
       {
         let mut statistics = wtx.open_table(STATISTIC_TO_COUNT)?;
-        // Reset to 0 - table is now empty, need to run build again
+        // Reset to 0 - tables are now empty, need to run build again
         statistics.insert(Statistic::SatRangeIndexHeight.key(), &0u64)?;
+        statistics.insert(Statistic::NextOutpointId.key(), &0u64)?;
       }
       wtx.commit()?;
-      
+
       progress_bar.finish_and_clear();
-      
+
       bail!(
         "Index height changed during build ({} -> {}). \
          Partial data has been cleared. \
@@ -892,10 +1012,17 @@ impl Index {
     {
       let mut statistics = wtx.open_table(STATISTIC_TO_COUNT)?;
       statistics.insert(Statistic::SatRangeIndexHeight.key(), &u64::from(current_height))?;
+      statistics.insert(Statistic::NextOutpointId.key(), &u64::from(next_outpoint_id))?;
     }
     wtx.commit()?;
 
     progress_bar.finish_and_clear();
+
+    log::info!(
+      "Built sat range index: {} sat ranges, {} unique outpoints",
+      sat_ranges_written,
+      next_outpoint_id
+    );
 
     log::info!(
       "Built sat range index: {} sat ranges from {} UTXOs",

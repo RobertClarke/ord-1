@@ -423,8 +423,17 @@ impl Updater<'_> {
     let mut inscription_number_to_sequence_number =
       wtx.open_table(INSCRIPTION_NUMBER_TO_SEQUENCE_NUMBER)?;
     let mut outpoint_to_utxo_entry = wtx.open_table(OUTPOINT_TO_UTXO_ENTRY)?;
+    let mut outpoint_id_to_outpoint = wtx.open_table(OUTPOINT_ID_TO_OUTPOINT)?;
     let mut sat_range_to_outpoint = wtx.open_table(SAT_RANGE_TO_OUTPOINT)?;
     let mut sat_to_satpoint = wtx.open_table(SAT_TO_SATPOINT)?;
+
+    // Track next outpoint ID for sat range index
+    // Start from 1 since ID 0 is reserved for null outpoint (lost sats)
+    let mut next_outpoint_id = statistic_to_count
+      .get(&Statistic::NextOutpointId.key())?
+      .map(|v| u32::try_from(v.value()).unwrap_or(1))
+      .unwrap_or(1)
+      .max(1); // Ensure we never use ID 0 for regular outpoints
     let mut sat_to_sequence_number = wtx.open_multimap_table(SAT_TO_SEQUENCE_NUMBER)?;
     let mut script_pubkey_to_outpoint = wtx.open_multimap_table(SCRIPT_PUBKEY_TO_OUTPOINT)?;
     let mut sequence_number_to_children = wtx.open_multimap_table(SEQUENCE_NUMBER_TO_CHILDREN)?;
@@ -625,6 +634,8 @@ impl Updater<'_> {
           *txid,
           &mut sat_to_satpoint,
           &mut sat_range_to_outpoint,
+          &mut outpoint_id_to_outpoint,
+          &mut next_outpoint_id,
           &mut output_utxo_entries,
           input_sat_ranges.as_ref().unwrap(),
           leftover_sat_ranges,
@@ -674,6 +685,17 @@ impl Updater<'_> {
         .entry(OutPoint::null())
         .or_insert(UtxoEntryBuf::empty(self.index));
 
+      // Use reserved ID 0 for null outpoint (lost sats) - no table scan needed
+      let null_outpoint_id = if self.index.index_sat_ranges && self.sat_range_index_caught_up {
+        // Ensure the null outpoint mapping exists (it should from build, but be safe)
+        if outpoint_id_to_outpoint.get(&super::NULL_OUTPOINT_ID)?.is_none() {
+          outpoint_id_to_outpoint.insert(&super::NULL_OUTPOINT_ID, &OutPoint::null().store())?;
+        }
+        Some(super::NULL_OUTPOINT_ID)
+      } else {
+        None
+      };
+
       for chunk in lost_sat_ranges.chunks_exact(11) {
         let (start, end) = SatRange::load(chunk.try_into().unwrap());
         if !Sat(start).common() {
@@ -688,17 +710,12 @@ impl Updater<'_> {
         }
 
         // Insert lost sat ranges into sat range lookup index
-        // The offset is the current lost_sats count (before adding this range)
         // Only write if the sat range index has been built (caught up)
-        if self.index.index_sat_ranges && self.sat_range_index_caught_up {
+        if let Some(outpoint_id) = null_outpoint_id {
+          let delta = end - start;
           sat_range_to_outpoint.insert(
             &start,
-            &SatRangeEntry {
-              end,
-              offset: lost_sats,
-              outpoint: OutPoint::null(),
-            }
-            .store(),
+            &SatRangeEntry { delta, outpoint_id }.store(),
           )?;
         }
 
@@ -738,6 +755,14 @@ impl Updater<'_> {
       &inscription_updater.unbound_inscriptions,
     )?;
 
+    // Save next outpoint ID for sat range index
+    if self.index.index_sat_ranges && self.sat_range_index_caught_up {
+      statistic_to_count.insert(
+        &Statistic::NextOutpointId.key(),
+        &u64::from(next_outpoint_id),
+      )?;
+    }
+
     Ok(())
   }
 
@@ -757,6 +782,8 @@ impl Updater<'_> {
     txid: Txid,
     sat_to_satpoint: &mut Table<u64, &SatPointValue>,
     sat_range_to_outpoint: &mut Table<u64, &SatRangeEntryValue>,
+    outpoint_id_to_outpoint: &mut Table<u32, &OutPointValue>,
+    next_outpoint_id: &mut u32,
     output_utxo_entries: &mut [UtxoEntryBuf],
     input_sat_ranges: &[&[u8]],
     leftover_sat_ranges: &mut Vec<u8>,
@@ -782,6 +809,19 @@ impl Updater<'_> {
       let outpoint = OutPoint {
         vout: vout.try_into().unwrap(),
         txid,
+      };
+
+      // Get or assign outpoint ID if sat range indexing is enabled
+      let outpoint_id = if self.index.index_sat_ranges && self.sat_range_index_caught_up {
+        let id = *next_outpoint_id;
+        *next_outpoint_id = next_outpoint_id.checked_add(1).ok_or_else(|| {
+          anyhow!("outpoint ID overflow: more than {} unique outpoints", u32::MAX)
+        })?;
+        // Store in OUTPOINT_ID_TO_OUTPOINT table
+        outpoint_id_to_outpoint.insert(&id, &outpoint.store())?;
+        Some(id)
+      } else {
+        None
       };
 
       let mut remaining = output.value.to_sat();
@@ -821,18 +861,12 @@ impl Updater<'_> {
         sats.extend_from_slice(&assigned.store());
 
         // Insert into sat range lookup index if enabled
-        // The offset is the position of this range's start within the output
         // Only write if the sat range index has been built (caught up)
-        if self.index.index_sat_ranges && self.sat_range_index_caught_up {
-          let range_offset = output.value.to_sat() - remaining;
+        if let Some(outpoint_id) = outpoint_id {
+          let delta = assigned.1 - assigned.0;
           sat_range_to_outpoint.insert(
             &assigned.0,
-            &SatRangeEntry {
-              end: assigned.1,
-              offset: range_offset,
-              outpoint,
-            }
-            .store(),
+            &SatRangeEntry { delta, outpoint_id }.store(),
           )?;
         }
 
