@@ -1,0 +1,31 @@
+#1 run this to build initial index in a 300GB Ramdisk
+~/bin/ord --no-index-inscriptions --index-sats --index-addresses \
+    --data-dir /mnt/ramdisk/ordIndex/ \
+    --cookie-file /root/snap/bitcoin-core/common/.bitcoin/.cookie \
+    --index-parallel-block-buffer 256 \
+    --commit-interval 5000 \
+    server
+
+#1 verify still works after moving to /root
+~/bin/ord --no-index-inscriptions --index-sats --index-addresses --data-dir /root/ --cookie-file /root/snap/bitcoin-core/common/.bitcoin/.cookie server
+
+#2 run this to build an index on our new changes (after moving index from ramdisk)
+~/bin/ord --no-index-inscriptions --index-sats --index-sat-ranges --index-addresses \
+    --data-dir /root/ \
+    --cookie-file /root/snap/bitcoin-core/common/.bitcoin/.cookie \
+    index build-sat-ranges
+
+#3 server should now report report UTXO location any individual sat 
+~/bin/ord --no-index-inscriptions --index-sats --index-sat-ranges --index-addresses \
+    --data-dir /root/ \
+    --cookie-file /root/snap/bitcoin-core/common/.bitcoin/.cookie \
+    --index-parallel-block-buffer 256 \
+    --commit-interval 5000 \
+    server
+
+#4 check for the location of a test sat
+curl -H "Accept: application/json" http://localhost/sat/6500000000000
+
+On a fully synced server 160GB of ram is required aprox to build the sat ranges index
+
+cp /root/index.redb.indexbetterclean.bak /mnt/ramdisk/ordIndex/index.redb
