@@ -185,8 +185,8 @@ impl Node for RpcNode {
   }
 }
 
-/// The tracker, as the indexer drives it.
-pub trait Engine: Send {
+/// The tracker, as the indexer drives it (only on the indexer's thread).
+pub trait Engine {
   fn height(&self) -> Option<u32>;
   fn hash(&self) -> Option<BlockHash>;
   fn apply_block(&mut self, block: &ResolvedBlock) -> anyhow::Result<BlockDelta>;
