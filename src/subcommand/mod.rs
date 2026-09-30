@@ -99,7 +99,7 @@ pub(crate) fn indexer(
 ) -> anyhow::Result<Indexer> {
   Ok(Indexer::new(
     store,
-    Arc::new(RpcNode::new(settings.rpc.clone())?),
+    Arc::new(RpcNode::new(settings.rpc.clone(), shutdown.clone())?),
     Arc::new(TrackerFactory::new(catalog, settings.config.clone())),
     published,
     shutdown,

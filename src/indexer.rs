@@ -145,8 +145,10 @@ pub struct RpcNode {
 }
 
 impl RpcNode {
-  pub fn new(config: RpcConfig) -> anyhow::Result<Self> {
-    let rpc = Rpc::new(config)?;
+  /// Every request stops retrying once `shutdown` is set; the fast sync's
+  /// retries transient failures until then (bitcoind restarts, outages).
+  pub fn new(config: RpcConfig, shutdown: Arc<AtomicBool>) -> anyhow::Result<Self> {
+    let rpc = Rpc::new(config)?.with_cancel(shutdown);
     Ok(Self {
       live: LiveSource::new(rpc.clone()),
       rpc,

@@ -20,7 +20,7 @@ use {
     ops::Range,
     path::{Path, PathBuf},
     sync::{
-      Arc, PoisonError, RwLock,
+      Arc, Mutex, PoisonError, RwLock,
       atomic::{AtomicBool, AtomicU64, Ordering},
     },
     thread,
@@ -82,8 +82,7 @@ impl Default for RetryPolicy {
 
 impl RetryPolicy {
   /// 70 attempts, 0.1 s doubling up to 10 s: rides out a bitcoind restart
-  /// (~11 minutes). For work that cannot resume after a failure, like the
-  /// fast sync.
+  /// (~11 minutes).
   pub fn patient() -> Self {
     Self {
       attempts: 70,
@@ -91,15 +90,59 @@ impl RetryPolicy {
     }
   }
 
-  /// Total time slept before giving up.
+  /// Retries transient failures until the call succeeds or the client is
+  /// cancelled (0.1 s doubling up to 10 s between attempts). For work that
+  /// loses a lot when it gives up, like the fast sync and its in-memory
+  /// UTXO map: waiting out a bitcoind restart or a network outage costs
+  /// nothing.
+  pub fn forever() -> Self {
+    Self {
+      attempts: u32::MAX,
+      ..Self::default()
+    }
+  }
+
+  pub fn is_forever(&self) -> bool {
+    self.attempts == u32::MAX
+  }
+
+  /// Total time slept before giving up (saturating).
   pub fn total_delay(&self) -> Duration {
     let mut delay = self.initial_delay;
     let mut total = Duration::ZERO;
-    for _ in 1..self.attempts {
-      total += delay;
-      delay = (delay * 2).min(self.max_delay);
+    let mut retries = self.attempts.saturating_sub(1);
+    while retries > 0 {
+      total = total.saturating_add(delay);
+      retries -= 1;
+      let next = delay.saturating_mul(2).min(self.max_delay);
+      if next == delay {
+        // Every remaining retry waits `delay`.
+        return total.saturating_add(delay.saturating_mul(retries));
+      }
+      delay = next;
     }
     total
+  }
+}
+
+/// How often a client warns about failing calls at most.
+const WARNING_INTERVAL: Duration = Duration::from_secs(60);
+
+/// Allows one warning per `WARNING_INTERVAL` across a client's clones (the
+/// fast sync's fetchers share one), so an outage logs once a minute.
+#[derive(Default)]
+struct Warnings {
+  last: Mutex<Option<Instant>>,
+}
+
+impl Warnings {
+  fn due(&self, now: Instant) -> bool {
+    let mut last = self.last.lock().unwrap_or_else(PoisonError::into_inner);
+    if last.is_some_and(|last| now.saturating_duration_since(last) < WARNING_INTERVAL) {
+      return false;
+    }
+    *last = Some(now);
+    true
   }
 }
 
@@ -110,8 +153,8 @@ impl RetryPolicy {
 pub struct Rpc {
   inner: Arc<Inner>,
   retry: RetryPolicy,
-  /// Set to stop retrying (the owner is shutting down).
-  cancel: Option<Arc<AtomicBool>>,
+  /// Any of them set stops retrying (an owner is shutting down).
+  cancel: Vec<Arc<AtomicBool>>,
 }
 
 struct Inner {
@@ -119,6 +162,7 @@ struct Inner {
   url: String,
   auth: Auth,
   next_id: AtomicU64,
+  warnings: Warnings,
 }
 
 enum Auth {
@@ -231,9 +275,10 @@ impl Rpc {
         url,
         auth,
         next_id: AtomicU64::new(1),
+        warnings: Warnings::default(),
       }),
       retry,
-      cancel: None,
+      cancel: Vec::new(),
     })
   }
 
@@ -253,19 +298,19 @@ impl Rpc {
     }
   }
 
-  /// This client, giving up (instead of retrying) once `cancel` is set.
-  pub(crate) fn with_cancel(&self, cancel: Arc<AtomicBool>) -> Self {
-    Self {
-      cancel: Some(cancel),
-      ..self.clone()
-    }
+  /// This client, also giving up (instead of retrying) once `cancel` is
+  /// set; flags added earlier keep cancelling it.
+  pub fn with_cancel(&self, cancel: Arc<AtomicBool>) -> Self {
+    let mut rpc = self.clone();
+    rpc.cancel.push(cancel);
+    rpc
   }
 
   fn cancelled(&self) -> bool {
     self
       .cancel
-      .as_ref()
-      .is_some_and(|cancel| cancel.load(Ordering::Relaxed))
+      .iter()
+      .any(|cancel| cancel.load(Ordering::Relaxed))
   }
 
   /// `getblockchaininfo.chain`: "main", "test", "testnet4", "signet", "regtest".
@@ -480,9 +525,18 @@ impl Rpc {
     let policy = self.retry;
     let mut delay = policy.initial_delay;
     let mut n = 1;
+    let start = Instant::now();
     loop {
       match attempt() {
-        Ok(value) => return Ok(value),
+        Ok(value) => {
+          if n > 1 {
+            log::debug!(
+              "bitcoind RPC `{method}` succeeded after {n} attempts over {:.1?}",
+              start.elapsed()
+            );
+          }
+          return Ok(value);
+        }
         Err(Failure::Fatal(error)) => {
           return Err(error.context(format!("bitcoind RPC `{method}` failed")));
         }
@@ -492,10 +546,19 @@ impl Rpc {
               error.context(format!("bitcoind RPC `{method}` failed after {n} attempts")),
             );
           }
-          log::warn!(
-            "bitcoind RPC `{method}` attempt {n}/{} failed, retrying in {delay:?}: {error:#}",
-            policy.attempts
-          );
+          let retrying = if policy.is_forever() {
+            "retrying until bitcoind answers".to_string()
+          } else {
+            format!("retrying up to {} attempts", policy.attempts)
+          };
+          if self.inner.warnings.due(Instant::now()) {
+            log::warn!(
+              "bitcoind RPC `{method}` failing for {:.0?} ({n} attempts), {retrying}: {error:#}",
+              start.elapsed()
+            );
+          } else {
+            log::debug!("bitcoind RPC `{method}` attempt {n} failed, {retrying}: {error:#}");
+          }
           let wake = Instant::now() + delay;
           while let Some(left) = wake.checked_duration_since(Instant::now()) {
             if self.cancelled() {
@@ -503,8 +566,8 @@ impl Rpc {
             }
             thread::sleep(left.min(CANCEL_POLL));
           }
-          delay = (delay * 2).min(policy.max_delay);
-          n += 1;
+          delay = delay.saturating_mul(2).min(policy.max_delay);
+          n = n.saturating_add(1);
         }
       }
     }
@@ -730,7 +793,13 @@ mod tests {
 
   impl Server {
     fn start(reply: impl Fn(usize, &Seen) -> Reply + Send + Sync + 'static) -> Self {
-      let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+      Self::start_on(TcpListener::bind("127.0.0.1:0").unwrap(), reply)
+    }
+
+    fn start_on(
+      listener: TcpListener,
+      reply: impl Fn(usize, &Seen) -> Reply + Send + Sync + 'static,
+    ) -> Self {
       let url = format!("http://{}", listener.local_addr().unwrap());
       let seen = Arc::new(Mutex::new(Vec::new()));
       let reply = Arc::new(reply);
@@ -934,6 +1003,110 @@ mod tests {
     );
     let patient = RetryPolicy::patient().total_delay();
     assert!(patient > Duration::from_secs(600) && patient < Duration::from_secs(720));
+    assert!(!RetryPolicy::patient().is_forever());
+    assert!(RetryPolicy::forever().is_forever());
+    assert!(RetryPolicy::forever().total_delay() > Duration::from_secs(10 * 365 * 24 * 3600));
+    assert_eq!(fast_retries(1).total_delay(), Duration::ZERO);
+  }
+
+  fn forever_fast() -> RetryPolicy {
+    RetryPolicy {
+      attempts: u32::MAX,
+      initial_delay: Duration::from_millis(1),
+      max_delay: Duration::from_millis(1),
+    }
+  }
+
+  #[test]
+  fn retries_forever_until_bitcoind_answers() {
+    // Well past `patient()`'s 70 attempts.
+    let server = Server::start(|n, request| {
+      if n < 150 {
+        Reply::status(503, "Work queue depth exceeded")
+      } else {
+        ok(request, "42")
+      }
+    });
+    let rpc = server.rpc(RpcAuth::None).with_retries(forever_fast());
+    assert_eq!(rpc.block_count().unwrap(), 42);
+    assert_eq!(server.requests().len(), 151);
+
+    let server = Server::start(|n, request| match n % 3 {
+      _ if n >= 90 => ok(request, "43"),
+      0 => rpc_error(request, RpcError::IN_WARMUP, "Loading block index…"),
+      1 => Reply::status(500, "<html>oops</html>"),
+      _ => Reply::status(502, "Bad Gateway"),
+    });
+    let rpc = server.rpc(RpcAuth::None).with_retries(forever_fast());
+    assert_eq!(rpc.block_count().unwrap(), 43);
+  }
+
+  #[test]
+  fn retries_forever_while_bitcoind_is_unreachable() {
+    // Nothing listens on the port yet: connections are refused.
+    let port = TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = port.local_addr().unwrap();
+    drop(port);
+    let rpc = Rpc::with_retry_policy(
+      RpcConfig {
+        url: format!("http://{address}"),
+        auth: RpcAuth::None,
+        timeout_secs: 5,
+      },
+      forever_fast(),
+    )
+    .unwrap();
+    let worker = thread::spawn(move || rpc.block_count());
+    thread::sleep(Duration::from_millis(300));
+    assert!(!worker.is_finished());
+    let server = Server::start_on(TcpListener::bind(address).unwrap(), |_, request| {
+      ok(request, "44")
+    });
+    assert_eq!(worker.join().unwrap().unwrap(), 44);
+    assert_eq!(server.requests().len(), 1);
+  }
+
+  #[test]
+  fn logic_errors_are_not_retried_forever() {
+    let server = Server::start(|_, request| rpc_error(request, -8, "Block height out of range"));
+    let rpc = server.rpc(RpcAuth::None).with_retries(forever_fast());
+    assert!(rpc.block_hash(1_000_000).is_err());
+    assert_eq!(server.requests().len(), 1);
+  }
+
+  #[test]
+  fn any_cancel_flag_stops_retrying() {
+    for flag in 0..2 {
+      let server = Server::start(|_, _| Reply::status(503, "Work queue depth exceeded"));
+      let flags = [
+        Arc::new(AtomicBool::new(false)),
+        Arc::new(AtomicBool::new(false)),
+      ];
+      let rpc = server
+        .rpc(RpcAuth::None)
+        .with_retries(forever_fast())
+        .with_cancel(flags[0].clone())
+        .with_cancel(flags[1].clone());
+      let worker = thread::spawn(move || rpc.block_count());
+      while server.requests().len() < 100 {
+        thread::sleep(Duration::from_millis(1));
+      }
+      flags[flag].store(true, Ordering::Relaxed);
+      let error = worker.join().unwrap().unwrap_err();
+      assert!(format!("{error:#}").contains("cancelled"), "{error:#}");
+    }
+  }
+
+  #[test]
+  fn warnings_are_rate_limited() {
+    let warnings = Warnings::default();
+    let start = Instant::now();
+    assert!(warnings.due(start));
+    assert!(!warnings.due(start + Duration::from_secs(1)));
+    assert!(!warnings.due(start + Duration::from_secs(59)));
+    assert!(warnings.due(start + Duration::from_secs(60)));
+    assert!(!warnings.due(start + Duration::from_secs(61)));
+    assert!(warnings.due(start + Duration::from_secs(125)));
   }
 
   #[test]

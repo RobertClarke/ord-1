@@ -197,6 +197,12 @@ impl Shared {
   }
 }
 
+/// The client the pipeline uses: retrying transient failures until it is
+/// cancelled, by `cancel` or by the caller's own flags.
+fn pipeline_rpc(rpc: &Rpc, cancel: Arc<AtomicBool>) -> Rpc {
+  rpc.with_retries(RetryPolicy::forever()).with_cancel(cancel)
+}
+
 /// Heights per `getblockhash` batch.
 const HASH_BATCH: u32 = 2_000;
 
@@ -205,19 +211,15 @@ const JOIN_DEADLINE: Duration = Duration::from_secs(2);
 
 impl FastSource {
   /// Starts the pipeline. A failed fast sync cannot resume (the UTXO value
-  /// map is lost), so its requests retry transient failures with at least
-  /// `RetryPolicy::patient()` (~11 minutes, enough for a bitcoind restart).
+  /// map is lost), so its requests retry transient failures (connection
+  /// errors, HTTP 5xx, RPC -28) with `RetryPolicy::forever()`: through any
+  /// bitcoind restart or network outage, until the source is dropped or a
+  /// cancel flag of `rpc` (`Rpc::with_cancel`) is set. Other errors end it.
   pub fn start(rpc: Rpc, options: FastSyncOptions) -> anyhow::Result<Self> {
-    let tip = rpc.block_count()?;
-
     let cancel = Arc::new(AtomicBool::new(false));
-    let patient = RetryPolicy::patient();
-    let rpc = if rpc.retry_policy().total_delay() < patient.total_delay() {
-      rpc.with_retries(patient)
-    } else {
-      rpc
-    }
-    .with_cancel(cancel.clone());
+    let rpc = pipeline_rpc(&rpc, cancel.clone());
+
+    let tip = rpc.block_count()?;
 
     ensure!(
       options.stop_height <= tip,
@@ -780,6 +782,34 @@ mod tests {
       transaction,
     },
   };
+
+  #[test]
+  fn the_pipeline_retries_until_cancelled() {
+    let caller = Arc::new(AtomicBool::new(false));
+    let rpc = Rpc::new(crate::source::RpcConfig {
+      url: "http://127.0.0.1:1".into(),
+      auth: crate::source::RpcAuth::None,
+      timeout_secs: 1,
+    })
+    .unwrap()
+    .with_cancel(caller.clone());
+    assert!(!rpc.retry_policy().is_forever());
+
+    let own = Arc::new(AtomicBool::new(false));
+    let pipeline = pipeline_rpc(&rpc, own.clone());
+    assert!(pipeline.retry_policy().is_forever());
+
+    // The caller's flag (the indexer's shutdown) still cancels it...
+    caller.store(true, Ordering::Relaxed);
+    let error = pipeline.block_count().unwrap_err();
+    assert!(format!("{error:#}").contains("cancelled"), "{error:#}");
+
+    // ...and so does the source's own.
+    caller.store(false, Ordering::Relaxed);
+    own.store(true, Ordering::Relaxed);
+    let error = pipeline.block_count().unwrap_err();
+    assert!(format!("{error:#}").contains("cancelled"), "{error:#}");
+  }
 
   fn coinbase(tag: u8, outputs: Vec<TxOut>) -> Transaction {
     Transaction {
