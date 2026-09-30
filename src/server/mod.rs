@@ -4,7 +4,11 @@
 //!
 //! Handlers read through one redb read transaction each (on the blocking
 //! pool) and the supply snapshot the indexer publishes after every commit.
-//! `/moves` and `/sats` stream NDJSON from a blocking task.
+//! `/moves` and `/sats` stream NDJSON from a blocking task that opens a fresh
+//! read transaction for every chunk and holds none while the client is slow,
+//! so a stalled client never keeps old pages from being reused; a client
+//! that takes no chunk for `ServerState::stream_timeout` gets its stream
+//! aborted.
 
 pub mod catalog;
 pub mod json;
@@ -32,7 +36,17 @@ use {
   },
   bitcoin::{Address, BlockHash, OutPoint, ScriptBuf, address::NetworkUnchecked},
   serde::Serialize,
-  std::{collections::HashMap, future::Future, io, str::FromStr, sync::Arc},
+  std::{
+    collections::HashMap,
+    future::Future,
+    io,
+    str::FromStr,
+    sync::{
+      Arc,
+      atomic::{AtomicBool, AtomicUsize, Ordering},
+    },
+    time::Duration,
+  },
   tokio::sync::mpsc,
   tokio_stream::wrappers::ReceiverStream,
   tower_http::{compression::CompressionLayer, cors::CorsLayer},
@@ -45,6 +59,14 @@ pub const MAX_BLOCK_RANGE: u32 = 10_000;
 /// Points per history request at most.
 pub const MAX_HISTORY_POINTS: u32 = 10_000;
 const DEFAULT_HISTORY_POINTS: u32 = 2_000;
+/// How long a stream waits for the client to take a chunk before aborting.
+pub const STREAM_TIMEOUT: Duration = Duration::from_secs(60);
+/// NDJSON bytes per chunk (and per read transaction).
+const CHUNK: usize = 64 << 10;
+/// Blocks (`/moves`) or pieces (`/sats`) read per read transaction at most,
+/// so filtered streams that emit little still move to a fresh one.
+const MOVES_SCAN: u32 = 256;
+const SATS_SCAN: usize = 100_000;
 
 pub struct ServerState {
   pub store: Arc<Store>,
@@ -55,6 +77,10 @@ pub struct ServerState {
   pub moves_retention: MovesRetention,
   /// Unix time the process started.
   pub started: u64,
+  /// `STREAM_TIMEOUT`, shorter in tests.
+  pub stream_timeout: Duration,
+  /// NDJSON streams in progress.
+  pub streams: AtomicUsize,
 }
 
 #[derive(Debug)]
@@ -645,15 +671,52 @@ async fn moves(
   })
   .await?;
 
-  Ok(ndjson(state, move |state, reader, emit| {
+  Ok(ndjson(
+    state,
+    MovesStream {
+      next: Some(from),
+      to,
+      row,
+    },
+  ))
+}
+
+/// `/moves` from `next` to `to`, one block at a time.
+struct MovesStream {
+  /// `None` once past `to`.
+  next: Option<u32>,
+  to: u32,
+  row: Option<RowId>,
+}
+
+impl Produce for MovesStream {
+  fn fill(
+    &mut self,
+    state: &ServerState,
+    reader: &Reader,
+    buffer: &mut Vec<u8>,
+  ) -> anyhow::Result<bool> {
     let render = state.render(reader);
-    for height in reader.heights_with_moves(from, to)? {
+    let floor = reader.moves_floor()?;
+    let mut scanned = 0;
+    while let Some(next) = self.next.filter(|next| *next <= self.to) {
+      anyhow::ensure!(
+        next >= floor,
+        "the moves of block {next} were pruned during the stream; moves are kept from height \
+         {floor}"
+      );
+      let Some(height) = reader.next_height_with_moves(next, self.to)? else {
+        self.next = None;
+        break;
+      };
+      self.next = height.checked_add(1);
+      // Rolled back since the stream started: nothing to send for it.
       let Some(moves) = reader.moves(height)? else {
         continue;
       };
       let time = render.time(height)?;
       for m in &moves {
-        if let Some(row) = row
+        if let Some(row) = self.row
           && render
             .move_counts(m)
             .get(usize::from(row))
@@ -662,17 +725,22 @@ async fn moves(
           continue;
         }
         let m = render.move_json(m, time)?;
-        if !emit(&MoveLine {
-          height,
-          time,
-          m: &m,
-        })? {
-          return Ok(());
-        }
+        line(
+          buffer,
+          &MoveLine {
+            height,
+            time,
+            m: &m,
+          },
+        )?;
+      }
+      scanned += 1;
+      if buffer.len() >= CHUNK || scanned >= MOVES_SCAN {
+        break;
       }
     }
-    Ok(())
-  }))
+    Ok(self.next.is_some_and(|next| next <= self.to))
+  }
 }
 
 #[derive(Serialize)]
@@ -703,68 +771,96 @@ async fn sats(
   })
   .await?;
 
-  Ok(ndjson(state, move |state, reader, emit| {
+  Ok(ndjson(
+    state,
+    SatsStream {
+      next: from,
+      to,
+      row,
+      with_pieces,
+    },
+  ))
+}
+
+/// `/sats` of `[next, to)`; resumes after the last sat it went through.
+struct SatsStream {
+  next: u64,
+  to: u64,
+  row: RowId,
+  with_pieces: bool,
+}
+
+impl Produce for SatsStream {
+  fn fill(
+    &mut self,
+    state: &ServerState,
+    reader: &Reader,
+    buffer: &mut Vec<u8>,
+  ) -> anyhow::Result<bool> {
     let render = state.render(reader);
     // Consecutive pieces often share an output; keyed by kind too, as a
     // BIP30-overwritten outpoint holds an old and a current output.
     let mut outputs: HashMap<(OutPoint, bool), json::OutputJson> = HashMap::new();
-    for location in reader.pieces(from, to)? {
+    let mut scanned = 0;
+    for location in reader.pieces(self.next, self.to)? {
       let mut location = location?;
-      // Only the sats in [from, to).
+      // Only the sats in [next, to).
       let piece = &mut location.piece;
-      if piece.start < from {
-        let skip = from - piece.start;
+      if piece.start < self.next {
+        let skip = self.next - piece.start;
         piece.start += skip;
         piece.offset += skip;
         piece.len -= skip;
       }
-      if piece.end() > to {
-        piece.len = to - piece.start;
+      if piece.end() > self.to {
+        piece.len = self.to - piece.start;
       }
       location.offset = piece.offset;
+      self.next = piece.end();
+      scanned += 1;
       let count = render
         .catalog
         .row_counts(piece.start, piece.len)
         .into_iter()
-        .find(|(r, _)| *r == row)
+        .find(|(r, _)| *r == self.row)
         .map_or(0, |(_, count)| count);
-      if count == 0 {
-        continue;
-      }
-      let key = (
-        location.outpoint,
-        location.kind == LocationKind::Overwritten,
-      );
-      let output = match outputs.get(&key) {
-        Some(output) => Some(output.clone()),
-        None => {
-          let output = render.location_output(&location, with_pieces)?;
-          if let Some(output) = &output {
-            if outputs.len() >= 10_000 {
-              outputs.clear();
+      if count > 0 {
+        let key = (
+          location.outpoint,
+          location.kind == LocationKind::Overwritten,
+        );
+        let output = match outputs.get(&key) {
+          Some(output) => Some(output.clone()),
+          None => {
+            let output = render.location_output(&location, self.with_pieces)?;
+            if let Some(output) = &output {
+              outputs.insert(key, output.clone());
             }
-            outputs.insert(key, output.clone());
+            output
           }
-          output
-        }
-      };
-      let location_json = json::LocationJson {
-        kind: location.kind,
-        satpoint: format!("{}:{}", location.outpoint, location.offset),
-        outpoint: location.outpoint,
-        offset: location.offset,
-        output,
-      };
-      if !emit(&PieceLine {
-        piece: render.piece(&location.piece),
-        count,
-        location: &location_json,
-      })? {
-        return Ok(());
+        };
+        let location_json = json::LocationJson {
+          kind: location.kind,
+          satpoint: format!("{}:{}", location.outpoint, location.offset),
+          outpoint: location.outpoint,
+          offset: location.offset,
+          output,
+        };
+        line(
+          buffer,
+          &PieceLine {
+            piece: render.piece(&location.piece),
+            count,
+            location: &location_json,
+          },
+        )?;
+      }
+      if buffer.len() >= CHUNK || scanned >= SATS_SCAN {
+        return Ok(self.next < self.to);
       }
     }
-    Ok(())
-  }))
+    Ok(false)
+  }
 }
 
 #[derive(Serialize)]
@@ -797,70 +893,113 @@ async fn blocks(
   .await
 }
 
-/// Streams newline-delimited JSON produced on the blocking pool. `produce`
-/// calls `emit` per line; `emit` returns `false` once the client is gone.
-fn ndjson(
-  state: Arc<ServerState>,
-  produce: impl FnOnce(
-    &ServerState,
-    &Reader,
-    &mut dyn FnMut(&dyn erased::Line) -> anyhow::Result<bool>,
-  ) -> anyhow::Result<()>
-  + Send
-  + 'static,
-) -> Response {
-  const CHUNK: usize = 64 << 10;
+/// Resumable NDJSON production for `ndjson`.
+trait Produce: Send + 'static {
+  /// Appends lines to `buffer` from `reader` until about a chunk's worth or
+  /// a scan budget; `Ok(false)` once nothing is left. Each call gets its own
+  /// read transaction.
+  fn fill(
+    &mut self,
+    state: &ServerState,
+    reader: &Reader,
+    buffer: &mut Vec<u8>,
+  ) -> anyhow::Result<bool>;
+}
 
+fn line(buffer: &mut Vec<u8>, line: &impl Serialize) -> anyhow::Result<()> {
+  serde_json::to_writer(&mut *buffer, line)?;
+  buffer.push(b'\n');
+  Ok(())
+}
+
+/// Counts a stream in `ServerState::streams` while it runs.
+struct StreamGuard(Arc<ServerState>);
+
+impl Drop for StreamGuard {
+  fn drop(&mut self) {
+    self.0.streams.fetch_sub(1, Ordering::SeqCst);
+  }
+}
+
+/// Streams newline-delimited JSON produced on the blocking pool, one chunk
+/// per read transaction. The body ends with an error (the client sees a
+/// truncated response) if production fails or the client takes no chunk
+/// for `stream_timeout`.
+fn ndjson(state: Arc<ServerState>, mut producer: impl Produce) -> Response {
   let (sender, receiver) = mpsc::channel::<Result<Bytes, io::Error>>(8);
+  let aborted = Arc::new(AtomicBool::new(false));
+  let runtime = tokio::runtime::Handle::current();
 
-  tokio::task::spawn_blocking(move || {
-    let mut buffer = Vec::with_capacity(CHUNK + 1024);
-    let mut open = true;
-    let result = (|| -> anyhow::Result<()> {
-      let reader = state.store.reader()?;
-      produce(&state, &reader, &mut |line| {
-        line.write(&mut buffer)?;
-        buffer.push(b'\n');
-        if buffer.len() >= CHUNK {
-          open = sender
-            .blocking_send(Ok(Bytes::from(std::mem::take(&mut buffer))))
-            .is_ok();
-          buffer.reserve(CHUNK + 1024);
+  state.streams.fetch_add(1, Ordering::SeqCst);
+  let guard = StreamGuard(state.clone());
+
+  tokio::task::spawn_blocking({
+    let aborted = aborted.clone();
+    move || {
+      let _guard = guard;
+      let state = &*_guard.0;
+
+      // `false` when the client is gone or stopped reading.
+      let send = |bytes: Vec<u8>| -> bool {
+        match runtime.block_on(tokio::time::timeout(
+          state.stream_timeout,
+          sender.send(Ok(Bytes::from(bytes))),
+        )) {
+          Ok(Ok(())) => true,
+          Ok(Err(_)) => false,
+          Err(_) => {
+            log::warn!(
+              "a client took no data for {:?}; aborting its stream",
+              state.stream_timeout
+            );
+            aborted.store(true, Ordering::SeqCst);
+            false
+          }
         }
-        Ok(open)
-      })
-    })();
-    if !buffer.is_empty() && open {
-      open = sender.blocking_send(Ok(Bytes::from(buffer))).is_ok();
-    }
-    if let Err(err) = result {
-      log::error!("stream failed: {err:#}");
-      if open {
-        // A final error line, then an aborted body so clients notice.
-        let line = serde_json::json!({ "error": format!("{err:#}") });
-        let _ = sender.blocking_send(Ok(Bytes::from(format!("{line}\n"))));
-        let _ = sender.blocking_send(Err(io::Error::other(format!("{err:#}"))));
+      };
+
+      let mut buffer = Vec::with_capacity(CHUNK + 4096);
+      loop {
+        // A fresh read transaction per chunk, dropped before sending.
+        let filled = state
+          .store
+          .reader()
+          .and_then(|reader| producer.fill(state, &reader, &mut buffer));
+        match filled {
+          Ok(more) => {
+            if !buffer.is_empty() && !send(std::mem::take(&mut buffer)) {
+              return;
+            }
+            if !more {
+              return;
+            }
+          }
+          Err(err) => {
+            log::error!("stream failed: {err:#}");
+            // What was produced, a final error line, then the aborted end.
+            aborted.store(true, Ordering::SeqCst);
+            let _ = line(&mut buffer, &serde_json::json!({ "error": format!("{err:#}") }));
+            send(std::mem::take(&mut buffer));
+            return;
+          }
+        }
       }
     }
   });
 
+  let end = tokio_stream::iter(
+    std::iter::once_with(move || aborted.load(Ordering::SeqCst))
+      .filter(|aborted| *aborted)
+      .map(|_| Err(io::Error::other("stream aborted"))),
+  );
+
   (
     [(header::CONTENT_TYPE, "application/x-ndjson")],
-    Body::from_stream(ReceiverStream::new(receiver)),
+    Body::from_stream(tokio_stream::StreamExt::chain(
+      ReceiverStream::new(receiver),
+      end,
+    )),
   )
     .into_response()
 }
 
-mod erased {
-  /// A serializable NDJSON line (object-safe).
-  pub trait Line {
-    fn write(&self, buffer: &mut Vec<u8>) -> anyhow::Result<()>;
-  }
-
-  impl<T: serde::Serialize> Line for T {
-    fn write(&self, buffer: &mut Vec<u8>) -> anyhow::Result<()> {
-      serde_json::to_writer(buffer, self)?;
-      Ok(())
-    }
-  }
-}

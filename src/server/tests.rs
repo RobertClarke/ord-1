@@ -23,6 +23,7 @@ use {
     net::TcpListener,
     sync::atomic::{AtomicBool, Ordering},
     thread,
+    time::Duration,
   },
   tempfile::TempDir,
 };
@@ -490,6 +491,7 @@ struct TestServer {
   scenario: Scenario,
   store: Arc<Store>,
   published: Arc<Published>,
+  state: Arc<ServerState>,
   shutdown: Option<tokio::sync::oneshot::Sender<()>>,
   thread: Option<thread::JoinHandle<()>>,
 }
@@ -500,8 +502,7 @@ impl TestServer {
     Self::with_retention(height, MovesRetention::All)
   }
 
-  fn with_retention(height: Option<u32>, retention: MovesRetention) -> Self {
-    let dir = TempDir::new().unwrap();
+  fn open_store(dir: &TempDir, retention: MovesRetention) -> Arc<Store> {
     let store = Arc::new(
       Store::open_with(
         &dir.path().join("index.redb"),
@@ -524,6 +525,35 @@ impl TestServer {
         fast_sync_complete: false,
       })
       .unwrap();
+    store
+  }
+
+  /// A server over `blocks` generated blocks (every block's moves kept) and
+  /// the generator, to commit more.
+  fn generated(
+    blocks: usize,
+    txs_per_block: u64,
+    stream_timeout: Duration,
+  ) -> (Self, crate::store::tests::TestChain) {
+    let dir = TempDir::new().unwrap();
+    let store = Self::open_store(&dir, MovesRetention::All);
+    let mut chain = crate::store::tests::TestChain::new(21);
+    chain.txs_per_block = txs_per_block;
+    let deltas = (0..blocks).map(|_| chain.next_block()).collect::<Vec<_>>();
+    store.commit(&deltas, &chain.mined(), true).unwrap();
+    let server = Self::serve(
+      dir,
+      store,
+      Arc::new(Published::default()),
+      MovesRetention::All,
+      stream_timeout,
+    );
+    (server, chain)
+  }
+
+  fn with_retention(height: Option<u32>, retention: MovesRetention) -> Self {
+    let dir = TempDir::new().unwrap();
+    let store = Self::open_store(&dir, retention);
 
     let scenario = scenario();
     let published = Arc::new(Published::default());
@@ -579,6 +609,16 @@ impl TestServer {
       });
     }
 
+    Self::serve(dir, store, published, retention, STREAM_TIMEOUT)
+  }
+
+  fn serve(
+    dir: TempDir,
+    store: Arc<Store>,
+    published: Arc<Published>,
+    retention: MovesRetention,
+    stream_timeout: Duration,
+  ) -> Self {
     let state = Arc::new(ServerState {
       store: store.clone(),
       catalog: Arc::new(FakeCatalog::new()),
@@ -587,38 +627,44 @@ impl TestServer {
       config: TrackerConfig::default(),
       moves_retention: retention,
       started: 1_700_000_001,
+      stream_timeout,
+      streams: Default::default(),
     });
 
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     listener.set_nonblocking(true).unwrap();
     let url = format!("http://{}", listener.local_addr().unwrap());
     let (shutdown, signal) = tokio::sync::oneshot::channel::<()>();
-    let thread = thread::spawn(move || {
-      tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(2)
-        .enable_all()
-        .build()
-        .unwrap()
-        .block_on(async move {
-          serve(
-            state,
-            tokio::net::TcpListener::from_std(listener).unwrap(),
-            async {
-              signal.await.ok();
-            },
-          )
-          .await
-          .unwrap();
-        });
+    let thread = thread::spawn({
+      let state = state.clone();
+      move || {
+        tokio::runtime::Builder::new_multi_thread()
+          .worker_threads(2)
+          .enable_all()
+          .build()
+          .unwrap()
+          .block_on(async move {
+            serve(
+              state,
+              tokio::net::TcpListener::from_std(listener).unwrap(),
+              async {
+                signal.await.ok();
+              },
+            )
+            .await
+            .unwrap();
+          });
+      }
     });
 
     Self {
       _dir: dir,
       url,
       client: Client::new(),
-      scenario,
+      scenario: scenario(),
       store,
       published,
+      state,
       shutdown: Some(shutdown),
       thread: Some(thread),
     }
@@ -1344,4 +1390,169 @@ fn concurrent_requests_during_commits() {
     }
   });
   assert_eq!(server.ndjson("/sats?row=uncommon").len(), 4);
+}
+
+/// Sends `GET path` on a raw connection, reads the head and the first body
+/// bytes, then leaves the rest unread.
+fn stalled_get(server: &TestServer, path: &str) -> std::net::TcpStream {
+  use std::io::{Read, Write};
+  let mut client = std::net::TcpStream::connect(server.url.trim_start_matches("http://")).unwrap();
+  write!(client, "GET {path} HTTP/1.1\r\nHost: test\r\n\r\n").unwrap();
+  let mut head = vec![0; 16 << 10];
+  let mut read = 0;
+  while read < head.len() {
+    let n = client.read(&mut head[read..]).unwrap();
+    assert!(n > 0, "connection closed early");
+    read += n;
+  }
+  assert!(
+    head.starts_with(b"HTTP/1.1 200"),
+    "{}",
+    String::from_utf8_lossy(&head[..64])
+  );
+  client
+}
+
+#[track_caller]
+fn wait_for(what: &str, condition: impl Fn() -> bool) {
+  let deadline = std::time::Instant::now() + Duration::from_secs(60);
+  while !condition() {
+    assert!(
+      std::time::Instant::now() < deadline,
+      "timed out waiting for {what}"
+    );
+    thread::sleep(Duration::from_millis(10));
+  }
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum Stall {
+  Nothing,
+  /// One read transaction held throughout, as streams did before.
+  ReadTransaction,
+  /// A client that stopped reading a long `/moves` stream.
+  Stream,
+}
+
+/// Growth of the index file over 600 per-block commits (the review's
+/// `review_file_growth_with_a_stalled_reader`).
+fn file_growth(stall: Stall) -> u64 {
+  let (server, mut chain) = TestServer::generated(800, 40, STREAM_TIMEOUT);
+  let reader = (stall == Stall::ReadTransaction).then(|| server.store.reader().unwrap());
+  let client = (stall == Stall::Stream).then(|| stalled_get(&server, "/moves?from=0"));
+  let path = server._dir.path().join("index.redb");
+  let before = std::fs::metadata(&path).unwrap().len();
+  for _ in 0..600 {
+    let delta = chain.next_block();
+    server
+      .store
+      .commit(std::slice::from_ref(&delta), &chain.mined(), false)
+      .unwrap();
+  }
+  let after = std::fs::metadata(&path).unwrap().len();
+  if stall == Stall::Stream {
+    assert_eq!(
+      server.state.streams.load(Ordering::SeqCst),
+      1,
+      "the stream should still be waiting for its client"
+    );
+  }
+  drop(client);
+  drop(reader);
+  after - before
+}
+
+#[test]
+fn a_stalled_stream_holds_no_read_transaction() {
+  let baseline = file_growth(Stall::Nothing);
+  let pinned = file_growth(Stall::ReadTransaction);
+  let stalled = file_growth(Stall::Stream);
+  eprintln!(
+    "file growth: {baseline} without readers, {pinned} with a read transaction held, {stalled} with a stalled stream"
+  );
+  // The setup shows the problem...
+  assert!(
+    pinned > baseline + (16 << 20),
+    "a held read transaction should grow the file: {pinned} vs {baseline}"
+  );
+  // ...which a stalled stream no longer causes.
+  assert!(
+    stalled < baseline + (8 << 20),
+    "a stalled stream grew the file by {stalled} (baseline {baseline})"
+  );
+}
+
+#[test]
+fn a_client_that_stops_reading_is_cut_off() {
+  use std::io::Read;
+  let (server, _) = TestServer::generated(800, 40, Duration::from_millis(300));
+  let mut client = stalled_get(&server, "/moves?from=0");
+  wait_for("the stream to give up", || {
+    server.state.streams.load(Ordering::SeqCst) == 0
+  });
+
+  // The client gets what was already sent, then a connection closed before
+  // the chunked body's end.
+  client
+    .set_read_timeout(Some(Duration::from_secs(30)))
+    .unwrap();
+  let mut rest = Vec::new();
+  let _ = client.read_to_end(&mut rest);
+  assert!(!rest.is_empty());
+  assert!(
+    !rest.ends_with(b"\r\n0\r\n\r\n"),
+    "the response should be cut short"
+  );
+
+  // Clients that read keep getting whole streams.
+  let lines = server.ndjson("/moves?from=790");
+  assert!(!lines.is_empty());
+  assert_eq!(server.state.streams.load(Ordering::SeqCst), 0);
+}
+
+#[test]
+fn streams_resume_across_read_transactions() {
+  // Far more than one chunk, with commits landing between chunks.
+  let (server, mut chain) = TestServer::generated(300, 20, STREAM_TIMEOUT);
+  let expected_moves = (0..=299)
+    .map(|height| server.store.moves(height).unwrap().unwrap().len())
+    .sum::<usize>();
+  let committer = {
+    let store = server.store.clone();
+    let deltas = (0..50).map(|_| chain.next_block()).collect::<Vec<_>>();
+    let mined = chain.mined();
+    thread::spawn(move || {
+      for delta in deltas {
+        store
+          .commit(std::slice::from_ref(&delta), &mined, true)
+          .unwrap();
+      }
+    })
+  };
+  let lines = server.ndjson("/moves?from=0&to=299");
+  committer.join().unwrap();
+  assert_eq!(lines.len(), expected_moves);
+  let heights = lines
+    .iter()
+    .map(|line| line["height"].as_u64().unwrap())
+    .collect::<Vec<u64>>();
+  assert!(heights.windows(2).all(|pair| pair[0] <= pair[1]));
+  assert_eq!(heights.first(), Some(&0));
+  assert_eq!(heights.last(), Some(&299));
+
+  // /sats: every piece once, in sat order, across many chunks.
+  let pieces = server.ndjson("/sats?row=block0");
+  let starts = pieces
+    .iter()
+    .map(|line| line["piece"]["start"].as_u64().unwrap())
+    .collect::<Vec<u64>>();
+  assert!(starts.windows(2).all(|pair| pair[0] < pair[1]));
+  let tracked = server
+    .store
+    .reader()
+    .unwrap()
+    .pieces(0, u64::MAX)
+    .unwrap()
+    .count();
+  assert_eq!(pieces.len(), tracked);
 }

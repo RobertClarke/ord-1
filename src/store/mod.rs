@@ -60,7 +60,7 @@
 mod bench;
 mod codec;
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 
 use {
   self::codec::{
@@ -1426,6 +1426,19 @@ impl Reader {
       heights.push(entry?.0.value());
     }
     Ok(heights)
+  }
+
+  /// The first height in `from..=to` whose stored moves record is not
+  /// empty.
+  pub fn next_height_with_moves(&self, from: u32, to: u32) -> anyhow::Result<Option<u32>> {
+    if from > to {
+      return Ok(None);
+    }
+    let table = self.tx.open_table(MOVES)?;
+    let Some(entry) = table.range(from..=to)?.next() else {
+      return Ok(None);
+    };
+    Ok(Some(entry?.0.value()))
   }
 
   /// The row's stored history entries in `from..=to`.
