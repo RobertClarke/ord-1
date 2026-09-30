@@ -45,7 +45,7 @@ pub fn default_rows() -> Vec<Row> {
     row("paliblock", "Paliblock", &[Paliblock]),
     row(
       "alpha_jan_feb_2009",
-      "Jan–Feb 2009 alpha",
+      "Alpha, Jan–Feb 2009",
       &[AlphaJanFeb2009],
     ),
     row("kilosat_alpha", "Kilosat alpha", &[KilosatAlpha]),
@@ -63,7 +63,7 @@ pub fn default_rows() -> Vec<Row> {
       "Perfect palinception",
       &[PalindromesPerfectPalinception],
     ),
-    row("bounty3_name", "Bounty 3 name", &[Bounty3Name]),
+    row("bounty3_name", "Bounty3 name", &[Bounty3Name]),
     row("vintage_uncommon", "Vintage uncommon", &[Vintage, Uncommon]),
     row("vintage_black", "Vintage black", &[Vintage, Black]),
     row("vintage_alpha", "Vintage alpha", &[Vintage, Alpha]),
@@ -138,14 +138,14 @@ pub fn default_rows() -> Vec<Row> {
     row(
       "sr_palindrome_3d",
       "Silk Road 3D palindrome",
-      &[Sr1stAuction, PalindromesInteger3d],
+      &[Sr1stAuction, PalindromesInteger3d, PalindromesInteger],
     ),
-    in_2009("uncommon_2009", "2009 uncommon", &[Uncommon]),
-    in_2009("rare_2009", "2009 rare", &[Rare]),
-    in_2009("black_2009", "2009 black", &[Black]),
+    in_2009("uncommon_2009", "Uncommon 2009", &[Uncommon]),
+    in_2009("rare_2009", "Rare 2009", &[Rare]),
+    in_2009("black_2009", "Black 2009", &[Black]),
     in_2009(
       "palindrome_2d_2009",
-      "2009 2D palindrome",
+      "2D palindrome 2009",
       &[PalindromesInteger2d],
     ),
   ]
