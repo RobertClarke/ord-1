@@ -226,7 +226,10 @@ pub struct TrackedRange {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TrackerConfig {
   pub ranges: Vec<TrackedRange>,
-  /// Outputs worth at most this many sats count as extracted (10,000).
+  /// Extraction allowance (10,000): an output counts as extracted when its
+  /// value is at most this many sats per individually tracked sat, plus the
+  /// length of each run of range sats and this much per run
+  /// (`is_extracted`, DESIGN.md §5).
   pub extracted_max_value: u64,
   /// Outputs created by blocks with header time ≥ this count as extracted
   /// (1_670_976_000 = 2022-12-14T00:00:00Z).
@@ -245,6 +248,94 @@ impl Default for TrackerConfig {
       extracted_since_time: 1_670_976_000,
     }
   }
+}
+
+/// Sats of `[start, end)` inside the union of `ranges` (which may overlap or
+/// come in any order), and the number of maximal runs they form.
+fn inside_ranges(start: u64, end: u64, ranges: &[TrackedRange]) -> (u64, u64) {
+  let clip = |range: &TrackedRange| {
+    let (a, b) = (range.start.max(start), range.end.min(end));
+    (a < b).then_some((a, b))
+  };
+  match ranges {
+    [] => (0, 0),
+    [range] => clip(range).map_or((0, 0), |(a, b)| (b - a, 1)),
+    _ => {
+      let mut clipped: Vec<(u64, u64)> = ranges.iter().filter_map(clip).collect();
+      clipped.sort_unstable();
+      let (mut inside, mut runs) = (0, 0);
+      let mut run: Option<(u64, u64)> = None;
+      for (a, b) in clipped {
+        match &mut run {
+          Some((_, run_end)) if a <= *run_end => *run_end = (*run_end).max(b),
+          _ => {
+            if let Some((run_start, run_end)) = run {
+              inside += run_end - run_start;
+              runs += 1;
+            }
+            run = Some((a, b));
+          }
+        }
+      }
+      if let Some((run_start, run_end)) = run {
+        inside += run_end - run_start;
+        runs += 1;
+      }
+      (inside, runs)
+    }
+  }
+}
+
+/// A piece's share of an output's extraction budget: every sat of the piece
+/// outside the config ranges allows `extracted_max_value` sats, and every
+/// maximal run of it inside them allows its length plus
+/// `extracted_max_value`.
+pub fn piece_extraction_budget(piece: &Piece, config: &TrackerConfig) -> u128 {
+  let (inside, runs) = inside_ranges(piece.start, piece.end(), &config.ranges);
+  let outside = piece.len - inside;
+  u128::from(inside)
+    + u128::from(config.extracted_max_value) * (u128::from(runs) + u128::from(outside))
+}
+
+/// The most an output holding `pieces` may be worth and still count as
+/// extracted (DESIGN.md §5): the sum of `piece_extraction_budget`.
+pub fn extraction_budget(pieces: &[Piece], config: &TrackerConfig) -> u128 {
+  pieces
+    .iter()
+    .map(|piece| piece_extraction_budget(piece, config))
+    .sum()
+}
+
+/// Whether a tracked output is extracted (DESIGN.md §5), identically for
+/// every row it holds: spendable, created by a block whose header time is at
+/// least `extracted_since_time`, and worth at most its
+/// `extraction_budget`. With the defaults: one tracked sat in ≤ 10,000
+/// sats, 200 rare sats in 66,000 (≤ 2,000,000), 100,000 block 9 sats in
+/// 100,438 (≤ 110,000), but not 2 uncommons in a whole BTC (≤ 20,000).
+pub fn is_extracted(utxo: &TrackedUtxo, created_time: u32, config: &TrackerConfig) -> bool {
+  output_extracted(utxo.kind, utxo.value, &utxo.pieces, created_time, config)
+}
+
+/// `is_extracted` for an output given by its parts (a move's output).
+pub fn output_extracted(
+  kind: UtxoKind,
+  value: u64,
+  pieces: &[Piece],
+  created_time: u32,
+  config: &TrackerConfig,
+) -> bool {
+  if kind != UtxoKind::Spendable || created_time < config.extracted_since_time {
+    return false;
+  }
+  let value = u128::from(value);
+  let mut budget = 0u128;
+  for piece in pieces {
+    budget += piece_extraction_budget(piece, config);
+    if budget >= value {
+      return true;
+    }
+  }
+  budget >= value
 }
 
 /// A tracker's full state, as persisted by the store and restored on startup.
@@ -303,4 +394,184 @@ pub struct SupplySnapshot {
   pub hash: Option<BlockHash>,
   pub time: Option<u32>,
   pub rows: Vec<RowSupply>,
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  const B9: u64 = 45_000_000_000;
+  const SINCE: u32 = 1_670_976_000;
+
+  fn utxo(value: u64, pieces: &[(u64, u64)]) -> TrackedUtxo {
+    let mut offset = 0;
+    TrackedUtxo {
+      value,
+      script_pubkey: ScriptBuf::from_bytes(vec![0x51]),
+      height: 900_000,
+      kind: UtxoKind::Spendable,
+      pieces: pieces
+        .iter()
+        .map(|&(start, len)| {
+          let piece = Piece { offset, start, len };
+          offset += len + 330;
+          piece
+        })
+        .collect(),
+    }
+  }
+
+  /// `n` individually tracked sats, far from block 9.
+  fn singles(n: u64) -> Vec<(u64, u64)> {
+    (0..n)
+      .map(|i| (1_000_000_000_000_000 + i * 1000, 1))
+      .collect()
+  }
+
+  #[test]
+  fn one_tracked_sat_allows_ten_thousand() {
+    let config = TrackerConfig::default();
+    assert!(is_extracted(&utxo(10_000, &singles(1)), SINCE, &config));
+    assert!(!is_extracted(&utxo(10_001, &singles(1)), SINCE, &config));
+    assert_eq!(
+      extraction_budget(&utxo(1, &singles(1)).pieces, &config),
+      10_000
+    );
+  }
+
+  #[test]
+  fn collector_consolidations_are_extracted() {
+    // a collector's address: ~330 sats of padding per
+    // rare sat.
+    let config = TrackerConfig::default();
+    for (sats, value) in [(100, 33_000), (200, 66_000), (5_000, 1_924_843)] {
+      let consolidation = utxo(value, &singles(sats));
+      assert_eq!(
+        extraction_budget(&consolidation.pieces, &config),
+        u128::from(sats) * 10_000
+      );
+      assert!(
+        is_extracted(&consolidation, SINCE, &config),
+        "{sats} in {value}"
+      );
+    }
+  }
+
+  #[test]
+  fn range_runs_allow_their_length_plus_ten_thousand() {
+    let config = TrackerConfig::default();
+    // Near-pure block 9: 100,000 tracked sats in 100,438.
+    let chunk = utxo(100_438, &[(B9 + 7, 100_000)]);
+    assert_eq!(extraction_budget(&chunk.pieces, &config), 110_000);
+    assert!(is_extracted(&chunk, SINCE, &config));
+    assert!(!is_extracted(
+      &utxo(110_001, &[(B9 + 7, 100_000)]),
+      SINCE,
+      &config
+    ));
+    // A pure 5e9 block 9 output.
+    assert!(is_extracted(
+      &utxo(5_000_000_000, &[(B9, 5_000_000_000)]),
+      SINCE,
+      &config
+    ));
+    // Two runs each get their own allowance.
+    assert_eq!(
+      extraction_budget(&utxo(1, &[(B9, 10), (B9 + 100, 10)]).pieces, &config),
+      20 + 20_000
+    );
+  }
+
+  #[test]
+  fn exchange_outputs_with_a_few_uncommons_are_not() {
+    let config = TrackerConfig::default();
+    let exchange = utxo(100_000_000, &singles(2));
+    assert_eq!(extraction_budget(&exchange.pieces, &config), 20_000);
+    assert!(!is_extracted(&exchange, SINCE, &config));
+  }
+
+  #[test]
+  fn pieces_straddling_the_range_edge() {
+    // The black of block 9 (in the range) and the uncommon of block 10.
+    let config = TrackerConfig::default();
+    let edge = utxo(20_001, &[(50_000_000_000 - 1, 2)]);
+    assert_eq!(
+      extraction_budget(&edge.pieces, &config),
+      1 + 10_000 + 10_000
+    );
+    assert!(is_extracted(&edge, SINCE, &config));
+    assert!(!is_extracted(
+      &utxo(20_002, &[(50_000_000_000 - 1, 2)]),
+      SINCE,
+      &config
+    ));
+    // Without ranges every sat is individual.
+    let rangeless = TrackerConfig {
+      ranges: Vec::new(),
+      ..TrackerConfig::default()
+    };
+    assert_eq!(extraction_budget(&edge.pieces, &rangeless), 20_000);
+  }
+
+  #[test]
+  fn unspendable_and_early_outputs_are_never_extracted() {
+    let config = TrackerConfig::default();
+    let mut burned = utxo(1, &singles(1));
+    burned.kind = UtxoKind::Unspendable;
+    assert!(!is_extracted(&burned, SINCE, &config));
+    assert!(!is_extracted(&utxo(1, &singles(1)), SINCE - 1, &config));
+    assert!(!output_extracted(
+      UtxoKind::Spendable,
+      1,
+      &[],
+      SINCE,
+      &config
+    ));
+    assert!(output_extracted(
+      UtxoKind::Spendable,
+      0,
+      &[],
+      SINCE,
+      &config
+    ));
+  }
+
+  #[test]
+  fn overlapping_and_adjacent_ranges_count_as_their_union() {
+    let range = |start, end| TrackedRange {
+      id: "r".into(),
+      start,
+      end,
+    };
+    let config = TrackerConfig {
+      ranges: vec![
+        range(150, 200),
+        range(100, 160),
+        range(200, 220),
+        range(300, 400),
+      ],
+      ..TrackerConfig::default()
+    };
+    // [100, 220) and [300, 400) inside, [220, 300) and [400, 450) outside.
+    let pieces = [Piece {
+      offset: 0,
+      start: 90,
+      len: 360,
+    }];
+    assert_eq!(
+      extraction_budget(&pieces, &config),
+      120 + 100 + 2 * 10_000 + (10 + 80 + 50) * 10_000
+    );
+  }
+
+  #[test]
+  fn budgets_do_not_overflow() {
+    let config = TrackerConfig {
+      extracted_max_value: u64::MAX,
+      ..TrackerConfig::default()
+    };
+    let huge = utxo(u64::MAX, &[(0, u64::MAX / 2), (B9, 5_000_000_000)]);
+    assert!(extraction_budget(&huge.pieces, &config) > u128::from(u64::MAX));
+    assert!(is_extracted(&huge, SINCE, &config));
+  }
 }
