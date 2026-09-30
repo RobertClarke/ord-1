@@ -76,7 +76,7 @@ impl State {
       "mediantime": times[times.len() / 2],
       "nonce": header.nonce,
       "bits": format!("{:08x}", header.bits.to_consensus()),
-      "difficulty": header.difficulty_float(),
+      "difficulty": Some(header.difficulty_float()).filter(|d| d.is_finite()).unwrap_or(0.0),
       "chainwork": format!("{:064x}", height + 1),
       "nTx": block.txdata.len(),
     });

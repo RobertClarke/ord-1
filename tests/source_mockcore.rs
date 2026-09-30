@@ -444,3 +444,88 @@ fn rpc_against_mockcore() {
   let mainnet = mockcore::spawn();
   assert_eq!(connect(&mainnet).chain().unwrap(), "main");
 }
+
+#[test]
+fn mockcore_serves_core_shaped_json() {
+  use serde_json::{Value, json};
+
+  let core = mockcore::builder().network(Network::Regtest).build();
+  core.mine_blocks(2);
+  let spend = tx(
+    &[outpoint(coinbase_txid(&core, 1), 0)],
+    vec![out(30 * COIN), op_return(0), out(19 * COIN)],
+  );
+  let spend_id = core.broadcast_raw_tx(spend);
+  core.mine_blocks(2);
+  let rpc = connect(&core);
+  let hash = core.block_hash(3);
+
+  let header = rpc
+    .call::<Value>("getblockheader", &[hash.to_string().into()])
+    .unwrap();
+  assert_eq!(header["hash"], hash.to_string());
+  assert_eq!(header["height"], 3);
+  assert_eq!(header["confirmations"], 2);
+  assert_eq!(header["previousblockhash"], core.block_hash(2).to_string());
+  assert_eq!(header["nextblockhash"], core.block_hash(4).to_string());
+  assert_eq!(header["nTx"], 2);
+  assert_eq!(header["time"], 3);
+  assert!(header["difficulty"].is_number());
+  let genesis = rpc
+    .call::<Value>(
+      "getblockheader",
+      &[core.block_hash(0).to_string().into(), true.into()],
+    )
+    .unwrap();
+  assert!(genesis.get("previousblockhash").is_none());
+  assert_eq!(genesis["bits"], "207fffff");
+
+  let v1 = rpc
+    .call::<Value>("getblock", &[hash.to_string().into()])
+    .unwrap();
+  assert_eq!(v1["tx"][1], spend_id.to_string());
+  assert_eq!(
+    rpc
+      .call::<Value>("getblock", &[hash.to_string().into(), true.into()])
+      .unwrap(),
+    v1
+  );
+  assert!(
+    rpc
+      .call::<Value>("getblock", &[hash.to_string().into(), false.into()])
+      .unwrap()
+      .is_string()
+  );
+
+  let v2 = rpc
+    .call::<Value>("getblock", &[hash.to_string().into(), 2.into()])
+    .unwrap();
+  let tx = &v2["tx"][1];
+  assert_eq!(tx["txid"], spend_id.to_string());
+  assert!(tx["vin"][0].get("prevout").is_none());
+  assert!(tx.get("fee").is_none());
+  assert_eq!(tx["vout"][0]["value"], json!(30.0));
+  assert_eq!(tx["vout"][1]["scriptPubKey"]["type"], "nulldata");
+  assert_eq!(tx["vout"][2]["n"], 2);
+  assert!(v2["tx"][0]["vin"][0]["coinbase"].is_string());
+
+  let v3 = rpc
+    .call::<Value>("getblock", &[hash.to_string().into(), 3.into()])
+    .unwrap();
+  let tx = &v3["tx"][1];
+  assert_eq!(tx["vin"][0]["prevout"]["value"], json!(50.0));
+  assert_eq!(tx["vin"][0]["prevout"]["height"], 1);
+  assert_eq!(tx["vin"][0]["prevout"]["generated"], true);
+  assert_eq!(tx["fee"], json!(1.0));
+  assert!(v3["tx"][0]["vin"][0].get("prevout").is_none());
+
+  let info = rpc.call::<Value>("getblockchaininfo", &[]).unwrap();
+  assert_eq!(info["chain"], "regtest");
+  assert_eq!(info["blocks"], 4);
+  assert_eq!(info["bestblockhash"], core.block_hash(4).to_string());
+
+  let error = rpc
+    .call::<Value>("getblock", &[hash.to_string().into(), 4.into()])
+    .unwrap_err();
+  assert!(error.downcast_ref::<RpcError>().is_some(), "{error:#}");
+}
