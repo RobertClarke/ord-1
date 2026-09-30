@@ -307,6 +307,8 @@ pub struct IndexerOptions {
   pub max_retries: Option<u32>,
   /// Initial capacity of the fast sync's UTXO value map.
   pub utxo_capacity: usize,
+  /// Index only blocks below this height.
+  pub height_limit: Option<u32>,
 }
 
 impl IndexerOptions {
@@ -324,6 +326,7 @@ impl IndexerOptions {
       fast_sync_supply_top: 100,
       retry_interval: Duration::from_secs(1),
       max_retries: None,
+      height_limit: settings.height_limit,
       utxo_capacity: match settings.chain {
         Chain::Mainnet => 190_000_000,
         Chain::Testnet4 | Chain::Signet => 10_000_000,
@@ -550,7 +553,10 @@ impl Indexer {
         .published
         .update_status(|status| status.bitcoind_height = Some(tip));
 
-      let target = tip.checked_sub(FAST_SYNC_DEPTH);
+      let target = match self.options.height_limit {
+        Some(limit) if limit <= tip => limit.checked_sub(1),
+        _ => tip.checked_sub(FAST_SYNC_DEPTH),
+      };
       state.initial_target = target;
 
       if state.fast_sync_complete || !self.options.fast_sync {
@@ -752,6 +758,13 @@ impl Indexer {
       self
         .published
         .update_status(|status| status.bitcoind_height = Some(count));
+
+      // With --height-limit, bitcoind's chain ends below the limit for us.
+      let count = match self.options.height_limit {
+        Some(0) => return Ok(Step::CaughtUp),
+        Some(limit) => count.min(limit - 1),
+        None => count,
+      };
 
       if Some(best) == state.engine.hash() {
         self.set_mode(Mode::Live);

@@ -233,6 +233,10 @@ pub struct Options {
   /// [default: 1670976000]; needs a reindex when changed
   #[arg(long, env = "ORD_EXTRACTED_SINCE", value_name = "UNIX_TIME")]
   pub extracted_since: Option<u32>,
+
+  /// Index only blocks below this height (tests and benchmarks)
+  #[arg(long, env = "ORD_HEIGHT_LIMIT", value_name = "HEIGHT")]
+  pub height_limit: Option<u32>,
 }
 
 /// Resolved settings.
@@ -249,6 +253,7 @@ pub struct Settings {
   pub reindex: bool,
   pub store: StoreOptions,
   pub config: TrackerConfig,
+  pub height_limit: Option<u32>,
 }
 
 impl Settings {
@@ -328,6 +333,7 @@ impl Settings {
         ..StoreOptions::default()
       },
       config,
+      height_limit: options.height_limit,
     })
   }
 }

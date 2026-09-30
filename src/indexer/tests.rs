@@ -454,6 +454,7 @@ pub(crate) fn options() -> IndexerOptions {
     retry_interval: Duration::from_millis(1),
     max_retries: Some(20),
     utxo_capacity: 16,
+    height_limit: None,
   }
 }
 
@@ -802,5 +803,34 @@ fn forever_mode_follows_new_blocks_until_shutdown() {
     shutdown.store(true, Ordering::Relaxed);
     handle.join().unwrap().unwrap();
   });
+  context.assert_consistent();
+}
+
+#[test]
+fn height_limit_stops_below_it() {
+  let context = Context::new(60);
+  context
+    .run(IndexerOptions {
+      height_limit: Some(40),
+      ..options()
+    })
+    .unwrap();
+  let meta = context.store.meta().unwrap().unwrap();
+  assert_eq!(meta.height, Some(39));
+  assert_eq!(meta.hash, Some(context.node.hash(39)));
+  assert!(meta.fast_sync_complete);
+  // All of it by the fast sync: the limit is far enough below the tip.
+  assert_eq!(context.node.fast_blocks_served.load(Ordering::Relaxed), 40);
+  assert_eq!(context.node.live_blocks_served.load(Ordering::Relaxed), 0);
+
+  // Raising the limit continues live.
+  context
+    .run(IndexerOptions {
+      height_limit: Some(50),
+      ..options()
+    })
+    .unwrap();
+  assert_eq!(context.store.meta().unwrap().unwrap().height, Some(49));
+  context.run(options()).unwrap();
   context.assert_consistent();
 }
