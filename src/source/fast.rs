@@ -49,6 +49,26 @@ pub struct FastSyncOptions {
   pub utxo_capacity: usize,
 }
 
+impl FastSyncOptions {
+  /// Defaults measured against a mainnet Core 31 node at ~1 ms RTT:
+  ///
+  /// * 16 fetch threads keep bitcoind busy (~330 MB/s of raw blocks, 660
+  ///   MB/s of hex);
+  /// * 256 buffered blocks smooth out the consumer (≤ ~0.75 GB);
+  /// * 200 M entries sizes the UTXO map at 2^28 buckets (11.25 GiB, 44 + 1
+  ///   bytes each), room for 234.9 M entries; mainnet peaks at ~190 M. Any
+  ///   value from 117.5 M to 234.9 M gives the same table; above that it
+  ///   doubles.
+  pub fn recommended(stop_height: u32) -> Self {
+    Self {
+      stop_height,
+      fetch_threads: 16,
+      buffer_blocks: 256,
+      utxo_capacity: 200_000_000,
+    }
+  }
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct FastSourceStats {
   /// Last height delivered by `next_block`.
@@ -574,6 +594,7 @@ struct Resolver {
   map: UtxoMap,
   /// Entries the table holds without tombstones.
   full_capacity: u64,
+  warned_headroom: bool,
   shared: Arc<Shared>,
   prev_hash: BlockHash,
 }
@@ -589,6 +610,7 @@ impl Resolver {
       .store(map.capacity() as u64, Ordering::Relaxed);
     Self {
       full_capacity: map.capacity() as u64,
+      warned_headroom: false,
       map,
       shared,
       prev_hash: BlockHash::all_zeros(),
@@ -718,6 +740,17 @@ impl Resolver {
       .shared
       .map_tombstones
       .store(self.full_capacity - capacity, Ordering::Relaxed);
+
+    let headroom = capacity.saturating_sub(self.map.len() as u64);
+    if !self.warned_headroom && self.full_capacity > 0 && headroom < self.full_capacity / 20 {
+      self.warned_headroom = true;
+      log::warn!(
+        "UTXO value map is close to resizing (doubling its memory) at block {}: {} entries, {} free buckets; raise utxo_capacity",
+        block.height,
+        self.map.len(),
+        headroom,
+      );
+    }
 
     Shared::add(&self.shared.map_ops, ops.len() as u64);
     Shared::add(&self.shared.intra_block_spends, intra_block_spends);

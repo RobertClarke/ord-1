@@ -8,6 +8,24 @@
 //! Everything here blocks: `Rpc` uses `reqwest::blocking`, which panics when
 //! it is created, used or dropped on a thread that is driving an async
 //! runtime. Call it from plain threads (or `tokio::task::spawn_blocking`).
+//!
+//! ```ignore
+//! let rpc = Rpc::new(RpcConfig { url, auth: RpcAuth::Cookie(path), timeout_secs: 120 })?;
+//! let tip = rpc.block_count()?;
+//! let mut fast = FastSource::start(rpc.clone(), FastSyncOptions::recommended(tip - 12))?;
+//! while let Some(block) = fast.next_block() {
+//!   tracker.apply_block(&block?)?;
+//! }
+//! drop(fast); // frees the ~11 GiB UTXO value map
+//!
+//! let live = LiveSource::new(rpc);
+//! for block in live.blocks(tip - 11, new_tip, 4) {
+//!   tracker.apply_block(&block?)?;
+//! }
+//! ```
+//!
+//! Errors from bitcoind carry an `RpcError` (`error.downcast_ref()`), e.g.
+//! -5 for an unknown block hash, -8 for a height above the tip.
 
 use {
   bitcoin::{ScriptBuf, TxOut},
