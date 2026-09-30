@@ -9,7 +9,7 @@
 //   node tools/validate/build-baseline.js --oracle="$ORACLE_ORD_URL" \
 //        [--out=tools/validate/baseline] [--sets=a,b] [--seed=baseline-v1] [--concurrency=16] \
 //        [--blocks=2000] [--block9=500] [--vintage-plain=250] [--vintage-alpha-omega=250] \
-//        [--untracked=250] [--trace-block9-to=150000]
+//        [--untracked=250] [--trace-block9-to=150000] [--retrace-block9]
 //
 // Sets: random-blocks, nakamoto, milestones, recent, fee-heavy, bip30,
 // vintage-plain, vintage-alpha-omega, untracked, lost, block9. With --sets
@@ -38,7 +38,7 @@ function usage() {
   return [
     'usage: build-baseline.js --oracle=URL [--out=DIR] [--sets=a,b] [--seed=S] [--concurrency=N]',
     '       [--blocks=2000] [--block9=500] [--vintage-plain=250] [--vintage-alpha-omega=250] [--untracked=250]',
-    '       [--trace-block9-to=150000]',
+    '       [--trace-block9-to=150000] [--retrace-block9]',
     `sets: ${ALL_SETS.join(', ')}`,
     'bitcoind credentials: ORD_BITCOIN_RPC_URL / ORD_BITCOIN_RPC_USERNAME / ORD_BITCOIN_RPC_PASSWORD',
   ].join('\n');
@@ -185,12 +185,19 @@ function chooseSats(b, { tip, lost, opts }) {
 // `traceTo`, then keep the pieces whose output the oracle still indexes
 // with exactly the traced offsets; plus the outputs of the address holding
 // sat 45e9. Returns [{outpoint, start, len, offset}] confirmed by the oracle.
-async function block9Pieces(b, { traceTo }) {
+async function block9Pieces(b, { traceTo, previous = null }) {
   const { log, oracle } = b;
   const found = new Map(); // outpoint -> { pieces, value, address }
   const candidates = new Map(); // outpoint -> pieces (expected)
   const info = { traced_to: traceTo, trace: null, outputs_traced: 0, outputs_confirmed: 0, outputs_spent_later: 0, disagreements: [] };
-  if (traceTo > 9) {
+  if (previous && previous.traced_to === traceTo && Array.isArray(previous.outputs)) {
+    // An earlier trace's confirmed outputs, re-confirmed below.
+    log.info(`block 9: reusing ${previous.outputs.length} outputs traced to ${traceTo} (--retrace-block9 to trace again)`);
+    info.trace = previous.trace;
+    info.outputs_traced = previous.outputs_traced;
+    info.reused = true;
+    for (const o of previous.outputs) candidates.set(o.outpoint, o.pieces);
+  } else if (traceTo > 9) {
     const state = new Map([[BLOCK9_COINBASE, { value: 5e9, pieces: [{ offset: 0, start: sm.BLOCK9.start, len: 5e9 }] }]]);
     const started = Date.now();
     log.info(`block 9: tracing forward to ${traceTo}`);
@@ -270,7 +277,7 @@ function pickBlock9(b, pieces, wanted) {
 }
 
 async function main() {
-  const opts = parseArgs(process.argv.slice(2), { booleans: ['help', 'quiet'] });
+  const opts = parseArgs(process.argv.slice(2), { booleans: ['help', 'quiet', 'retraceBlock9'] });
   if (opts.help || !opts.oracle) {
     console.error(usage());
     process.exit(opts.help ? 0 : 2);
@@ -301,10 +308,16 @@ async function main() {
 
   chooseSats(b, { tip: H0, lost, opts });
 
+  // Block 9's confirmed outputs locate block-9 sats of every set (the
+  // Nakamoto blocks, vintage alphas/omegas and the block9 set).
   let block9 = null;
-  if (b.wants('block9')) {
-    block9 = await block9Pieces(b, { traceTo: Math.min(intOpt(opts, 'traceBlock9To', 150_000), H0) });
-    for (const s of pickBlock9(b, block9.pieces, intOpt(opts, 'block9', 500))) b.add('block9', s, sm.inRange(s, sm.X450) ? '450x' : 'block9', 'tracked');
+  if (b.wants('block9') || [...b.entries.values()].some(e => sm.inRange(e.sat, sm.BLOCK9))) {
+    const metaPath = path.join(outDir, 'meta.json');
+    const previous = !opts.retraceBlock9 && fs.existsSync(metaPath) ? JSON.parse(fs.readFileSync(metaPath, 'utf8')).block9 : null;
+    block9 = await block9Pieces(b, { traceTo: Math.min(intOpt(opts, 'traceBlock9To', 150_000), H0), previous });
+    if (b.wants('block9')) {
+      for (const s of pickBlock9(b, block9.pieces, intOpt(opts, 'block9', 500))) b.add('block9', s, sm.inRange(s, sm.X450) ? '450x' : 'block9', 'tracked');
+    }
   }
   const b9ByOutpoint = new Map();
   for (const p of block9?.pieces || []) {
@@ -370,7 +383,7 @@ async function main() {
     if (direct) want(round1, e, direct.outpoint);
     const hint = parseSatpoint((await b.satAnswer(sm.uncommonSat(e.height))).satpoint);
     if (hint) want(round1, e, hint.outpoint);
-    if (e.set === 'block9') {
+    if (sm.inRange(e.sat, sm.BLOCK9)) {
       for (const [op, ps] of b9ByOutpoint) if (ps.some(p => e.sat >= p.start && e.sat < p.start + p.len)) want(round1, e, op);
     }
   }
@@ -458,7 +471,7 @@ async function main() {
     lost_ranges: lost.count,
     bitcoind_height: bitcoindHeight,
     ...(feeHeavy ? { fee_heavy_blocks: feeHeavy } : {}),
-    ...(block9 ? { block9: block9.info } : {}),
+    ...(block9 && b.wants('block9') ? { block9: block9.info } : {}),
     sets: setInfo,
     counts,
     oracle_http: oracle.http.stats,

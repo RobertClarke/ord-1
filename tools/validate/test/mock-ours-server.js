@@ -6,7 +6,7 @@
 // before the fork runs:
 //
 //   node tools/validate/test/mock-ours-server.js [--baseline=DIR] [--port=0] \
-//        [--follow=ORACLE_URL] [--mutate=SAT,…]
+//        [--follow=ORACLE_URL] [--mutate=SAT,…] [--unlocated=untracked|fake]
 //   node tools/validate/oracle-check.js --ours=http://127.0.0.1:PORT --oracle=… \
 //        --edges=untracked,bip30,block9,lost,burned
 //
@@ -31,7 +31,10 @@ async function main() {
         return body;
       }
     : null;
-  const ours = mockOurs({ entries, height: meta.oracle_height, lostSats: meta.oracle_lost_sats, mutate });
+  // --unlocated=fake: report sats the baseline could not locate as tracked
+  // in an output bitcoind does not know (baseline mode then skips them).
+  const unlocated = opts.unlocated === 'fake' ? 'fake' : 'untracked';
+  const ours = mockOurs({ entries, height: meta.oracle_height, lostSats: meta.oracle_lost_sats, mutate, unlocated });
   if (opts.follow) {
     const base = String(opts.follow).replace(/\/+$/, '');
     const poll = async () => {

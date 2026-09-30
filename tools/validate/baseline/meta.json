@@ -5,7 +5,7 @@
   "oracle_height_end": 969252,
   "oracle_lost_sats": 2895844904,
   "lost_ranges": 5519,
-  "bitcoind_height": 969248,
+  "bitcoind_height": 969252,
   "fee_heavy_blocks": [
     {
       "height": 409008,
@@ -50,7 +50,7 @@
     },
     "nakamoto": {
       "entries": 38,
-      "located": 21,
+      "located": 22,
       "direct": 19,
       "lost": 0,
       "burned": 0,
@@ -104,7 +104,7 @@
     },
     "vintage-alpha-omega": {
       "entries": 250,
-      "located": 237,
+      "located": 238,
       "direct": 4,
       "lost": 0,
       "burned": 0,
@@ -140,11 +140,11 @@
     }
   },
   "oracle_http": {
-    "requests": 528,
+    "requests": 784,
     "retries": 0,
     "errors": 0
   },
-  "updated": "2026-09-30T03:59:32.359Z",
+  "updated": "2026-09-30T04:02:55.640Z",
   "block9": {
     "traced_to": 150000,
     "trace": {
@@ -271,6 +271,66 @@
     ]
   },
   "sets": {
+    "random-blocks": {
+      "oracle_height": 969245,
+      "oracle_height_end": 969245,
+      "created": "2026-09-30T03:26:36.400Z",
+      "seed": "baseline-v1"
+    },
+    "nakamoto": {
+      "oracle_height": 969252,
+      "oracle_height_end": 969252,
+      "created": "2026-09-30T04:02:55.639Z",
+      "seed": "baseline-v1"
+    },
+    "milestones": {
+      "oracle_height": 969245,
+      "oracle_height_end": 969245,
+      "created": "2026-09-30T03:26:36.400Z",
+      "seed": "baseline-v1"
+    },
+    "recent": {
+      "oracle_height": 969245,
+      "oracle_height_end": 969245,
+      "created": "2026-09-30T03:26:36.400Z",
+      "seed": "baseline-v1"
+    },
+    "fee-heavy": {
+      "oracle_height": 969245,
+      "oracle_height_end": 969245,
+      "created": "2026-09-30T03:26:36.400Z",
+      "seed": "baseline-v1"
+    },
+    "bip30": {
+      "oracle_height": 969245,
+      "oracle_height_end": 969245,
+      "created": "2026-09-30T03:26:36.400Z",
+      "seed": "baseline-v1"
+    },
+    "vintage-plain": {
+      "oracle_height": 969245,
+      "oracle_height_end": 969245,
+      "created": "2026-09-30T03:26:36.400Z",
+      "seed": "baseline-v1"
+    },
+    "vintage-alpha-omega": {
+      "oracle_height": 969252,
+      "oracle_height_end": 969252,
+      "created": "2026-09-30T04:02:55.640Z",
+      "seed": "baseline-v1"
+    },
+    "untracked": {
+      "oracle_height": 969245,
+      "oracle_height_end": 969245,
+      "created": "2026-09-30T03:26:36.400Z",
+      "seed": "baseline-v1"
+    },
+    "lost": {
+      "oracle_height": 969245,
+      "oracle_height_end": 969245,
+      "created": "2026-09-30T03:26:36.400Z",
+      "seed": "baseline-v1"
+    },
     "block9": {
       "oracle_height": 969248,
       "oracle_height_end": 969252,

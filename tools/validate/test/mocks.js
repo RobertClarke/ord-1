@@ -187,20 +187,26 @@ function mockOurs({ entries, height, lostSats, mutate = null, unlocated = 'untra
   const tracked = new Map();
   const untracked = new Set();
   const rows = new Map();
+  // A sat can be in several sets: answer with its best-located entry.
+  const best = new Map();
   for (const e of entries) {
     if (e.expect === 'untracked') {
       untracked.add(e.sat);
       continue;
     }
+    const cur = best.get(e.sat);
+    if (!cur || (!cur.location && e.location)) best.set(e.sat, e);
+  }
+  const locationOf = e => {
     const loc = e.location;
-    let location = null;
     if (e.expect === 'known_diff') {
       // The fork reports sats of the overwritten coinbases as overwritten.
       const bip = sm.BIP30.find(b => sm.heightOfSat(e.sat) === b.height);
       const offset = sm.blockOffset(e.sat);
-      location = { kind: 'overwritten', outpoint: `${bip.txid}:0`, offset, satpoint: `${bip.txid}:0:${offset}`, output: null };
-    } else if (loc) {
-      location = {
+      return { kind: 'overwritten', outpoint: `${bip.txid}:0`, offset, satpoint: `${bip.txid}:0:${offset}`, output: null };
+    }
+    if (loc) {
+      return {
         kind: loc.kind,
         satpoint: loc.satpoint,
         outpoint: loc.outpoint,
@@ -221,19 +227,29 @@ function mockOurs({ entries, height, lostSats, mutate = null, unlocated = 'untra
                 rows: { [e.kind]: 1 },
               },
       };
-    } else if (unlocated === 'fake') {
-      const outpoint = `${'ff'.repeat(32)}:${e.sat % 1000}`;
-      location = { kind: 'unspent', satpoint: `${outpoint}:0`, outpoint, offset: 0, output: { outpoint, value: 546, address: null, script_pubkey: '51', kind: 'spendable', created_height: 1, pieces: [] } };
-    } else continue;
-    tracked.set(e.sat, { sat: e.sat, height: sm.heightOfSat(e.sat), types: [e.kind], tracked: true, rows: [e.kind], location });
-    const row = e.kind === '450x' ? 'block9' : e.kind;
-    if (!rows.has(row)) rows.set(row, []);
-    rows.get(row).push(e.sat);
-    if (e.kind === '450x') {
-      if (!rows.has('450x')) rows.set('450x', []);
-      rows.get('450x').push(e.sat);
     }
+    if (unlocated === 'fake') {
+      const outpoint = `${'ff'.repeat(32)}:${e.sat % 1000}`;
+      return { kind: 'unspent', satpoint: `${outpoint}:0`, outpoint, offset: 0, output: { outpoint, value: 546, address: null, script_pubkey: '51', kind: 'spendable', created_height: 1, pieces: [] } };
+    }
+    return null;
+  };
+  const addToRow = (row, sat) => {
+    if (!rows.has(row)) rows.set(row, new Set());
+    rows.get(row).add(sat);
+  };
+  for (const e of entries) {
+    if (e.expect === 'untracked') continue;
+    if (!tracked.has(e.sat)) {
+      const b = best.get(e.sat);
+      const location = locationOf(b);
+      if (!location) continue;
+      tracked.set(e.sat, { sat: e.sat, height: sm.heightOfSat(e.sat), types: [b.kind], tracked: true, rows: [b.kind], location });
+    }
+    addToRow(e.kind === '450x' ? 'block9' : e.kind, e.sat);
+    if (e.kind === '450x') addToRow('450x', e.sat);
   }
+  for (const [row, set] of rows) rows.set(row, [...set]);
   for (const list of rows.values()) list.sort((a, b) => a - b);
   const state = { height, lostSats, requests: 0, satRequests: 0, statusCalls: 0, onStatus: null, onSat: null, mutate };
   const handler = (req, res) => {
