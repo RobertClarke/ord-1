@@ -9,7 +9,7 @@
 
 use {
   crate::{
-    model::{BlockDelta, ResolvedBlock, RowId, SupplySnapshot, TrackerConfig, TrackerSnapshot},
+    model::{BlockDelta, ResolvedBlock, SupplySnapshot, TrackerConfig, TrackerSnapshot},
     sats::SatCatalog,
     settings::{Chain, FastSync, Settings},
     source::{FastSource, FastSourceStats, FastSyncOptions, LiveSource, Rpc, RpcConfig},
@@ -207,7 +207,6 @@ pub trait EngineFactory: Send + Sync {
 
 pub struct TrackerEngine {
   tracker: Tracker,
-  rows: usize,
 }
 
 impl Engine for TrackerEngine {
@@ -228,9 +227,7 @@ impl Engine for TrackerEngine {
   }
 
   fn mined(&self) -> Vec<u64> {
-    (0..self.rows)
-      .map(|row| self.tracker.row_stats(row as RowId).mined)
-      .collect()
+    self.tracker.mined()
   }
 
   fn supply(&self, top: usize) -> SupplySnapshot {
@@ -265,14 +262,12 @@ impl EngineFactory for TrackerFactory {
   fn fresh(&self) -> anyhow::Result<Box<dyn Engine>> {
     Ok(Box::new(TrackerEngine {
       tracker: Tracker::new(self.catalog.clone(), self.config.clone()),
-      rows: self.catalog.rows().len(),
     }))
   }
 
   fn restore(&self, snapshot: TrackerSnapshot) -> anyhow::Result<Box<dyn Engine>> {
     Ok(Box::new(TrackerEngine {
       tracker: Tracker::restore(self.catalog.clone(), self.config.clone(), snapshot)?,
-      rows: self.catalog.rows().len(),
     }))
   }
 }

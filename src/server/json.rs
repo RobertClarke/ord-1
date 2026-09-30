@@ -332,17 +332,12 @@ impl<'a> Render<'a> {
 
   pub fn sat(&self, sat: u64) -> anyhow::Result<SatJson> {
     let tracked = self.catalog.is_tracked(sat);
-    let rows = if tracked {
-      self
-        .catalog
-        .row_counts(sat, 1)
-        .into_iter()
-        .filter(|(_, count)| *count > 0)
-        .map(|(row, _)| self.row_name(row))
-        .collect()
-    } else {
-      Vec::new()
-    };
+    let rows = self
+      .catalog
+      .sat_rows(sat)
+      .into_iter()
+      .map(|row| self.row_name(row))
+      .collect();
     let location = match self.reader.locate(sat)? {
       Some(location) => Some(self.location(&location)?),
       None => None,

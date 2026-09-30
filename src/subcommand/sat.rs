@@ -81,15 +81,11 @@ impl Types {
       height: ordinals::Sat(self.sat).height().n(),
       types: catalog.types(self.sat),
       tracked,
-      rows: if tracked {
-        catalog
-          .row_counts(self.sat, 1)
-          .into_iter()
-          .map(|(row, _)| catalog.rows()[usize::from(row)].id.clone())
-          .collect()
-      } else {
-        Vec::new()
-      },
+      rows: catalog
+        .sat_rows(self.sat)
+        .into_iter()
+        .map(|row| catalog.rows()[usize::from(row)].id.clone())
+        .collect(),
     })
   }
 }

@@ -16,7 +16,7 @@ fn op_return() -> ScriptBuf {
 }
 
 #[test]
-#[ignore = "needs core+source"]
+#[ignore = "needs source"]
 fn index_update_and_find_block_1_uncommon() {
   let core = regtest();
   core.mine_blocks(1);
@@ -58,7 +58,7 @@ fn index_update_and_find_block_1_uncommon() {
 }
 
 #[test]
-#[ignore = "needs core+source"]
+#[ignore = "needs source"]
 fn fast_sync_then_live_on_a_longer_chain() {
   let core = regtest();
   core.mine_blocks(40);
@@ -102,7 +102,7 @@ fn fast_sync_then_live_on_a_longer_chain() {
 }
 
 #[test]
-#[ignore = "needs core+source"]
+#[ignore = "needs source"]
 fn lost_sats_from_an_under_claiming_coinbase() {
   let core = regtest();
   core.mine_blocks_with_subsidy(1, 25 * COIN);
@@ -145,7 +145,7 @@ fn lost_sats_from_an_under_claiming_coinbase() {
 }
 
 #[test]
-#[ignore = "needs core+source"]
+#[ignore = "needs source"]
 fn op_return_burn() {
   let core = regtest();
   core.mine_blocks(1);
@@ -217,7 +217,7 @@ fn op_return_burn() {
 }
 
 #[test]
-#[ignore = "needs core+source"]
+#[ignore = "needs source"]
 fn reorg_via_invalidated_tip() {
   let core = regtest();
   core.mine_blocks(3);
@@ -255,7 +255,7 @@ fn reorg_via_invalidated_tip() {
 }
 
 #[test]
-#[ignore = "needs core+source"]
+#[ignore = "needs source"]
 fn server_follows_new_blocks_and_serves_supply() {
   let core = regtest();
   core.mine_blocks(2);
@@ -314,7 +314,7 @@ fn server_follows_new_blocks_and_serves_supply() {
 }
 
 #[test]
-#[ignore = "needs core+source"]
+#[ignore = "needs source"]
 fn restarts_resume_from_the_index() {
   let core = regtest();
   core.mine_blocks(5);
@@ -351,7 +351,7 @@ fn restarts_resume_from_the_index() {
 }
 
 #[test]
-#[ignore = "needs core+source"]
+#[ignore = "needs source"]
 fn reindex_rebuilds_and_config_changes_need_it() {
   let core = regtest();
   core.mine_blocks(3);
@@ -381,7 +381,7 @@ fn reindex_rebuilds_and_config_changes_need_it() {
 }
 
 #[test]
-#[ignore = "needs core+source"]
+#[ignore = "needs source"]
 fn wrong_chain_is_refused() {
   let core = mockcore::spawn();
   let dir = tempdir();

@@ -1,9 +1,9 @@
 //! Integration tests: the `ord` binary against mockcore.
 //!
-//! Tests marked `#[ignore = "needs core+source"]` need the tracker, the sat
-//! catalog and the block sources (including mockcore support for
-//! `getblock <hash> 3`); run them with `cargo test --test integration --
-//! --ignored` once those are merged.
+//! Tests marked `#[ignore = "needs source"]` drive `ord` against mockcore
+//! and need the block sources (and mockcore's `getblock <hash> 3`); run them
+//! with `cargo test --test integration -- --ignored` once `rst/source` is
+//! merged.
 
 use {
   bitcoin::{Network, OutPoint, Txid},

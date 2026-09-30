@@ -39,48 +39,20 @@ pub trait Catalog: Send + Sync {
       .position(|row| row.id == id)
       .map(|row| row as RowId)
   }
-}
 
-/// Every `SatType`, in declaration order (`TypeSet` bit order).
-pub const SAT_TYPES: [SatType; 37] = [
-  SatType::Mythic,
-  SatType::Legendary,
-  SatType::Epic,
-  SatType::Rare,
-  SatType::Uncommon,
-  SatType::Paliblock,
-  SatType::Black,
-  SatType::BlackRare,
-  SatType::BlackEpic,
-  SatType::Alpha,
-  SatType::MegasatAlpha,
-  SatType::CentasatAlpha,
-  SatType::DecasatAlpha,
-  SatType::KilosatAlpha,
-  SatType::Omega,
-  SatType::MegasatOmega,
-  SatType::CentasatOmega,
-  SatType::DecasatOmega,
-  SatType::KilosatOmega,
-  SatType::PalindromesInteger,
-  SatType::PalindromesInteger1d,
-  SatType::PalindromesInteger2d,
-  SatType::PalindromesInteger3d,
-  SatType::PalindromesPerfectPalinception,
-  SatType::Vintage,
-  SatType::Block9,
-  SatType::Block450x,
-  SatType::Block78,
-  SatType::Block286,
-  SatType::Block666,
-  SatType::Nakamoto,
-  SatType::Jpeg,
-  SatType::Pizza,
-  SatType::Hitman,
-  SatType::Sr1stAuction,
-  SatType::Bounty3Name,
-  SatType::AlphaJanFeb2009,
-];
+  /// The rows a sat counts toward, ascending; empty for untracked sats.
+  fn sat_rows(&self, sat: u64) -> Vec<RowId> {
+    if !self.is_tracked(sat) {
+      return Vec::new();
+    }
+    self
+      .row_counts(sat, 1)
+      .into_iter()
+      .filter(|(_, count)| *count > 0)
+      .map(|(row, _)| row)
+      .collect()
+  }
+}
 
 /// The real catalog, with row definitions and totals computed once.
 pub struct SatCatalogView {
@@ -121,12 +93,7 @@ impl SatCatalogView {
 
 impl Catalog for SatCatalogView {
   fn types(&self, sat: u64) -> Vec<&'static str> {
-    let types = self.catalog.types(sat);
-    SAT_TYPES
-      .iter()
-      .filter(|t| types.contains(**t))
-      .map(|t| t.name())
-      .collect()
+    self.catalog.types(sat).names()
   }
 
   fn is_tracked(&self, sat: u64) -> bool {
@@ -155,5 +122,49 @@ impl Catalog for SatCatalogView {
 
   fn row_id(&self, id: &str) -> Option<RowId> {
     self.catalog.row_id(id)
+  }
+
+  fn sat_rows(&self, sat: u64) -> Vec<RowId> {
+    self.catalog.sat_rows(sat)
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use {super::*, crate::model::TrackerConfig};
+
+  #[test]
+  fn view_of_the_real_catalog() {
+    let view = SatCatalogView::new(Arc::new(
+      SatCatalog::new(&TrackerConfig::default()).unwrap(),
+    ));
+
+    // Block 9's first sat.
+    let types = view.types(45_000_000_000);
+    for expected in ["uncommon", "alpha", "block9", "450x", "nakamoto"] {
+      assert!(types.contains(&expected), "{types:?}");
+    }
+    assert!(view.is_tracked(45_000_000_000));
+    assert!(view.is_tracked(45_000_000_123), "block 9 is tracked whole");
+    assert!(!view.is_tracked(5_000_000_001));
+
+    let rows = view.sat_rows(45_000_000_000);
+    let ids = rows
+      .iter()
+      .map(|row| view.rows()[usize::from(*row)].id.as_str())
+      .collect::<Vec<&str>>();
+    for expected in ["uncommon", "block9", "450x", "block9_alpha"] {
+      assert!(ids.contains(&expected), "{ids:?}");
+    }
+    assert_eq!(view.sat_rows(5_000_000_001), Vec::<RowId>::new());
+
+    let uncommon = view.row_id("uncommon").unwrap();
+    assert_eq!(view.rows()[usize::from(uncommon)].all_of, ["uncommon"]);
+    assert!(view.row_total(uncommon) > 6_000_000);
+    let block9 = view.row_id("block9").unwrap();
+    assert!(view.rows()[usize::from(block9)].range);
+    assert_eq!(view.row_total(block9), 5_000_000_000);
+    assert_eq!(view.row_id("nope"), None);
+    assert!(!view.fingerprint().is_empty());
   }
 }

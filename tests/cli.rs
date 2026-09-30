@@ -108,3 +108,56 @@ fn options_are_read_from_the_environment() {
     "{stderr}"
   );
 }
+
+#[test]
+fn types_of_a_sat() {
+  let dir = tempdir();
+  let sat = ord_json(None, dir.path(), &["types", "45000000000"]);
+  assert_eq!(sat["sat"], 45_000_000_000u64);
+  assert_eq!(sat["height"], 9);
+  assert_eq!(sat["tracked"], true);
+  for expected in ["uncommon", "alpha", "block9", "450x", "nakamoto"] {
+    assert!(
+      sat["types"].as_array().unwrap().contains(&expected.into()),
+      "{sat}"
+    );
+  }
+  for expected in ["uncommon", "block9", "450x"] {
+    assert!(
+      sat["rows"].as_array().unwrap().contains(&expected.into()),
+      "{sat}"
+    );
+  }
+
+  let common = ord_json(None, dir.path(), &["types", "5000000001"]);
+  assert_eq!(common["tracked"], false);
+  assert_eq!(common["rows"], serde_json::json!([]));
+}
+
+#[test]
+fn rows_lists_definitions_and_totals() {
+  let dir = tempdir();
+  let rows = ord_json(None, dir.path(), &["rows"]);
+  let rows = rows.as_array().unwrap();
+  assert!(rows.len() > 50);
+  let uncommon = &rows[0];
+  assert_eq!(uncommon["id"], "uncommon");
+  assert_eq!(uncommon["all_of"], serde_json::json!(["uncommon"]));
+  assert!(uncommon["total"].as_u64().unwrap() > 6_000_000);
+  let block9 = rows.iter().find(|row| row["id"] == "block9").unwrap();
+  assert_eq!(block9["range"], true);
+  assert_eq!(block9["total"], 5_000_000_000u64);
+  let scoped = rows
+    .iter()
+    .find(|row| row["id"] == "uncommon_2009")
+    .unwrap();
+  assert_eq!(scoped["heights"], serde_json::json!([0, 32489]));
+}
+
+#[test]
+fn find_without_an_index() {
+  let dir = tempdir();
+  let output = ord(None, dir.path(), &["find", "5000000000"]);
+  assert!(!output.status.success());
+  assert!(String::from_utf8_lossy(&output.stderr).contains("there is no index"));
+}
