@@ -37,7 +37,6 @@ use {
   },
   jsonrpc_core::{IoHandler, Value},
   jsonrpc_http_server::{CloseHandle, ServerBuilder},
-  ord::{SimulateRawTransactionOptions, SimulateRawTransactionResult},
   serde::{Deserialize, Serialize},
   server::Server,
   state::State,
@@ -53,6 +52,19 @@ use {
 };
 
 const COIN_VALUE: u64 = 100_000_000;
+
+#[doc(hidden)]
+#[derive(Deserialize, Serialize)]
+pub struct SimulateRawTransactionResult {
+  #[serde(with = "bitcoin::amount::serde::as_btc")]
+  pub balance_change: SignedAmount,
+}
+
+#[doc(hidden)]
+#[derive(Deserialize, Serialize)]
+pub struct SimulateRawTransactionOptions {
+  include_watchonly: bool,
+}
 
 mod api;
 mod server;
