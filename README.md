@@ -61,9 +61,15 @@ Tailscale, 2026-09-30:
 | Tracked at the tip | 1,014,851 UTXOs, 2,751,933 pieces |
 | Lost sats | 2,895,844,904 — identical to upstream ord `--index-sats` |
 
-Sat locations were checked against an upstream ord with `--index-sats` at the
-same height (`/sat` for uncommon-and-rarer sats, `/output` sat ranges for the
-rest).
+Validated against an upstream ord with `--index-sats` at the same height
+(`tools/validate/`, 2026-09-30, tip 969,264–969,267): 2,310 sampled tracked
+sats across all 62 rows plus edge sets (burned sats, sats that passed through
+fees, 450x, every milestone, lost-sat offsets) — 709 matched `/sat` satpoints
+directly, 1,440 were confirmed inside the oracle's `/output` sat ranges at our
+offset, 29 at ord's lost offsets; 0 mismatches. A baseline of 6,022 sats
+recorded from the oracle matched too, and every row's `/supply` numbers equal
+an independent recomputation from `/sats`. Run it with
+`tools/validate/validate-all.sh --ours=http://127.0.0.1:8090 ...`.
 
 Keeping the rules in sync
 -------------------------
