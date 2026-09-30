@@ -755,3 +755,43 @@ fn tracker_is_send() {
   fn assert_send<T: Send>() {}
   assert_send::<Tracker>();
 }
+
+#[test]
+fn undo_rejects_foreign_deltas_and_genesis_needs_a_null_parent() {
+  let (mut tracker, mut chain) = at_halving();
+  let first = tracker
+    .apply_block(&chain.block(vec![coinbase(txid(1), vec![out(S)])]))
+    .unwrap();
+  let second = tracker
+    .apply_block(&chain.block(vec![coinbase(txid(2), vec![out(S)])]))
+    .unwrap();
+  let before = tracker.snapshot();
+  // Not the tip.
+  assert!(tracker.undo_block(&first).is_err());
+  // The tip's height and hash, but other contents.
+  let mut forged = second.clone();
+  forged.created[0].1.value += 1;
+  assert!(tracker.undo_block(&forged).is_err());
+  let mut forged = second.clone();
+  forged.lost_sats_after += 1;
+  assert!(tracker.undo_block(&forged).is_err());
+  assert_eq!(tracker.snapshot(), before);
+  tracker.undo_block(&second).unwrap();
+  tracker.undo_block(&first).unwrap();
+  assert_eq!(tracker.height(), Some(H - 1));
+
+  let config = TrackerConfig::default();
+  let mut empty = Tracker::new(catalog_for(&config), config);
+  let mut not_genesis = Chain::at(Some(0));
+  not_genesis.next = 0;
+  let block = not_genesis.block(vec![coinbase(txid(3), vec![out(5_000_000_000)])]);
+  assert!(empty.apply_block(&block).is_err());
+  let mut genesis = Chain::at(None);
+  let block = genesis.block(vec![coinbase(txid(3), vec![out(5_000_000_000)])]);
+  let delta = empty.apply_block(&block).unwrap();
+  assert_eq!(empty.height(), Some(0));
+  empty.undo_block(&delta).unwrap();
+  assert_eq!((empty.height(), empty.hash()), (None, None));
+  assert_eq!(empty.utxo_count(), 0);
+  empty.verify().unwrap();
+}
