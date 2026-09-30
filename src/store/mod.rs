@@ -55,6 +55,8 @@
 //! spent within the batch never touches the `utxos`, `locator` or `scripts`
 //! tables), then each table is written in key order.
 
+#[cfg(test)]
+mod bench;
 mod codec;
 #[cfg(test)]
 mod tests;
