@@ -4,8 +4,8 @@ ord — rare-sat tracker fork
 This fork of [ord](https://github.com/ordinals/ord) tracks, block by block,
 where the rare sats that matter are: every uncommon and black sat, the
 extractable alphas, omegas and palindromes, bounty3 names, rare-sat combos
-inside pizza / jpeg / hitman / Silk Road / Nakamoto blocks, and every sat of
-the vintage blocks 0–999 (which include block 9 and its 450x first BTC). It
+inside vintage / pizza / jpeg / hitman / Silk Road / Nakamoto blocks, and every
+sat of block 9 (including its 450x first BTC). It
 does not index inscriptions, runes or every sat range, so it fits a 64 GiB
 RAM / 1.6 TiB box and syncs in hours.
 

@@ -24,12 +24,14 @@ rules (`src/utils/psbtBuilder.js` → `SPECIAL_SAT_TYPES`,
 `REQUIRED_COMBINATION_TYPES`, `satIsExtractableAlpha2009`) with the scope the
 operator set:
 
-* **Whole ranges ("big dogs")** — every sat in:
-  * `vintage`: blocks 0–999, sats `[0, 5_000_000_000_000)`. This contains
-    block 9 (and its first BTC, `450x`), block 78, block 286, block 666 and the
-    Nakamoto blocks 9, 286, 688 and 877, so all of those are tracked whole.
+* **Whole ranges** — every sat in:
+  * `block9`: sats `[45_000_000_000, 50_000_000_000)`, all of block 9
+    including its first BTC (`450x`).
   * The range list is configuration (`TrackerConfig::ranges`); the default is
-    `[vintage]`. Changing it requires a reindex (the index records it).
+    `[block9]`. Changing it requires a reindex (the index records it). Other
+    large chunks the runtime extracts (vintage, block 78, block 286, Nakamoto,
+    pizza, jpeg, hitman, Silk Road) are deliberately **not** tracked whole; only
+    their individually special sats are.
 * **Individual sats** anywhere in the chain whose types (see §2) include any of
   * standalone types: `uncommon` (so also `rare`, `epic`, `legendary`,
     `mythic`), `black`, `black_rare`, `black_epic`,
@@ -42,14 +44,17 @@ operator set:
     `palindromes_integer_3d`+`palindromes_integer`+`sr_1st_auction` (the full
     list is in §2.3);
   * an alpha mined in Jan–Feb 2009 (blocks 0–5923, `isAlpha2009Sat`).
-* **Not tracked:** whole pizza / jpeg / hitman / Silk Road / Nakamoto /
-  2009 ranges (only their combo sats above), `common_name`, `requests`,
+* **Not tracked:** whole vintage / block 78 / block 286 / block 666 / pizza /
+  jpeg / hitman / Silk Road / Nakamoto / 2009 ranges (only their special sats
+  above; the runtime's standalone `block78`/`block286` ≥1M-sat chunks are out of
+  scope), `common_name`, `requests`,
   inscriptions, luck (luck is a per-block property of already-tracked sats and
   can be derived from the stored headers).
 
-Size at height ~969k: ≈2.7 M individual sats (≈969k uncommon + ≈969k black,
-≈296k Jan–Feb 2009 alphas, ≈40k milestone alphas/omegas, ≈35k 1d/2d
-palindromes, ≈12.5k bounty3 names, ≈400k combo sats) plus the vintage range.
+Size at height ~969k: ≈2.8 M individual sats (≈969k uncommon + ≈969k black,
+≈296k Jan–Feb 2009 alphas, ≈50k vintage omegas, ≈40k milestone
+alphas/omegas, ≈35k 1d/2d palindromes, ≈12.5k bounty3 names, ≈400k other
+combo sats) plus the block 9 range (5e9 sats).
 
 The tracked set is a pure function of the sat number, so it can be enumerated
 for any coinbase without chain data.
@@ -62,6 +67,14 @@ range membership (`src/services/exoticSatRanges.js` → `EXOTIC_RANGES`), plus
 `bounty3_name` (`data/bounty3-names-map.json`), plus the synthetic
 `alpha_jan_feb_2009`. Parity is enforced by test vectors generated from the JS
 (`tests/fixtures/sat-types.json`).
+
+Assembly follows the runtime scanner for a point sat
+(`rareSatScanner.js` → `analyzeSatRanges`): rule types, then `bounty3_name` if
+named, then every exotic range type containing the sat, then
+`normalizePaliblockTypes` over the combined set — so `paliblock` is dropped
+whenever an exotic type or `bounty3_name` is present (e.g. block 9's first
+sat). `alpha_jan_feb_2009` is added after normalization. `common_name`, name
+palindromes and `inscription_*` types are not modelled.
 
 ### 2.1 Rule types (from `getSatTypes`)
 
@@ -84,8 +97,11 @@ For sat `s` in block `h` at `offset = s - first_sat(h)`, `subsidy = subsidy(h)`:
 | `palindromes_integer_1d` / `_2d` / `_3d` | palindrome with exactly 1 / 2 / 3 distinct digits |
 | `palindromes_perfect_palinception` | palindrome whose digit string is `sub` repeated ≥2 times, `sub` itself a palindrome with ≥2 distinct digits (`isPerfectPalinception`) |
 
-Note `s == 0` yields mythic, legendary, epic, rare, uncommon, alpha,
-megasat_alpha, palindromes_integer, palindromes_integer_1d (exactly as JS).
+Note `s == 0` yields mythic, legendary, epic, rare, uncommon, alpha and
+megasat_alpha, but **not** the palindrome types: the scanner's palindrome
+generator (`generatePalindromesInRange`) never yields 0, although a bare
+`getSatTypes(0)` would say it is one. The scanner is what the runtime and the
+old supply script used, so it wins.
 
 ### 2.2 Exotic range types
 
@@ -114,9 +130,9 @@ block_666+palindromes_integer  block_666+alpha  block_666+omega
 
 A **row** is a named filter over types plus an optional height scope:
 `{ id, label, all_of: [type], any_of: [type], heights: Option<(from, to)>,
-range: bool }`. `range: true` rows are pure range membership (`vintage`,
-`block9`, `450x`, `block78`, `block286`, `block_666`) and are counted by
-overlap length, everything else is counted per sat. The default row set is
+range: bool }`. `range: true` rows are pure range membership (`block9`, `450x`)
+and are counted by overlap length; everything else is counted per sat (all of
+its sats are individually tracked). The default row set is
 defined in `src/sats/rows.rs` (ids are the API contract with the dashboard):
 
 ```
@@ -124,11 +140,11 @@ uncommon rare epic legendary mythic black black_rare black_epic paliblock
 alpha_jan_feb_2009 kilosat_alpha decasat_alpha centasat_alpha megasat_alpha
 kilosat_omega decasat_omega centasat_omega megasat_omega
 palindrome_1d palindrome_2d palindrome_perfect_palinception bounty3_name
-vintage vintage_uncommon vintage_black vintage_alpha vintage_omega
+vintage_uncommon vintage_black vintage_alpha vintage_omega
 block9 450x block9_alpha block9_omega block9_palindrome
-block78 block78_alpha block78_omega block78_palindrome
-block286 block286_alpha block286_omega block286_palindrome
-block_666 block_666_alpha block_666_omega block_666_palindrome
+block78_alpha block78_omega block78_palindrome
+block286_alpha block286_omega block286_palindrome
+block_666_alpha block_666_omega block_666_palindrome
 nakamoto_uncommon nakamoto_black nakamoto_alpha nakamoto_omega nakamoto_palindrome
 pizza_alpha pizza_omega pizza_palindrome jpeg_alpha jpeg_omega jpeg_palindrome
 hitman_alpha hitman_omega hitman_palindrome
@@ -175,7 +191,7 @@ A **piece** is a run of consecutive tracked sats at consecutive offsets in one
 output: `Piece { offset, start, len }` (sat `start + i` sits at `offset + i`).
 A tracked UTXO holds its pieces sorted by offset, non-overlapping, merged when
 both offsets and sats are contiguous. Individual sats are `len == 1` pieces;
-vintage pieces can be up to 5e9 long. When an output boundary cuts a piece it
+block 9 pieces can be up to 5e9 long. When an output boundary cuts a piece it
 is split.
 
 Only pieces are moved. For transactions that spend no tracked UTXO the tracker
@@ -200,8 +216,9 @@ Per row, maintained incrementally as tracked UTXOs are created and removed:
   UTXO was created at a block with time ≥ tip time − N·365 days).
 * Holders: per `script_pubkey`, `{ count, extracted_count, utxos }`; exposes
   `holders`, `extracted_holders`, and on request the top N extracted /
-  non-extracted holders with `last_received` (latest creation time among the
-  holder's UTXOs that contain the row).
+  non-extracted holders. In each list, `utxos` and `last_received` (latest
+  creation height/time) are computed over that list's outputs only: the
+  holder's extracted outputs for the extracted list, the rest for the other.
 
 Per block, the tracker emits the row deltas; the store keeps a per-row
 history `(row, height) → RowStats` for every block where the row changed, so

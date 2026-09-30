@@ -17,7 +17,7 @@ This document is the contract with the bitcoin-monitoring supply dashboard
 
 **Piece**
 ```json
-{ "offset": 0, "start": 45000000000, "len": 1, "types": ["uncommon", "alpha", "block9", "450x", "nakamoto", "vintage", "megasat_alpha"] }
+{ "offset": 0, "start": 45000000000, "len": 1, "types": ["uncommon", "alpha", "vintage", "block9", "450x", "nakamoto", "alpha_jan_feb_2009"] }
 ```
 `types` are the types of the piece's first sat (for `len > 1` pieces the
 other sats may have fewer types). `offset` meaning depends on the holder

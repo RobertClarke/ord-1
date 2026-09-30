@@ -1,0 +1,112 @@
+{
+  "format": "ORDEXRNG v1: see tools/export-monitoring-data.js",
+  "generated_by": "tools/export-monitoring-data.js",
+  "source": {
+    "file": "src/services/exoticSatRanges.js",
+    "sha256": "48f27a81ed95709e6eafd5861e622c5308f475fcddd86e0b8bed58e7d11e85ac"
+  },
+  "bin": {
+    "file": "data/exotic-ranges.bin",
+    "bytes": 6596498,
+    "sha256": "c1d92116d294131ad609353cb25503f30bdbdc60fd74457bc980c17c97e74638"
+  },
+  "total_sats": 9297751718816,
+  "types": [
+    {
+      "name": "vintage",
+      "source_ranges": 1,
+      "ranges": 1,
+      "sats": 5000000000000,
+      "first": 0,
+      "end": 5000000000000
+    },
+    {
+      "name": "block9",
+      "source_ranges": 1,
+      "ranges": 1,
+      "sats": 5000000000,
+      "first": 45000000000,
+      "end": 50000000000
+    },
+    {
+      "name": "450x",
+      "source_ranges": 1,
+      "ranges": 1,
+      "sats": 100000000,
+      "first": 45000000000,
+      "end": 45100000000
+    },
+    {
+      "name": "block78",
+      "source_ranges": 1,
+      "ranges": 1,
+      "sats": 5000000000,
+      "first": 390000000000,
+      "end": 395000000000
+    },
+    {
+      "name": "block286",
+      "source_ranges": 1,
+      "ranges": 1,
+      "sats": 5000000000,
+      "first": 1430000000000,
+      "end": 1435000000000
+    },
+    {
+      "name": "block_666",
+      "source_ranges": 1,
+      "ranges": 1,
+      "sats": 5000000000,
+      "first": 3330000000000,
+      "end": 3335000000000
+    },
+    {
+      "name": "nakamoto",
+      "source_ranges": 19,
+      "ranges": 19,
+      "sats": 95000000000,
+      "first": 45000000000,
+      "end": 145490000000000
+    },
+    {
+      "name": "jpeg",
+      "source_ranges": 10,
+      "ranges": 10,
+      "sats": 50000000010,
+      "first": 151700000000000,
+      "end": 164765000000001
+    },
+    {
+      "name": "pizza",
+      "source_ranges": 825,
+      "ranges": 825,
+      "sats": 1000000000825,
+      "first": 120485000000000,
+      "end": 283940000000001
+    },
+    {
+      "name": "hitman",
+      "source_ranges": 6200,
+      "ranges": 5914,
+      "sats": 167000005918,
+      "first": 4045240644369,
+      "end": 1004243898150001
+    },
+    {
+      "name": "sr_1st_auction",
+      "source_ranges": 405534,
+      "ranges": 405497,
+      "sats": 2965651712063,
+      "first": 390039123225,
+      "end": 1264166615137433
+    },
+    {
+      "name": "requests",
+      "source_ranges": 0,
+      "ranges": 0,
+      "sats": 0,
+      "first": null,
+      "end": null
+    }
+  ]
+}
