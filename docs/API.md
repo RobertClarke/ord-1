@@ -184,6 +184,9 @@ Every tracked piece of the row (optionally only sats in `[from, to)`), in sat
 order, one line per piece:
 `{ "piece": Piece, "count": 1, "location": { …as in /sat… } }` where `count`
 is the number of the row's sats in the piece. Used for ad-hoc reports.
+The location's `output` leaves out its `pieces` array (mainnet outputs hold
+up to tens of thousands of pieces, which every line would repeat); add
+`&pieces=true` to include it.
 
 ### `GET /blocks?from=&to=`
 `[{ "height": …, "hash": "…", "time": … }]`, `to - from` ≤ 10,000.

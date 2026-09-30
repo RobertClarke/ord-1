@@ -60,7 +60,10 @@ pub struct OutputJson {
   pub created_height: u32,
   pub created_time: Option<u32>,
   pub extracted: bool,
-  pub pieces: Vec<PieceJson>,
+  /// Omitted in `/sats` lines unless asked for (outputs can hold tens of
+  /// thousands of pieces).
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub pieces: Option<Vec<PieceJson>>,
   pub rows: RowMap,
 }
 
@@ -262,6 +265,16 @@ impl<'a> Render<'a> {
   }
 
   pub fn output(&self, outpoint: OutPoint, utxo: &TrackedUtxo) -> anyhow::Result<OutputJson> {
+    self.output_with(outpoint, utxo, true)
+  }
+
+  /// `with_pieces: false` leaves out the `pieces` array.
+  pub fn output_with(
+    &self,
+    outpoint: OutPoint,
+    utxo: &TrackedUtxo,
+    with_pieces: bool,
+  ) -> anyhow::Result<OutputJson> {
     let created_time = self.time(utxo.height)?;
     let mut counts = Vec::new();
     self.count(&mut counts, &utxo.pieces);
@@ -274,14 +287,19 @@ impl<'a> Render<'a> {
       created_height: utxo.height,
       created_time,
       extracted: self.extracted(utxo.kind, utxo.value, created_time),
-      pieces: self.pieces(&utxo.pieces),
+      pieces: with_pieces.then(|| self.pieces(&utxo.pieces)),
       rows: self.row_map(&counts),
     })
   }
 
   /// The output a location refers to: the tracked UTXO, or for an
   /// overwritten piece the replaced UTXO holding it.
-  pub fn location_output(&self, location: &SatLocation) -> anyhow::Result<Option<OutputJson>> {
+  pub fn location_output(
+    &self,
+    location: &SatLocation,
+    with_pieces: bool,
+  ) -> anyhow::Result<Option<OutputJson>> {
+    let sat = location.piece.start;
     let utxo = match location.kind {
       LocationKind::Lost => return Ok(None),
       LocationKind::Unspent | LocationKind::Burned => self.reader.utxo(location.outpoint)?,
@@ -290,10 +308,15 @@ impl<'a> Render<'a> {
         .overwritten(location.outpoint)?
         .into_iter()
         .map(|(_, utxo)| utxo)
-        .find(|utxo| utxo.pieces.contains(&location.piece)),
+        .find(|utxo| {
+          utxo
+            .pieces
+            .iter()
+            .any(|piece| piece.start <= sat && sat < piece.end())
+        }),
     };
     utxo
-      .map(|utxo| self.output(location.outpoint, &utxo))
+      .map(|utxo| self.output_with(location.outpoint, &utxo, with_pieces))
       .transpose()
   }
 
@@ -303,7 +326,7 @@ impl<'a> Render<'a> {
       satpoint: format!("{}:{}", location.outpoint, location.offset),
       outpoint: location.outpoint,
       offset: location.offset,
-      output: self.location_output(location)?,
+      output: self.location_output(location, true)?,
     })
   }
 

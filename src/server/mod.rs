@@ -694,6 +694,7 @@ async fn sats(
     .get("row")
     .cloned()
     .ok_or_else(|| bad_request("`row` is required"))?;
+  let with_pieces = param::<bool>(&params, "pieces")?.unwrap_or(false);
 
   let row = read(&state, move |state, reader| {
     tip(reader)?;
@@ -736,7 +737,7 @@ async fn sats(
       let output = match outputs.get(&key) {
         Some(output) => Some(output.clone()),
         None => {
-          let output = render.location_output(&location)?;
+          let output = render.location_output(&location, with_pieces)?;
           if let Some(output) = &output {
             if outputs.len() >= 10_000 {
               outputs.clear();

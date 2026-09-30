@@ -1198,6 +1198,18 @@ fn sats_stream() {
   assert_eq!(lines[1]["location"]["outpoint"], t0.to_string());
   assert_eq!(lines[1]["location"]["satpoint"], format!("{t0}:0"));
   assert_eq!(lines[1]["location"]["output"]["value"], 546);
+  assert_eq!(
+    lines[1]["location"]["output"]["rows"],
+    json!({ "uncommon": 1, "alpha": 1 })
+  );
+  // Outputs come without their pieces unless asked for.
+  assert!(lines[1]["location"]["output"].get("pieces").is_none());
+  let full = server.ndjson("/sats?row=uncommon&pieces=true");
+  assert_eq!(
+    full[1]["location"]["output"]["pieces"],
+    json!([piece_json(0, COIN, 1, &["uncommon", "alpha"])])
+  );
+  server.error("/sats?row=uncommon&pieces=maybe", 400);
   assert_eq!(lines[2]["location"]["outpoint"], u0.to_string());
   assert_eq!(lines[3]["location"]["output"]["outpoint"], d.to_string());
   assert_eq!(
