@@ -1,7 +1,7 @@
 use {
   super::*,
   crate::{
-    indexer::RunMode,
+    indexer::{RunMode, Timings},
     store::{IndexMeta, TableInfo},
   },
   bitcoin::BlockHash,
@@ -32,7 +32,7 @@ struct UpdateOutput {
   tracked_utxos: u64,
   tracked_pieces: u64,
   lost_sats: u64,
-  commits: u64,
+  timings: Timings,
 }
 
 fn update(settings: Settings) -> anyhow::Result<()> {
@@ -63,7 +63,7 @@ fn update(settings: Settings) -> anyhow::Result<()> {
     tracked_utxos: status.tracked_utxos,
     tracked_pieces: status.tracked_pieces,
     lost_sats: status.lost_sats,
-    commits: status.timings.commits,
+    timings: status.timings,
   })
 }
 
