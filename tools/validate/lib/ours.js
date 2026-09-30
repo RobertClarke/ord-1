@@ -34,16 +34,28 @@ class Ours {
     return { status: res.status, body: res.json ?? res.text };
   }
 
+  // Output JSON (with every piece), or null when the output holds no
+  // tracked sat (404).
+  async output(outpoint) {
+    const res = await this.http.get(`/output/${outpoint}`);
+    if (res.status === 404) return null;
+    if (res.status !== 200 || !res.json) throw new Error(`ours /output/${outpoint} -> ${res.status}: ${String(res.text).slice(0, 200)}`);
+    return res.json;
+  }
+
   async blockMoves(height) {
     const res = await this.http.get(`/block/${height}/moves`);
     return res.status === 200 ? res.json : null;
   }
 
-  // NDJSON: one line per piece of the row, in sat order.
-  sats(row, onLine, { from, to } = {}) {
+  // NDJSON: one line per piece of the row, in sat order. `pieces: true`
+  // asks for each location's output with its pieces (every line repeats
+  // them, so only for rows of small outputs).
+  sats(row, onLine, { from, to, pieces = false } = {}) {
     const q = new URLSearchParams({ row });
     if (from !== undefined) q.set('from', String(from));
     if (to !== undefined) q.set('to', String(to));
+    if (pieces) q.set('pieces', 'true');
     return this.http.stream(`/sats?${q}`, onLine);
   }
 
