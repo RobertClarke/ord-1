@@ -338,7 +338,7 @@ fn restarts_resume_from_the_index() {
   thread::sleep(Duration::from_secs(3));
   let status = server.json("/status");
   assert_eq!(status["height"], 8);
-  assert_eq!(status["mode"], "starting");
+  assert_eq!(status["mode"], "serving");
   assert_eq!(server.json("/supply")["height"], 8);
   assert!(server.terminate().success());
 }

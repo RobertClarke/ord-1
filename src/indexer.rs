@@ -40,11 +40,17 @@ pub const FAST_SYNC_RESTART_THRESHOLD: u32 = 150_000;
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Mode {
+  /// Opening the index, restoring the tracker, reaching bitcoind.
   #[default]
   Starting,
   FastSync,
+  /// More than one block behind bitcoind.
   CatchUp,
+  /// Following bitcoind's tip (also while polls fail: see `Status::error`
+  /// and `Timings::last_poll_ok_at`).
   Live,
+  /// `ord server --no-sync`: the index as it is, read-only, not indexing.
+  Serving,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]

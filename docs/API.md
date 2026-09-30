@@ -58,7 +58,7 @@ supply numbers, not here.
   "version": "0.29.0-sats.1", "commit": "abc123…",
   "height": 969237, "hash": "…", "time": 1790734122,
   "bitcoind_height": 969240,
-  "mode": "fast_sync" | "catch_up" | "live" | "starting",
+  "mode": "starting" | "fast_sync" | "catch_up" | "live" | "serving",
   "fast_sync_complete": true,
   "started": 1790734000,
   "tracked_utxos": 1234567, "tracked_pieces": 2345678,
@@ -74,7 +74,10 @@ supply numbers, not here.
   "error": null
 }
 ```
-`height` is `null` until the first commit. `moves_retention` is
+`height` is `null` until the first commit. `mode`: `starting` (opening the
+index, reaching bitcoind), `fast_sync`, `catch_up` (more than one block
+behind), `live` (following the tip), or `serving` (`ord server --no-sync`:
+the index as it is, read-only, not indexing). `moves_retention` is
 `--moves-retention` (a number of blocks or `"all"`); `moves_from` is the
 lowest height whose moves are kept. `error` is the last indexing error
 (e.g. bitcoind unreachable), cleared by the next commit.

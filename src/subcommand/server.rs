@@ -1,7 +1,7 @@
 use {
   super::*,
   crate::{
-    indexer::{RunMode, expected_meta, restore},
+    indexer::{Mode, RunMode, expected_meta, restore},
     server::{self as api, ServerState},
   },
   std::{
@@ -50,6 +50,8 @@ impl Server {
       config: settings.config.clone(),
       moves_retention: settings.store.moves_retention,
       started,
+      stream_timeout: api::STREAM_TIMEOUT,
+      streams: Default::default(),
     });
 
     let indexer = if self.no_sync {
@@ -68,6 +70,7 @@ impl Server {
         &meta,
         IndexerOptions::new(&settings).supply_top,
       )?;
+      published.update_status(|status| status.mode = Mode::Serving);
       None
     } else {
       let indexer = indexer(

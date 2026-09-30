@@ -762,6 +762,12 @@ fn status() {
   );
   assert!(status["timings"]["blocks_per_second"].is_number());
 
+  // `ord server --no-sync`.
+  server
+    .published
+    .update_status(|status| status.mode = Mode::Serving);
+  assert_eq!(server.json("/status")["mode"], "serving");
+
   // Before the first commit, `height` is null.
   let server = TestServer::new(None);
   let status = server.json("/status");
