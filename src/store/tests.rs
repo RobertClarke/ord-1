@@ -669,6 +669,7 @@ fn moves_round_trip_with_references() {
           delta.height,
           RefPolicy {
             older_from: Some(0),
+            unreferenced: None,
           },
         ),
       )
@@ -1390,6 +1391,7 @@ fn table_info_lists_every_table() {
       "row_history",
       "scripts",
       "undo",
+      "unreferenced",
       "utxos"
     ]
     .into_iter()
@@ -1397,4 +1399,111 @@ fn table_info_lists_every_table() {
   );
   let headers = info.iter().find(|table| table.name == "headers").unwrap();
   assert_eq!(headers.entries, 10);
+}
+
+#[test]
+fn outputs_missing_from_their_blocks_moves_are_never_referenced() {
+  let dir = TempDir::new().unwrap();
+  let store = store(&dir, MovesRetention::All);
+  let mut chain = TestChain::new(31);
+  chain.txs_per_block = 3;
+  let mut deltas = (0..20).map(|_| chain.next_block()).collect::<Vec<_>>();
+
+  // Block 3's moves lose their outputs, as a buggy tracker might.
+  let stripped = deltas[3]
+    .moves
+    .iter_mut()
+    .flat_map(|m| m.outputs.drain(..))
+    .count();
+  assert!(stripped > 0);
+
+  store.commit(&deltas[..10], &chain.mined(), false).unwrap();
+  store.commit(&deltas[10..], &chain.mined(), false).unwrap();
+
+  // Every block's moves still read back: spends of block 3's outputs were
+  // stored in full.
+  for delta in &deltas {
+    assert_eq!(store.moves(delta.height).unwrap().unwrap(), delta.moves);
+  }
+
+  // Only block 3's still-unspent outputs remain listed.
+  let tx = store.db.begin_read().unwrap();
+  let listed = raw(&tx.open_table(UNREFERENCED).unwrap());
+  let unspent_from_3 = chain
+    .utxos
+    .iter()
+    .filter(|(_, utxo)| utxo.height == 3)
+    .count();
+  assert_eq!(listed.len(), unspent_from_3);
+}
+
+#[test]
+fn find_output_uses_the_txid_index() {
+  let txid = |prefix: u8, rest: u8| {
+    let mut bytes = [rest; 32];
+    bytes[..8].copy_from_slice(&[prefix; 8]);
+    Txid::from_byte_array(bytes)
+  };
+  let output = |vout: u32, value: u64| MoveOutput {
+    vout,
+    value,
+    script_pubkey: p2wpkh(vout as u8),
+    kind: UtxoKind::Spendable,
+    pieces: vec![Piece {
+      offset: 0,
+      start: value,
+      len: 1,
+    }],
+  };
+  let m = |txid: Txid, outputs: Vec<MoveOutput>| Move {
+    txid,
+    tx_index: 1,
+    coinbase: false,
+    input_value: 0,
+    output_value: 0,
+    inputs: Vec::new(),
+    outputs,
+    fee: Vec::new(),
+    mined: Vec::new(),
+    lost: Vec::new(),
+  };
+  // Two txids share their first 8 bytes; one txid is in two moves.
+  let moves = vec![
+    m(txid(9, 1), vec![output(0, 10)]),
+    m(txid(3, 1), vec![output(1, 11), output(2, 12)]),
+    m(txid(3, 2), vec![output(0, 13)]),
+    m(txid(9, 1), vec![output(5, 14)]),
+  ];
+  let bytes = encode_moves(&moves, 7, RefPolicy::SELF_CONTAINED);
+  assert_eq!(decode_moves(&bytes, 7).unwrap().0, moves);
+
+  let find = |txid: Txid, vout: u32| {
+    find_output(&bytes, 7, &OutPoint { txid, vout })
+      .unwrap()
+      .map(|utxo| utxo.value)
+  };
+  assert_eq!(find(txid(3, 1), 1), Some(11));
+  assert_eq!(find(txid(3, 1), 2), Some(12));
+  assert_eq!(find(txid(3, 2), 0), Some(13));
+  assert_eq!(find(txid(9, 1), 0), Some(10));
+  assert_eq!(find(txid(9, 1), 5), Some(14));
+  assert_eq!(find(txid(3, 2), 1), None);
+  assert_eq!(find(txid(4, 1), 0), None);
+  let utxo = find_output(
+    &bytes,
+    7,
+    &OutPoint {
+      txid: txid(3, 1),
+      vout: 2,
+    },
+  )
+  .unwrap()
+  .unwrap();
+  assert_eq!(utxo.height, 7);
+  assert_eq!(utxo.script_pubkey, p2wpkh(2));
+
+  // An empty block's record.
+  let empty = encode_moves(&[], 3, RefPolicy::SELF_CONTAINED);
+  assert_eq!(decode_moves(&empty, 3).unwrap().0, Vec::new());
+  assert_eq!(find_output(&empty, 3, &OutPoint::null()).unwrap(), None);
 }

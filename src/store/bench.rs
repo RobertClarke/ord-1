@@ -137,6 +137,7 @@ impl Generator {
   fn prefill_block(&mut self, n: usize) -> BlockDelta {
     let (height, hash, header) = self.header();
     let mut created = Vec::with_capacity(n);
+    let mut moves = Vec::with_capacity(n);
     for i in 0..n {
       let outpoint = OutPoint {
         txid: self.txid(),
@@ -153,6 +154,24 @@ impl Generator {
           len: 1,
         }],
       };
+      moves.push(Move {
+        txid: outpoint.txid,
+        tx_index: i as u32 + 1,
+        coinbase: false,
+        input_value: utxo.value,
+        output_value: utxo.value,
+        inputs: Vec::new(),
+        outputs: vec![MoveOutput {
+          vout: outpoint.vout,
+          value: utxo.value,
+          script_pubkey: utxo.script_pubkey.clone(),
+          kind: utxo.kind,
+          pieces: utxo.pieces.clone(),
+        }],
+        fee: Vec::new(),
+        mined: Vec::new(),
+        lost: Vec::new(),
+      });
       created.push((outpoint, utxo.clone()));
       self.live.push((outpoint, utxo));
     }
@@ -160,7 +179,7 @@ impl Generator {
       height,
       hash,
       header,
-      moves: Vec::new(),
+      moves,
       spent: Vec::new(),
       created,
       overwritten: Vec::new(),
@@ -432,6 +451,48 @@ fn bench_commit() {
       stats.moves_bytes as f64 / stats.moves.max(1) as f64,
     );
   }
+
+  let start = Instant::now();
+  let snapshot = store.load_snapshot().unwrap();
+  eprintln!(
+    "load_snapshot: {} UTXOs, {} headers in {:.2}s",
+    snapshot.utxos.len(),
+    snapshot.times.len(),
+    start.elapsed().as_secs_f64()
+  );
+
+  let reader = store.reader().unwrap();
+  let start = Instant::now();
+  let mut found = 0;
+  for (_, utxo) in snapshot.utxos.iter().step_by(100).take(10_000) {
+    if reader.locate(utxo.pieces[0].start).unwrap().is_some() {
+      found += 1;
+    }
+  }
+  eprintln!(
+    "locate: {found} lookups in {:.3}s",
+    start.elapsed().as_secs_f64()
+  );
+  let start = Instant::now();
+  let mut outputs = 0;
+  for (_, utxo) in snapshot.utxos.iter().step_by(100).take(10_000) {
+    outputs += reader.utxos_for_script(&utxo.script_pubkey).unwrap().len();
+  }
+  eprintln!(
+    "utxos_for_script: 10000 scripts, {outputs} outputs in {:.3}s",
+    start.elapsed().as_secs_f64()
+  );
+  let start = Instant::now();
+  let mut moves = 0;
+  let tip = snapshot.height.unwrap();
+  for height in tip.saturating_sub(1008)..=tip {
+    moves += reader.moves(height).unwrap().map_or(0, |moves| moves.len());
+  }
+  eprintln!(
+    "moves: 1009 blocks, {moves} moves decoded in {:.3}s",
+    start.elapsed().as_secs_f64()
+  );
+  drop(reader);
 
   for table in store.table_info().unwrap() {
     eprintln!(

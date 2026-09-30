@@ -14,7 +14,7 @@ use {
     consensus::{Decodable, Encodable},
     hashes::Hash,
   },
-  std::collections::HashMap,
+  std::collections::{HashMap, HashSet},
 };
 
 /// Key of the `utxos` table: txid then big-endian vout, so the outputs of one
@@ -457,8 +457,14 @@ pub(crate) fn decode_u64s(bytes: &[u8]) -> anyhow::Result<Vec<u64>> {
 //
 //   version u8 (= MOVES_V1)
 //   flags u8                      bit 0: some input refers to another block
-//   scripts: n, n × blob          every distinct script_pubkey of the block
-//   moves: n, n × move
+//   scripts: n, len, n × offset u32 LE, the scripts concatenated (`len`
+//            bytes): every distinct script_pubkey of the block, script i
+//            spanning offset i to offset i + 1 (or `len`)
+//   moves: n
+//   index: n × (txid[..8] as u64 LE, offset u32 LE), sorted: where each
+//          move starts in the body, to find a move by txid without
+//          decoding the others
+//   body: n × move
 //
 //   move    = txid[32] tx_index coinbase:u8 input_value output_value
 //             inputs outputs fee:pieces mined:pieces lost:pieces
@@ -483,17 +489,25 @@ const INPUT_FULL: u8 = 0;
 const INPUT_SAME_BLOCK: u8 = 1;
 const INPUT_OLDER_BLOCK: u8 = 2;
 
+const INDEX_ENTRY: usize = 12;
+
 /// Which inputs may be stored as references instead of in full.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct RefPolicy {
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct RefPolicy<'a> {
   /// Inputs created at or above this height (and below the block's own
   /// height) may refer to the creating block's moves. `None`: never.
   pub(crate) older_from: Option<u32>,
+  /// Outputs that the moves of their block do not hold as they are: never
+  /// referred to.
+  pub(crate) unreferenced: Option<&'a HashSet<OutPoint>>,
 }
 
-impl RefPolicy {
+impl RefPolicy<'static> {
   /// Self-contained records (undo records, bounded retention).
-  pub(crate) const SELF_CONTAINED: Self = Self { older_from: None };
+  pub(crate) const SELF_CONTAINED: Self = Self {
+    older_from: None,
+    unreferenced: None,
+  };
 }
 
 struct ScriptTable<'a> {
@@ -515,6 +529,10 @@ enum InputEncoding {
   Full,
   SameBlock { move_index: usize },
   OlderBlock,
+}
+
+fn txid_prefix(txid: &Txid) -> u64 {
+  u64::from_le_bytes(txid.as_byte_array()[..8].try_into().unwrap())
 }
 
 /// Encodes one block's moves (`height` is the block's height).
@@ -550,7 +568,13 @@ pub(crate) fn encode_moves(moves: &[Move], height: u32, policy: RefPolicy) -> Ve
           InputEncoding::SameBlock { move_index }
         }
         _ => match policy.older_from {
-          Some(from) if utxo.height >= from && utxo.height < height => {
+          Some(from)
+            if utxo.height >= from
+              && utxo.height < height
+              && !policy
+                .unreferenced
+                .is_some_and(|unreferenced| unreferenced.contains(&input.outpoint)) =>
+          {
             flags |= FLAG_EXTERNAL_REFS;
             InputEncoding::OlderBlock
           }
@@ -568,57 +592,76 @@ pub(crate) fn encode_moves(moves: &[Move], height: u32, policy: RefPolicy) -> Ve
     encodings.push(inputs);
   }
 
-  let mut enc = Enc::with_capacity(64 + moves.len() * 160);
-  enc.u8(MOVES_V1);
-  enc.u8(flags);
-  enc.varint(scripts.scripts.len() as u64);
-  for script in &scripts.scripts {
-    enc.blob(script);
-  }
-  enc.varint(moves.len() as u64);
+  let mut body = Enc::with_capacity(moves.len() * 160);
+  let mut index = Vec::with_capacity(moves.len());
   for (m, inputs) in moves.iter().zip(encodings) {
-    enc.txid(&m.txid);
-    enc.varint(m.tx_index.into());
-    enc.u8(m.coinbase.into());
-    enc.varint(m.input_value);
-    enc.varint(m.output_value);
-    enc.varint(m.inputs.len() as u64);
+    index.push((txid_prefix(&m.txid), body.buf.len() as u32));
+    body.txid(&m.txid);
+    body.varint(m.tx_index.into());
+    body.u8(m.coinbase.into());
+    body.varint(m.input_value);
+    body.varint(m.output_value);
+    body.varint(m.inputs.len() as u64);
     for (input, encoding) in m.inputs.iter().zip(inputs) {
-      enc.varint(input.vin.into());
+      body.varint(input.vin.into());
       match encoding {
         InputEncoding::Full => {
-          enc.u8(INPUT_FULL);
-          enc.outpoint(&input.outpoint);
-          enc.varint(input.utxo.value);
-          enc.varint(input.utxo.height.into());
-          enc.u8(kind_code(input.utxo.kind));
-          enc.varint(scripts.index[input.utxo.script_pubkey.as_bytes()]);
-          enc.pieces(&input.utxo.pieces);
+          body.u8(INPUT_FULL);
+          body.outpoint(&input.outpoint);
+          body.varint(input.utxo.value);
+          body.varint(input.utxo.height.into());
+          body.u8(kind_code(input.utxo.kind));
+          body.varint(scripts.index[input.utxo.script_pubkey.as_bytes()]);
+          body.pieces(&input.utxo.pieces);
         }
         InputEncoding::SameBlock { move_index } => {
-          enc.u8(INPUT_SAME_BLOCK);
-          enc.varint(move_index as u64);
-          enc.varint(input.outpoint.vout.into());
+          body.u8(INPUT_SAME_BLOCK);
+          body.varint(move_index as u64);
+          body.varint(input.outpoint.vout.into());
         }
         InputEncoding::OlderBlock => {
-          enc.u8(INPUT_OLDER_BLOCK);
-          enc.varint((height - input.utxo.height).into());
-          enc.outpoint(&input.outpoint);
+          body.u8(INPUT_OLDER_BLOCK);
+          body.varint((height - input.utxo.height).into());
+          body.outpoint(&input.outpoint);
         }
       }
     }
-    enc.varint(m.outputs.len() as u64);
+    body.varint(m.outputs.len() as u64);
     for output in &m.outputs {
-      enc.varint(output.vout.into());
-      enc.varint(output.value);
-      enc.varint(scripts.index[output.script_pubkey.as_bytes()]);
-      enc.u8(kind_code(output.kind));
-      enc.pieces(&output.pieces);
+      body.varint(output.vout.into());
+      body.varint(output.value);
+      body.varint(scripts.index[output.script_pubkey.as_bytes()]);
+      body.u8(kind_code(output.kind));
+      body.pieces(&output.pieces);
     }
-    enc.pieces(&m.fee);
-    enc.pieces(&m.mined);
-    enc.pieces(&m.lost);
+    body.pieces(&m.fee);
+    body.pieces(&m.mined);
+    body.pieces(&m.lost);
   }
+  index.sort_unstable();
+
+  let scripts_len = scripts.scripts.iter().map(|s| s.len()).sum::<usize>();
+  let mut enc = Enc::with_capacity(
+    32 + scripts.scripts.len() * 4 + scripts_len + index.len() * INDEX_ENTRY + body.buf.len(),
+  );
+  enc.u8(MOVES_V1);
+  enc.u8(flags);
+  enc.varint(scripts.scripts.len() as u64);
+  enc.varint(scripts_len as u64);
+  let mut offset = 0u32;
+  for script in &scripts.scripts {
+    enc.raw(&offset.to_le_bytes());
+    offset += script.len() as u32;
+  }
+  for script in &scripts.scripts {
+    enc.raw(script);
+  }
+  enc.varint(moves.len() as u64);
+  for (prefix, offset) in index {
+    enc.raw(&prefix.to_le_bytes());
+    enc.raw(&offset.to_le_bytes());
+  }
+  enc.raw(&body.buf);
   enc.buf
 }
 
@@ -635,37 +678,78 @@ pub(crate) struct ExternalRef {
   pub(crate) outpoint: OutPoint,
 }
 
-/// Decodes a block's moves. Inputs referring to older blocks are returned in
-/// `ExternalRef`s with a placeholder `utxo` for the caller to resolve.
-pub(crate) fn decode_moves(
-  bytes: &[u8],
-  height: u32,
-) -> anyhow::Result<(Vec<Move>, Vec<ExternalRef>)> {
-  let mut dec = Dec::new(bytes);
-  let version = dec.u8()?;
-  ensure!(
-    version == MOVES_V1,
-    "corrupt store record: moves version {version}"
-  );
-  let _flags = dec.u8()?;
-  let n_scripts = dec.len()?;
-  let mut scripts = Vec::with_capacity(n_scripts);
-  for _ in 0..n_scripts {
-    scripts.push(dec.blob()?);
-  }
-  let script = |index: u64| -> anyhow::Result<ScriptBuf> {
-    let script = usize::try_from(index)
-      .ok()
-      .and_then(|index| scripts.get(index))
-      .context("corrupt store record: script index")?;
-    Ok(ScriptBuf::from_bytes(script.to_vec()))
-  };
+/// A moves record's header: its scripts, its index and its body.
+struct MovesRecord<'a> {
+  script_offsets: &'a [u8],
+  scripts: &'a [u8],
+  n: usize,
+  index: &'a [u8],
+  body: &'a [u8],
+}
 
-  let n_moves = dec.len()?;
-  let mut moves = Vec::with_capacity(n_moves);
-  let mut same_block = Vec::new();
-  let mut external = Vec::new();
-  for move_index in 0..n_moves {
+impl<'a> MovesRecord<'a> {
+  fn parse(bytes: &'a [u8]) -> anyhow::Result<Self> {
+    let mut dec = Dec::new(bytes);
+    let version = dec.u8()?;
+    ensure!(
+      version == MOVES_V1,
+      "corrupt store record: moves version {version}"
+    );
+    let _flags = dec.u8()?;
+    let n_scripts = dec.len()?;
+    let scripts_len = dec.len()?;
+    let script_offsets = dec.raw(
+      n_scripts
+        .checked_mul(4)
+        .context("corrupt store record: script offsets")?,
+    )?;
+    let scripts = dec.raw(scripts_len)?;
+    let n = dec.len()?;
+    let index = dec.raw(
+      n.checked_mul(INDEX_ENTRY)
+        .context("corrupt store record: moves index")?,
+    )?;
+    let body = dec.raw(bytes.len() - dec.pos)?;
+    Ok(Self {
+      script_offsets,
+      scripts,
+      n,
+      index,
+      body,
+    })
+  }
+
+  fn script_offset(&self, index: usize) -> Option<usize> {
+    self
+      .script_offsets
+      .get(index * 4..index * 4 + 4)
+      .map(|bytes| u32::from_le_bytes(bytes.try_into().unwrap()) as usize)
+  }
+
+  fn script(&self, index: u64) -> anyhow::Result<ScriptBuf> {
+    let index = usize::try_from(index).context("corrupt store record: script index")?;
+    let start = self
+      .script_offset(index)
+      .context("corrupt store record: script index")?;
+    let end = self.script_offset(index + 1).unwrap_or(self.scripts.len());
+    let script = self
+      .scripts
+      .get(start..end)
+      .context("corrupt store record: script offsets")?;
+    Ok(ScriptBuf::from_bytes(script.to_vec()))
+  }
+
+  fn index_entry(&self, i: usize) -> (u64, usize) {
+    let entry = &self.index[i * INDEX_ENTRY..(i + 1) * INDEX_ENTRY];
+    (
+      u64::from_le_bytes(entry[..8].try_into().unwrap()),
+      u32::from_le_bytes(entry[8..].try_into().unwrap()) as usize,
+    )
+  }
+
+  /// Decodes one move; same-block and older-block references are returned
+  /// as `(input index, reference)` with placeholder UTXOs.
+  fn decode_move(&self, dec: &mut Dec, height: u32) -> anyhow::Result<(Move, Vec<(usize, Ref)>)> {
     let txid = dec.txid()?;
     let tx_index = dec.u32()?;
     let coinbase = dec.u8()? != 0;
@@ -673,6 +757,7 @@ pub(crate) fn decode_moves(
     let output_value = dec.varint()?;
     let n_inputs = dec.len()?;
     let mut inputs = Vec::with_capacity(n_inputs);
+    let mut refs = Vec::new();
     for input_index in 0..n_inputs {
       let vin = dec.u32()?;
       let placeholder = || TrackedUtxo {
@@ -688,7 +773,7 @@ pub(crate) fn decode_moves(
           let value = dec.varint()?;
           let height = dec.u32()?;
           let kind = kind_from_code(dec.u8()?)?;
-          let script_pubkey = script(dec.varint()?)?;
+          let script_pubkey = self.script(dec.varint()?)?;
           let pieces = dec.pieces()?;
           MoveInput {
             vin,
@@ -705,7 +790,7 @@ pub(crate) fn decode_moves(
         INPUT_SAME_BLOCK => {
           let source = usize::try_from(dec.varint()?).context("corrupt store record")?;
           let vout = dec.u32()?;
-          same_block.push((move_index, input_index, source, vout));
+          refs.push((input_index, Ref::SameBlock { source, vout }));
           MoveInput {
             vin,
             outpoint: OutPoint {
@@ -721,12 +806,13 @@ pub(crate) fn decode_moves(
           let created = height
             .checked_sub(back)
             .context("corrupt store record: reference height")?;
-          external.push(ExternalRef {
-            move_index,
+          refs.push((
             input_index,
-            height: created,
-            outpoint,
-          });
+            Ref::OlderBlock {
+              height: created,
+              outpoint,
+            },
+          ));
           MoveInput {
             vin,
             outpoint,
@@ -742,7 +828,7 @@ pub(crate) fn decode_moves(
     for _ in 0..n_outputs {
       let vout = dec.u32()?;
       let value = dec.varint()?;
-      let script_pubkey = script(dec.varint()?)?;
+      let script_pubkey = self.script(dec.varint()?)?;
       let kind = kind_from_code(dec.u8()?)?;
       let pieces = dec.pieces()?;
       outputs.push(MoveOutput {
@@ -756,18 +842,54 @@ pub(crate) fn decode_moves(
     let fee = dec.pieces()?;
     let mined = dec.pieces()?;
     let lost = dec.pieces()?;
-    moves.push(Move {
-      txid,
-      tx_index,
-      coinbase,
-      input_value,
-      output_value,
-      inputs,
-      outputs,
-      fee,
-      mined,
-      lost,
-    });
+    Ok((
+      Move {
+        txid,
+        tx_index,
+        coinbase,
+        input_value,
+        output_value,
+        inputs,
+        outputs,
+        fee,
+        mined,
+        lost,
+      },
+      refs,
+    ))
+  }
+}
+
+enum Ref {
+  SameBlock { source: usize, vout: u32 },
+  OlderBlock { height: u32, outpoint: OutPoint },
+}
+
+/// Decodes a block's moves. Inputs referring to older blocks are returned in
+/// `ExternalRef`s with a placeholder `utxo` for the caller to resolve.
+pub(crate) fn decode_moves(
+  bytes: &[u8],
+  height: u32,
+) -> anyhow::Result<(Vec<Move>, Vec<ExternalRef>)> {
+  let record = MovesRecord::parse(bytes)?;
+  let mut dec = Dec::new(record.body);
+  let mut moves = Vec::with_capacity(record.n);
+  let mut same_block = Vec::new();
+  let mut external = Vec::new();
+  for move_index in 0..record.n {
+    let (m, refs) = record.decode_move(&mut dec, height)?;
+    for (input_index, reference) in refs {
+      match reference {
+        Ref::SameBlock { source, vout } => same_block.push((move_index, input_index, source, vout)),
+        Ref::OlderBlock { height, outpoint } => external.push(ExternalRef {
+          move_index,
+          input_index,
+          height,
+          outpoint,
+        }),
+      }
+    }
+    moves.push(m);
   }
   dec.finish()?;
 
@@ -788,6 +910,48 @@ pub(crate) fn decode_moves(
   }
 
   Ok((moves, external))
+}
+
+/// The output `outpoint` of the block's moves (`bytes` is the block's
+/// record), decoding only the moves whose txid shares its 8-byte prefix.
+pub(crate) fn find_output(
+  bytes: &[u8],
+  height: u32,
+  outpoint: &OutPoint,
+) -> anyhow::Result<Option<TrackedUtxo>> {
+  let record = MovesRecord::parse(bytes)?;
+  let prefix = txid_prefix(&outpoint.txid);
+  let first = {
+    let (mut lo, mut hi) = (0, record.n);
+    while lo < hi {
+      let mid = (lo + hi) / 2;
+      if record.index_entry(mid).0 < prefix {
+        lo = mid + 1;
+      } else {
+        hi = mid;
+      }
+    }
+    lo
+  };
+  for i in first..record.n {
+    let (entry_prefix, offset) = record.index_entry(i);
+    if entry_prefix != prefix {
+      break;
+    }
+    ensure!(
+      offset < record.body.len(),
+      "corrupt store record: moves index offset"
+    );
+    let mut dec = Dec::new(&record.body[offset..]);
+    let (m, _) = record.decode_move(&mut dec, height)?;
+    if m.txid != outpoint.txid {
+      continue;
+    }
+    if let Some(output) = m.outputs.iter().find(|output| output.vout == outpoint.vout) {
+      return Ok(Some(utxo_from_output(output, height)));
+    }
+  }
+  Ok(None)
 }
 
 pub(crate) fn utxo_from_output(output: &MoveOutput, height: u32) -> TrackedUtxo {

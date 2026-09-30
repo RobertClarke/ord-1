@@ -23,6 +23,7 @@
 //! | `moves` | height `u32` | the block's moves (below); only blocks with moves, only retained heights |
 //! | `row_history` | (row `u16`, height `u32`) | `RowStats` after the block, 8 varints; only rows the block changed |
 //! | `undo` | height `u32` | the whole `BlockDelta`, self-contained; the last `UNDO_DEPTH` blocks |
+//! | `unreferenced` | outpoint (36 bytes) | height of the block that created it: tracked UTXOs that no move output of their block matches (normally empty); their spends are stored in full |
 //!
 //! Pieces are encoded as a count and `(offset gap, start, len)` triples, the
 //! gap being the distance from the previous piece's `offset_end()`.
@@ -65,9 +66,9 @@ use {
   self::codec::{
     Enc, Loc, OutPointKey, RefPolicy, decode_loc, decode_lost, decode_moves, decode_row_stats,
     decode_u64s, decode_undo, decode_utxo, encode_loc, encode_lost, encode_moves, encode_row_stats,
-    encode_u64s, encode_undo, encode_utxo, header_bytes, header_from_bytes,
+    encode_u64s, encode_undo, encode_utxo, find_output, header_bytes, header_from_bytes,
     moves_have_external_refs, outpoint_from_key, outpoint_key, overwritten_from_key,
-    overwritten_key, script_key, utxo_from_output,
+    overwritten_key, script_key,
   },
   crate::model::{
     BlockDelta, LocationKind, Move, Piece, RowId, RowStats, SatLocation, TrackedUtxo,
@@ -84,7 +85,7 @@ use {
   rustc_hash::FxHashMap,
   serde::{Deserialize, Serialize},
   std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fmt::{self, Display, Formatter},
     path::{Path, PathBuf},
     str::FromStr,
@@ -109,6 +110,7 @@ const LOST: TableDefinition<u64, &[u8]> = TableDefinition::new("lost");
 const MOVES: TableDefinition<u32, &[u8]> = TableDefinition::new("moves");
 const ROW_HISTORY: TableDefinition<(u16, u32), &[u8]> = TableDefinition::new("row_history");
 const UNDO: TableDefinition<u32, &[u8]> = TableDefinition::new("undo");
+const UNREFERENCED: TableDefinition<&OutPointKey, u32> = TableDefinition::new("unreferenced");
 
 const KEY_SCHEMA_VERSION: &str = "schema_version";
 const KEY_META: &str = "meta";
@@ -342,6 +344,7 @@ impl Store {
     tx.open_table(MOVES)?;
     tx.open_table(ROW_HISTORY)?;
     tx.open_table(UNDO)?;
+    tx.open_table(UNREFERENCED)?;
     tx.commit()?;
     Ok(())
   }
@@ -359,6 +362,7 @@ impl Store {
     tx.delete_table(MOVES)?;
     tx.delete_table(ROW_HISTORY)?;
     tx.delete_table(UNDO)?;
+    tx.delete_table(UNREFERENCED)?;
     tx.commit()?;
     self.create_tables()
   }
@@ -594,11 +598,48 @@ impl Store {
           }
         }
 
+        let older_from = match self.options.moves_retention {
+          MovesRetention::All => Some(floor),
+          MovesRetention::Blocks(_) => None,
+        };
+
+        // References to older blocks' moves rely on every tracked UTXO
+        // being an output of a move of its block, as it is: check it, and
+        // record the exceptions so that their spends are stored in full.
+        let mut unreferenced = HashSet::new();
+        if older_from.is_some() {
+          let mut table = tx.open_table(UNREFERENCED)?;
+          for entry in table.iter()? {
+            unreferenced.insert(outpoint_from_key(entry?.0.value()));
+          }
+          let found = deltas
+            .par_iter()
+            .filter(|delta| delta.height >= floor)
+            .flat_map_iter(|delta| unmatched_outputs(delta).map(move |outpoint| (outpoint, delta)))
+            .map(|(outpoint, delta)| (outpoint, delta.height))
+            .collect::<Vec<(OutPoint, u32)>>();
+          for (i, (outpoint, height)) in found.iter().enumerate() {
+            if i < 10 {
+              log::warn!(
+                "block {height}: tracked output {outpoint} is not an output of the block's \
+                 moves; its spend will be stored in full"
+              );
+            }
+            unreferenced.insert(*outpoint);
+            table.insert(&outpoint_key(outpoint), height)?;
+          }
+          if !unreferenced.is_empty() {
+            for (outpoint, _) in deltas.iter().flat_map(|delta| &delta.spent) {
+              if unreferenced.contains(outpoint) {
+                table.remove(&outpoint_key(outpoint))?;
+              }
+            }
+          }
+        }
+
         let policy = RefPolicy {
-          older_from: match self.options.moves_retention {
-            MovesRetention::All => Some(floor),
-            MovesRetention::Blocks(_) => None,
-          },
+          older_from,
+          unreferenced: Some(&unreferenced),
         };
 
         let encoded = deltas
@@ -843,6 +884,7 @@ impl Store {
     table!(MOVES);
     table!(ROW_HISTORY);
     table!(UNDO);
+    table!(UNREFERENCED);
 
     tx.abort()?;
     Ok(info)
@@ -930,36 +972,53 @@ fn resolve_moves(
   bytes: &[u8],
 ) -> anyhow::Result<Vec<Move>> {
   let (mut moves, external) = decode_moves(bytes, height)?;
-  let mut blocks: HashMap<u32, Vec<Move>> = HashMap::new();
   for reference in external {
-    let block = match blocks.entry(reference.height) {
-      std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),
-      std::collections::hash_map::Entry::Vacant(entry) => {
-        let value = table.get(reference.height)?.with_context(|| {
-          format!(
-            "corrupt index: moves of block {height} refer to block {}, whose moves are missing",
-            reference.height
-          )
-        })?;
-        entry.insert(decode_moves(value.value(), reference.height)?.0)
-      }
-    };
-    let output = block
-      .iter()
-      .filter(|m| m.txid == reference.outpoint.txid)
-      .flat_map(|m| &m.outputs)
-      .find(|output| output.vout == reference.outpoint.vout)
-      .with_context(|| {
+    let value = table.get(reference.height)?.with_context(|| {
+      format!(
+        "corrupt index: moves of block {height} refer to block {}, whose moves are missing",
+        reference.height
+      )
+    })?;
+    let utxo =
+      find_output(value.value(), reference.height, &reference.outpoint)?.with_context(|| {
         format!(
           "corrupt index: moves of block {height} refer to output {} of block {}, which is \
            not there",
           reference.outpoint, reference.height
         )
       })?;
-    moves[reference.move_index].inputs[reference.input_index].utxo =
-      utxo_from_output(output, reference.height);
+    moves[reference.move_index].inputs[reference.input_index].utxo = utxo;
   }
   Ok(moves)
+}
+
+/// Tracked UTXOs the block created that none of its moves' outputs holds
+/// exactly.
+fn unmatched_outputs(delta: &BlockDelta) -> impl Iterator<Item = OutPoint> + '_ {
+  let outputs = delta
+    .moves
+    .iter()
+    .flat_map(|m| {
+      m.outputs
+        .iter()
+        .map(move |output| ((m.txid, output.vout), output))
+    })
+    .collect::<HashMap<_, _>>();
+  delta
+    .created
+    .iter()
+    .filter(move |(outpoint, utxo)| {
+      !(utxo.height == delta.height
+        && outputs
+          .get(&(outpoint.txid, outpoint.vout))
+          .is_some_and(|output| {
+            output.value == utxo.value
+              && output.kind == utxo.kind
+              && output.script_pubkey == utxo.script_pubkey
+              && output.pieces == utxo.pieces
+          }))
+    })
+    .map(|(outpoint, _)| *outpoint)
 }
 
 /// A batch's net effect on the `utxos`, `locator` and `scripts` tables.
