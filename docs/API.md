@@ -3,6 +3,10 @@
 JSON over HTTP, read-only, served by `ord server` (default `127.0.0.1:8090`).
 Every response is `application/json` except the streaming endpoints, which
 are newline-delimited JSON (`application/x-ndjson`, one object per line).
+Streams are read chunk by chunk from the live index, so a long stream can
+include blocks committed after it started; one that fails midway ends with
+an `{"error": …}` line and a truncated body, and a client that reads nothing
+for 60 s has its stream cut off the same way.
 Errors: `{"error": "<message>"}` with 400 (bad input), 404 (unknown / not
 tracked) or 503 (index not ready). Sat numbers and values are JSON numbers
 (all < 2^53). Hashes and txids are hex in RPC byte order. `address` is the

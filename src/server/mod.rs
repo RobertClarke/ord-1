@@ -978,7 +978,10 @@ fn ndjson(state: Arc<ServerState>, mut producer: impl Produce) -> Response {
             log::error!("stream failed: {err:#}");
             // What was produced, a final error line, then the aborted end.
             aborted.store(true, Ordering::SeqCst);
-            let _ = line(&mut buffer, &serde_json::json!({ "error": format!("{err:#}") }));
+            let _ = line(
+              &mut buffer,
+              &serde_json::json!({ "error": format!("{err:#}") }),
+            );
             send(std::mem::take(&mut buffer));
             return;
           }
@@ -1002,4 +1005,3 @@ fn ndjson(state: Arc<ServerState>, mut producer: impl Produce) -> Response {
   )
     .into_response()
 }
-
