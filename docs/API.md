@@ -42,16 +42,25 @@ other sats may have fewer types). `offset` meaning depends on the holder
   "rows": { "uncommon": 1, "black": 1 }
 }
 ```
-`extracted` follows DESIGN.md §5 for the output as a whole (created on/after
-`extracted_since` and worth ≤ `extracted_max_value`). Per-row extraction
-(which also counts outputs made only of that row's sats) is reflected in the
-supply numbers, not here.
+`extracted` follows DESIGN.md §5, the same verdict for every row the output
+holds: spendable, created on/after `extracted_since`, and worth at most its
+extraction budget: `extracted_max_value` (10,000) sats per individually
+tracked sat, plus, for each run of block 9 (range) sats in a piece, the run's
+length + 10,000. A collector consolidation of 200 rare sats in 66,000 sats,
+or 100,000 block 9 sats in 100,438, is extracted; 2 uncommons in 1 BTC are
+not. Move inputs and outputs carry the same flag.
 
 **RowStats**
 ```json
 { "mined": 969238, "located": 969100, "burned": 3, "lost": 120, "overwritten": 2,
   "extracted": 51234, "holders": 400000, "extracted_holders": 20000 }
 ```
+`extracted` counts the row's located sats in extracted outputs (the
+Output's `extracted` flag above; DESIGN.md §5), `extracted_holders` the
+scripts holding at least one of them; `active_non_extracted` and the
+non-extracted holder list cover the rest. Since rules version 2 a collector
+consolidation (many rare sats at ~330 sats of padding each) counts as
+extracted.
 
 ## Endpoints
 

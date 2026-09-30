@@ -206,10 +206,33 @@ Per row, maintained incrementally as tracked UTXOs are created and removed:
   sats are born).
 * `located`, `burned`, `lost`, `overwritten`: current counts by location.
 * `extracted` (a.k.a. the gist's `n_seq`): count in UTXOs that are
-  *extracted*: created at a block with time ≥ 2022-12-14T00:00:00Z
-  (`extracted_since`, the ordinal-theory launch the old script used) **and**
-  (`value ≤ 10_000` (`extracted_max_value`) **or** every sat in the UTXO is a
-  sat of this row, i.e. `row_count == value`).
+  *extracted*. A tracked UTXO is extracted, for every row it holds, when
+  it is spendable, was created by a block with header time
+  ≥ 2022-12-14T00:00:00Z (`extracted_since`, the ordinal-theory launch the
+  old script used), and its value is at most its **extraction budget**:
+
+  ```
+  budget = Σ over its pieces ( inside + M × runs_inside + M × outside )
+  ```
+
+  with `M = extracted_max_value` (10,000), `inside` the piece's sats inside
+  `TrackerConfig::ranges` (block 9), `runs_inside` the number of maximal
+  runs they form within the piece, and `outside` its other sats. In words:
+  each individually tracked sat allows up to 10,000 sats of output value,
+  and each contiguous run of block 9 sats allows its own length + 10,000.
+  So a single rare sat still needs an output of ≤ 10,000 sats and a pure
+  block 9 output is extracted, as before; collector consolidations now are
+  too: a collector's address holds 2,298 outputs
+  packing rare sats at ~330 sats of padding each (100 rare sats in 33,000
+  sats, 200 in 66,000, 5,000 in 1,924,843) and near-pure block 9 chunks
+  such as 100,000 tracked sats in 100,438 (budget 110,000), all extracted;
+  while an exchange output holding a few uncommons in whole BTC is not
+  (2 in 1 BTC: budget 20,000). `model::is_extracted` is the one
+  implementation, used by the tracker and the API. Rules version 2 (the
+  catalog fingerprint) introduced it, replacing the per-row test
+  `value ≤ 10_000 || row_count == value`, which it subsumes; indexes built
+  under version 1 are refused and must be rebuilt, which recomputes the
+  per-block row history.
 * Non-extracted located counts bucketed by the UTXO's creation height (a
   Fenwick tree over heights) so "moved within N years" is answerable for any N
   at any tip time (`n_active_non_seq_Ny` = non-extracted located sats whose
