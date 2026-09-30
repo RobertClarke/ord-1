@@ -114,14 +114,25 @@ emit() {
 
 resolve_pid() {
   if [ -n "$pattern" ]; then
-    # Oldest matching process, not counting this watcher or whatever shell
-    # launched it (their command lines contain the pattern too).
-    local p best="" best_start=""
+    # Matching processes, minus this watcher (and whatever launched it with
+    # the pattern on its command line) and minus any match that is the
+    # parent of another match (bash -c / timeout / sudo wrappers): the
+    # oldest remaining one.
+    local p cands="" best="" best_start="" start
     for p in $(pgrep -f -- "$pattern" || true); do
       [ "$p" = "$$" ] && continue
       { tr '\0' ' ' < "/proc/$p/cmdline"; } 2>/dev/null | grep -q 'resource-watch' && continue
-      local start
+      cands="$cands $p"
+    done
+    for p in $cands; do
+      local parent_of_match=0 q
+      for q in $cands; do
+        [ "$q" = "$p" ] && continue
+        if [ "$(awk '{print $4}' "/proc/$q/stat" 2>/dev/null)" = "$p" ]; then parent_of_match=1; break; fi
+      done
+      [ "$parent_of_match" = 1 ] && continue
       start=$(awk '{print $22}' "/proc/$p/stat" 2>/dev/null) || continue
+      [ -n "$start" ] || continue
       if [ -z "$best" ] || [ "$start" -lt "$best_start" ]; then
         best="$p"
         best_start="$start"
@@ -134,14 +145,13 @@ resolve_pid() {
 }
 
 prev_pid=""
-prev_ticks=0
+prev_ticks=""
 prev_time=0
 prev_rb=0
 prev_wb=0
 started=$(date +%s)
 
 while :; do
-  now=$(date +%s.%N)
   cur=$(resolve_pid)
   mem_avail=$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo)
   mem_free=$(awk '/^MemFree:/ {print $2}' /proc/meminfo)
@@ -150,12 +160,15 @@ while :; do
   if [ -n "$data_dir" ] && [ -e "$data_dir" ]; then
     disk=$(du -sb "$data_dir" 2>/dev/null | cut -f1 || true)
   fi
+  # The clock is read next to the /proc reads the rates divide by it.
+  now=$(date +%s.%N)
   if [ -n "$cur" ] && [ -r "/proc/$cur/status" ]; then
     rss=$(awk '/^VmRSS:/ {print $2}' "/proc/$cur/status" 2>/dev/null || true)
     hwm=$(awk '/^VmHWM:/ {print $2}' "/proc/$cur/status" 2>/dev/null || true)
     threads=$(awk '/^Threads:/ {print $2}' "/proc/$cur/status" 2>/dev/null || true)
-    # utime + stime (fields 14 and 15; the name in field 2 may contain spaces).
-    ticks=$(sed 's/^.*) //' "/proc/$cur/stat" 2>/dev/null | awk '{print $12 + $13}' || echo 0)
+    # utime + stime (fields 14 and 15; the name in field 2 may contain
+    # spaces). Empty when the process is gone.
+    ticks=$(sed 's/^.*) //' "/proc/$cur/stat" 2>/dev/null | awk '{print $12 + $13}' || true)
     rb=$(awk '/^read_bytes:/ {print $2}' "/proc/$cur/io" 2>/dev/null || echo "")
     wb=$(awk '/^write_bytes:/ {print $2}' "/proc/$cur/io" 2>/dev/null || echo "")
     rchar=$(awk '/^rchar:/ {print $2}' "/proc/$cur/io" 2>/dev/null || echo "")
@@ -163,17 +176,21 @@ while :; do
     cpu=""
     rmb=""
     wmb=""
-    if [ "$cur" = "$prev_pid" ]; then
+    if [ "$cur" = "$prev_pid" ] && [ -n "$ticks" ] && [ -n "$rb" ] && [ -n "$prev_ticks" ]; then
       read -r cpu rmb wmb < <(awk -v t="$now" -v pt="$prev_time" -v k="$ticks" -v pk="$prev_ticks" -v hz="$clk_tck" \
         -v rb="${rb:-0}" -v prb="$prev_rb" -v wb="${wb:-0}" -v pwb="$prev_wb" \
         'BEGIN { dt = t - pt; if (dt <= 0) dt = 1; printf "%.1f %.2f %.2f\n", (k - pk) / hz / dt * 100, (rb - prb) / dt / 1e6, (wb - pwb) / dt / 1e6 }')
     fi
     emit "$(date -u +%Y-%m-%dT%H:%M:%SZ),${now%.*},$cur,${rss:-},${hwm:-},${cpu},${threads:-},${rb},${wb},${rmb},${wmb},${disk},${mem_avail},${mem_free},${load1},${rchar},${wchar}"
-    prev_pid="$cur"
-    prev_ticks="${ticks:-0}"
-    prev_time="$now"
-    prev_rb="${rb:-0}"
-    prev_wb="${wb:-0}"
+    if [ -n "$ticks" ]; then
+      prev_pid="$cur"
+      prev_ticks="$ticks"
+      prev_time="$now"
+      prev_rb="${rb:-0}"
+      prev_wb="${wb:-0}"
+    else
+      prev_pid=""
+    fi
   else
     emit "$(date -u +%Y-%m-%dT%H:%M:%SZ),${now%.*},,,,,,,,,,${disk},${mem_avail},${mem_free},${load1},,"
     if [ -z "$pattern" ]; then

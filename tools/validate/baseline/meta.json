@@ -2,10 +2,10 @@
   "created": "2026-09-30T03:26:36.400Z",
   "seed": "baseline-v1",
   "oracle_height": 969245,
-  "oracle_height_end": 969252,
+  "oracle_height_end": 969257,
   "oracle_lost_sats": 2895844904,
   "lost_ranges": 5519,
-  "bitcoind_height": 969252,
+  "bitcoind_height": 969257,
   "fee_heavy_blocks": [
     {
       "height": 409008,
@@ -90,7 +90,7 @@
       "direct": 4,
       "lost": 0,
       "burned": 0,
-      "untracked": 2,
+      "untracked": 4,
       "oracle_inconsistent": 2
     },
     "vintage-plain": {
@@ -140,11 +140,11 @@
     }
   },
   "oracle_http": {
-    "requests": 784,
+    "requests": 17,
     "retries": 0,
     "errors": 0
   },
-  "updated": "2026-09-30T04:02:55.640Z",
+  "updated": "2026-09-30T04:34:08.496Z",
   "block9": {
     "traced_to": 150000,
     "trace": {
@@ -302,9 +302,9 @@
       "seed": "baseline-v1"
     },
     "bip30": {
-      "oracle_height": 969245,
-      "oracle_height_end": 969245,
-      "created": "2026-09-30T03:26:36.400Z",
+      "oracle_height": 969257,
+      "oracle_height_end": 969257,
+      "created": "2026-09-30T04:34:08.490Z",
       "seed": "baseline-v1"
     },
     "vintage-plain": {

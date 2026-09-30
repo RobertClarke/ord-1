@@ -145,17 +145,30 @@ function isBip30Sat(sat) {
   return BIP30.some(({ height }) => sat >= firstSat(height) && sat < firstSat(height) + subsidy(height));
 }
 
+// The BIP30 entry whose overwritten coinbase minted `sat`, or null.
+function bip30Of(sat) {
+  return BIP30.find(({ height }) => sat >= firstSat(height) && sat < firstSat(height) + subsidy(height)) || null;
+}
+
+// Tracked ranges as the index reports them (`/status.ranges`), block 9 when
+// absent.
+function rangesFromStatus(status) {
+  const list = Array.isArray(status?.ranges) ? status.ranges.filter(r => Number.isSafeInteger(r.start) && Number.isSafeInteger(r.end)) : [];
+  return list.length ? list.map(r => ({ id: r.id, start: r.start, end: r.end })) : [{ id: 'block9', ...BLOCK9 }];
+}
+
 function isBip30Outpoint(outpoint) {
   return typeof outpoint === 'string' && BIP30.some(({ txid }) => outpoint.startsWith(`${txid}:`));
 }
 
-// A sat that is certainly not tracked by any rule of DESIGN.md §1 (as scoped:
-// only block 9 is a whole range). Conservative: excludes every palindrome,
-// every alpha/omega, uncommon, black and block 9. Bounty3 names are ~12.5k
-// scattered sats and cannot be excluded without the name list; a random pick
-// hits one with probability ~6e-12.
-function isCertainlyUntracked(sat) {
-  if (inRange(sat, BLOCK9)) return false;
+// A sat that is certainly not tracked by any rule of DESIGN.md §1, given the
+// whole ranges the index tracks (`/status.ranges`; block 9 by default).
+// Conservative: excludes every palindrome, every alpha/omega, uncommon,
+// black and the ranges. Bounty3 names are ~12.5k scattered sats and cannot
+// be excluded without the name list; a random pick hits one with
+// probability ~6e-12.
+function isCertainlyUntracked(sat, ranges = [BLOCK9]) {
+  if (ranges.some(r => inRange(sat, r))) return false;
   if (isAlpha(sat) || isOmega(sat)) return false;
   if (isPalindrome(sat)) return false;
   const off = blockOffset(sat);
@@ -247,6 +260,8 @@ module.exports = {
   rarity,
   inRange,
   isBip30Sat,
+  bip30Of,
+  rangesFromStatus,
   isBip30Outpoint,
   isCertainlyUntracked,
   palindromesIn,

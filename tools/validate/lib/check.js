@@ -15,8 +15,9 @@ class SampleSet {
 
   add(sat, set, expect = 'tracked') {
     if (!Number.isSafeInteger(sat) || sat < 0) return;
-    // BIP30-overwritten sats are reported apart, whatever set picked them.
-    if (sm.isBip30Sat(sat)) expect = 'known_diff';
+    // Tracked sats of the BIP30-overwritten coinbases are reported apart,
+    // whatever set picked them; their other sats are simply untracked.
+    if (sm.isBip30Sat(sat)) expect = sm.isCertainlyUntracked(sat) ? 'untracked' : 'known_diff';
     let s = this.map.get(sat);
     if (!s) {
       s = { sat, sets: new Set(), expect };
@@ -218,7 +219,8 @@ function evaluateLive(sample, oursRes, oracleRes, { lost, scans }) {
   if (!tracked) {
     r.method = 'untracked';
     if (sample.expect === 'tracked') fail('untracked_but_expected_tracked');
-    else r.status = sample.expect === 'known_diff' ? 'known_diff' : 'skip';
+    else if (sample.expect === 'known_diff') fail('bip30_untracked');
+    else r.status = 'skip';
     return r;
   }
 
@@ -242,15 +244,17 @@ function evaluateLive(sample, oursRes, oracleRes, { lost, scans }) {
 
   if (!loc) {
     fail('tracked_without_location');
-    return finalizeKnown(r, sample);
+    return r;
   }
-  // BIP30: sats of the overwritten coinbases (91812, 91722) are known to
-  // differ. Sats of 91842 / 91880 live at the same outpoints and are
-  // compared like any other.
-  if (loc.kind === 'overwritten') {
+  // BIP30: tracked sats of the overwritten coinbases (91812, 91722) differ
+  // from ord by design (it lost them); we must report them `overwritten`
+  // at their original outpoint and offset (DESIGN.md §4.5). Sats of
+  // 91842 / 91880 live at the same outpoints and are compared like any other.
+  if (sample.expect === 'known_diff' || loc.kind === 'overwritten') {
     r.method = 'bip30';
-    if (sample.expect === 'known_diff') r.status = 'known_diff';
-    else fail('unexpected_overwritten');
+    const reason = bip30Problem(sample.sat, loc);
+    if (reason) fail(reason);
+    else r.status = 'known_diff';
     return r;
   }
 
@@ -281,7 +285,7 @@ function evaluateLive(sample, oursRes, oracleRes, { lost, scans }) {
     if (r.status === 'match' && oursOutput?.address && orcBody.address && oursOutput.address !== orcBody.address) {
       fail('address_differs');
     }
-    return finalizeKnown(r, sample);
+    return r;
   }
 
   if (loc.kind === 'lost') {
@@ -290,7 +294,7 @@ function evaluateLive(sample, oursRes, oracleRes, { lost, scans }) {
     r.oracle.satpoint_derived = expected;
     if (lostOffset === null) fail('not_lost_in_oracle');
     else if (loc.outpoint !== sm.NULL_OUTPOINT || loc.offset !== lostOffset || loc.satpoint !== expected) fail('lost_offset_differs');
-    return finalizeKnown(r, sample);
+    return r;
   }
 
   // Claim: the sat is at loc.outpoint:loc.offset. The oracle's /output
@@ -322,17 +326,26 @@ function evaluateLive(sample, oursRes, oracleRes, { lost, scans }) {
     r.oracle.satpoint_derived = off === null || off === undefined ? null : `${loc.outpoint}:${off}`;
   }
   if (lostOffset !== null) fail('oracle_has_it_lost');
-  return finalizeKnown(r, sample);
+  return r;
 }
 
-function finalizeKnown(r, sample) {
-  if (sample.expect === 'known_diff') r.status = 'known_diff';
-  return r;
+// Why `loc` is not the overwritten location of a BIP30 sat (null if it is).
+function bip30Problem(sat, loc) {
+  const bip = sm.bip30Of(sat);
+  if (!bip) return 'unexpected_overwritten';
+  if (!loc || loc.kind !== 'overwritten') return 'bip30_not_overwritten';
+  const offset = sm.blockOffset(sat);
+  if (loc.outpoint !== `${bip.txid}:0` || loc.offset !== offset || loc.satpoint !== `${bip.txid}:0:${offset}`) return 'bip30_wrong_location';
+  return null;
 }
 
 // Baseline comparison: ours at any height H1 against oracle answers
 // recorded at H0, for sats whose recorded output provably still holds them
 // at H1 (bitcoind gettxout: unspent now and created at or before H1).
+// The genesis coinbase output is never in Core's UTXO set (it cannot be
+// spent), yet it holds its 50 BTC forever.
+const GENESIS_OUTPOINT = '4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b:0';
+
 class BaselineChecker {
   constructor({ ours, oracle = null, rpc, log, concurrency = 16, scanConcurrency = 8 }) {
     this.ours = ours;
@@ -344,9 +357,9 @@ class BaselineChecker {
   }
 
   // Unspent-at-tip test for outpoints, returning outpoint -> { unspent,
-  // created } (created height from confirmations).
+  // created } (created height from confirmations) or { error }.
   async utxoInfo(outpoints) {
-    const list = [...outpoints];
+    const list = [...outpoints].filter(op => op !== GENESIS_OUTPOINT);
     const replies = await this.rpc.batch(
       list.map(op => {
         const [txid, vout] = op.split(':');
@@ -358,7 +371,7 @@ class BaselineChecker {
     const best = new Map();
     for (const r of replies) if (r && !r.error && r.bestblock) best.set(r.bestblock, null);
     for (const hash of best.keys()) best.set(hash, (await this.rpc.call('getblockheader', [hash])).height);
-    const info = new Map();
+    const info = new Map([[GENESIS_OUTPOINT, { unspent: true, created: 0 }]]);
     list.forEach((op, i) => {
       const r = replies[i];
       if (r && r.error) info.set(op, { error: r.error.message });
@@ -369,7 +382,11 @@ class BaselineChecker {
     return { tip, info };
   }
 
-  async check(entries, { height, lostSats }) {
+  // `height`, `lostSats`: ours' /status before the queries; `ranges`: the
+  // whole ranges ours tracks. Ours' height is read again after its answers
+  // (it may be syncing): a claim is only wrong if its output is newer than
+  // that later height.
+  async check(entries, { height, lostSats, ranges }) {
     const log = this.log;
     const results = new Map();
     const ours = new Map();
@@ -381,15 +398,16 @@ class BaselineChecker {
         ours.set(e.sat, { status: 'error', body: err.message });
       }
     });
+    const heightAfter = (await this.ours.status()).height ?? height;
 
-    // Recorded outputs that must still exist unspent at `height`.
+    // Recorded outputs that must still exist unspent at `height`, and ours'
+    // claims for entries the baseline could not locate (checked live
+    // against the oracle's ranges when the claimed output is provably
+    // unchanged since `height`).
     const outpoints = new Set();
     for (const e of entries) {
       if (e.location && e.location.kind === 'unspent') outpoints.add(e.location.outpoint);
     }
-    // Ours' claims, for entries the baseline could not locate (checked live
-    // against the oracle's ranges when the claimed output is provably
-    // unchanged since `height`).
     const claimOutpoints = new Set();
     for (const e of entries) {
       if (e.location || e.expect === 'untracked' || e.expect === 'known_diff') continue;
@@ -399,7 +417,6 @@ class BaselineChecker {
     const { tip, info } = await this.utxoInfo(new Set([...outpoints, ...(this.oracle ? claimOutpoints : [])]));
     log.info(`bitcoind tip ${tip}; ${outpoints.size} baseline outputs, ${claimOutpoints.size} claim outputs`);
 
-    // Live claim checks against the oracle.
     const scans = new Map();
     if (this.oracle) {
       const byOp = new Map();
@@ -422,13 +439,13 @@ class BaselineChecker {
     }
 
     for (const e of entries) {
-      results.set(`${e.set}:${e.sat}`, evaluateBaseline(e, ours.get(e.sat), { height, lostSats, info, scans }));
+      results.set(`${e.set}:${e.sat}`, evaluateBaseline(e, ours.get(e.sat), { height, heightAfter, lostSats, ranges, info, scans }));
     }
-    return { results, tip };
+    return { results, tip, heightAfter };
   }
 }
 
-function evaluateBaseline(e, oursRes, { height, lostSats, info, scans }) {
+function evaluateBaseline(e, oursRes, { height, heightAfter = height, lostSats, ranges = [sm.BLOCK9], info, scans }) {
   const r = {
     sat: e.sat,
     sets: [e.set],
@@ -449,23 +466,36 @@ function evaluateBaseline(e, oursRes, { height, lostSats, info, scans }) {
     r.reasons.push(why);
     return r;
   };
-  if (!oursRes || oursRes.status === 'error' || (oursRes.status !== 200 && oursRes.status !== 404)) {
+  const error = why => {
     r.status = 'error';
-    r.reasons.push('ours_error');
+    r.reasons.push(why);
     return r;
-  }
+  };
+  if (!oursRes || oursRes.status === 'error' || (oursRes.status !== 200 && oursRes.status !== 404)) return error('ours_error');
   if (e.height > height) return skip('not_mined_at_our_height');
   const ours = oursRes.status === 200 ? oursRes.body : { tracked: false, location: null };
   const loc = ours.location;
+  const untrackedByRule = sm.isCertainlyUntracked(e.sat, ranges);
 
   if (e.expect === 'untracked') {
     r.method = 'untracked';
+    // Only untracked under the ranges the baseline assumed (block 9).
+    if (!untrackedByRule) return skip('inside_tracked_range');
     if (ours.tracked || loc) fail('tracked_but_expected_untracked');
     return r;
   }
   if (e.expect === 'known_diff') {
+    // BIP30: ours must report the tracked sats of the overwritten coinbases
+    // as `overwritten` where they were; their other sats are untracked.
     r.method = 'bip30';
-    r.status = 'known_diff';
+    if (!ours.tracked) {
+      if (!untrackedByRule) fail('bip30_untracked');
+      else r.method = 'untracked';
+      return r;
+    }
+    const reason = bip30Problem(e.sat, loc);
+    if (reason) fail(reason);
+    else r.status = 'known_diff';
     return r;
   }
   if (!ours.tracked) {
@@ -476,6 +506,8 @@ function evaluateBaseline(e, oursRes, { height, lostSats, info, scans }) {
   }
   const b = e.location;
   if (b && b.kind === 'lost') {
+    // Lost offsets are final once assigned; ours' lost total says which
+    // ones exist at its height (checked globally against the baseline).
     r.method = 'baseline_lost';
     if (typeof lostSats !== 'number') return skip('ours_lost_sats_unknown');
     if (b.offset >= lostSats) return skip('not_lost_yet_at_our_height');
@@ -492,7 +524,7 @@ function evaluateBaseline(e, oursRes, { height, lostSats, info, scans }) {
     r.method = 'baseline';
     const u = info.get(b.outpoint);
     r.context.utxo = u;
-    if (!u || u.error) return skip('gettxout_failed');
+    if (!u || u.error) return error('gettxout_failed');
     if (!u.unspent) return skip('baseline_output_spent_since');
     if (u.created > height) return skip('not_created_at_our_height');
     if (!loc || loc.satpoint !== b.satpoint) fail('satpoint_differs');
@@ -510,20 +542,17 @@ function evaluateBaseline(e, oursRes, { height, lostSats, info, scans }) {
   if (loc.kind !== 'unspent') return skip(`claim_kind_${loc.kind}`);
   const u = info.get(loc.outpoint);
   r.context.utxo = u;
-  if (!u || u.error) return skip('gettxout_failed');
+  if (!u || u.error) return error('gettxout_failed');
   if (!u.unspent) return skip('claim_output_spent_since');
-  if (u.created > height) {
+  if (u.created > heightAfter) {
     fail('claim_output_created_after_our_height');
     return r;
   }
+  if (u.created > height) return skip('ours_moved_during_run');
   const scan = scans.get(loc.outpoint);
   if (!scan) return skip('no_oracle');
   r.context.oracle_output_for_ours = compactScan(scan, e.sat);
-  if (scan.error) {
-    r.status = 'error';
-    r.reasons.push('oracle_output_error');
-    return r;
-  }
+  if (scan.error) return error('oracle_output_error');
   if (scan.status === 404 || !scan.sat_ranges) return skip('oracle_has_not_indexed_it');
   const off = scan.offsets?.[e.sat];
   if (off === null || off === undefined) fail('claim_sat_not_in_output');

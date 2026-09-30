@@ -190,7 +190,7 @@ function mockOurs({ entries, height, lostSats, mutate = null, unlocated = 'untra
   // A sat can be in several sets: answer with its best-located entry.
   const best = new Map();
   for (const e of entries) {
-    if (e.expect === 'untracked') {
+    if (e.expect === 'untracked' || (e.expect === 'known_diff' && sm.isCertainlyUntracked(e.sat))) {
       untracked.add(e.sat);
       continue;
     }
@@ -239,7 +239,7 @@ function mockOurs({ entries, height, lostSats, mutate = null, unlocated = 'untra
     rows.get(row).add(sat);
   };
   for (const e of entries) {
-    if (e.expect === 'untracked') continue;
+    if (untracked.has(e.sat)) continue;
     if (!tracked.has(e.sat)) {
       const b = best.get(e.sat);
       const location = locationOf(b);
@@ -304,8 +304,9 @@ function mockOurs({ entries, height, lostSats, mutate = null, unlocated = 'untra
   return { handler, state, tracked, rows };
 }
 
-// bitcoind: gettxout answers from `utxos` (outpoint -> created height).
-function mockBitcoind({ utxos, tip }) {
+// bitcoind: gettxout answers from `utxos` (outpoint -> created height);
+// outpoints in `failing` get an RPC error.
+function mockBitcoind({ utxos, tip, failing = new Set() }) {
   const state = { tip, calls: 0 };
   const bestblock = 'bb'.repeat(32);
   const answer = ({ method, params, id }) => {
@@ -314,6 +315,7 @@ function mockBitcoind({ utxos, tip }) {
     if (method === 'getblockcount') result = state.tip;
     else if (method === 'getblockheader') result = { hash: params[0], height: state.tip };
     else if (method === 'gettxout') {
+      if (failing.has(`${params[0]}:${params[1]}`)) return { id, result: null, error: { code: -1, message: 'boom' } };
       const created = utxos.get(`${params[0]}:${params[1]}`);
       result = created === undefined ? null : { bestblock, confirmations: state.tip - created + 1, value: 0.0001 };
     } else return { id, result: null, error: { code: -32601, message: 'Method not found' } };

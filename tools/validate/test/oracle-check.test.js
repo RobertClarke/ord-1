@@ -272,3 +272,138 @@ test('baseline: checks sats whose recorded output is still unspent at our height
     await rpcServer.close();
   }
 });
+
+test('live: ours losing a different number of sats than ord fails the run', async () => {
+  await withServers({ ours: { lostSats: meta.oracle_lost_sats - 5 } }, async ({ oursUrl, oracleUrl }) => {
+    const { code, report } = await runLive(oursUrl, oracleUrl, ['--edges=untracked', '--rows=uncommon']);
+    assert.equal(code, 1);
+    assert.deepEqual(
+      report.globals.map(g => [g.check, g.ok]),
+      [['lost_sats_total', false]],
+    );
+    assert.equal(report.summary.total.mismatched, 0);
+  });
+});
+
+test('live: BIP30 sats must be reported overwritten where they were', async () => {
+  const target = sm.uncommonSat(91_812);
+  const mutate = (sat, body) => {
+    if (sat === target) body.location = { ...body.location, kind: 'unspent' };
+    return body;
+  };
+  await withServers({ ours: { mutate } }, async ({ oursUrl, oracleUrl }) => {
+    const { code, mismatches, known } = await runLive(oursUrl, oracleUrl, ['--skip-rows', '--edges=bip30']);
+    assert.equal(code, 1);
+    assert.deepEqual(
+      mismatches.map(r => [r.sat, r.reasons]),
+      [[target, ['bip30_not_overwritten']]],
+    );
+    assert.ok(known.some(r => r.sat === sm.blackSat(91_812)), 'the black sat is still a known difference');
+  });
+});
+
+test('live: a seed reproduces the sample', async () => {
+  await withServers({}, async ({ oursUrl, oracleUrl }) => {
+    const sample = async seed => {
+      const file = path.join(tmpdir(), 'samples.jsonl');
+      await runLive(oursUrl, oracleUrl, ['--samples-per-row=3', '--edges=untracked,block9', `--seed=${seed}`, `--samples-out=${file}`]);
+      return fs.readFileSync(file, 'utf8');
+    };
+    const a = await sample('same');
+    assert.equal(await sample('same'), a);
+    assert.notEqual(await sample('other'), a);
+  });
+});
+
+async function runBaseline({ ours = {}, rpc, sets, extra = [] }) {
+  const dir = tmpdir();
+  const bySet = new Map();
+  for (const e of ENTRIES) {
+    if (sets && !sets.includes(e.set)) continue;
+    if (!bySet.has(e.set)) bySet.set(e.set, []);
+    bySet.get(e.set).push(e);
+  }
+  for (const [set, list] of bySet) fs.writeFileSync(path.join(dir, `${set}.jsonl`), list.map(e => JSON.stringify(e)).join('\n') + '\n');
+  fs.writeFileSync(path.join(dir, 'meta.json'), JSON.stringify({ oracle_height: HEIGHT, oracle_lost_sats: meta.oracle_lost_sats }));
+  const rpcServer = await startServer(rpc.handler);
+  try {
+    return await withServers({ ours }, async ({ oursUrl, oracleUrl, ours: mock }) => {
+      if (ours.onSat) mock.state.onSat = ours.onSat;
+      const out = path.join(tmpdir(), 'b.jsonl');
+      const summaryJson = path.join(path.dirname(out), 's.json');
+      let stdout = '';
+      const code = await main([`--ours=${oursUrl}`, `--baseline=${dir}`, `--oracle=${oracleUrl}`, `--rpc-url=${rpcServer.url}`, `--out=${out}`, `--summary-json=${summaryJson}`, ...extra], {
+        stdout: { write: s => (stdout += s) },
+        log: quiet,
+      });
+      return { code, stdout, report: JSON.parse(fs.readFileSync(summaryJson, 'utf8')), mismatches: readJsonl(out) };
+    });
+  } finally {
+    await rpcServer.close();
+  }
+}
+
+const recordedUtxos = () => {
+  const utxos = new Map();
+  for (const e of ENTRIES) if (e.location && e.location.kind === 'unspent') utxos.set(e.location.outpoint, e.location.created_height ?? 0);
+  return utxos;
+};
+
+test('baseline: gettxout failures are errors, and comparing nothing is not a pass', async () => {
+  const utxos = recordedUtxos();
+  const failing = new Set([ENTRIES.find(e => e.set === 'random-blocks' && e.location?.kind === 'unspent' && e.expect === 'tracked').location.outpoint]);
+  const failed = await runBaseline({ ours: { height: HEIGHT, unlocated: 'fake' }, rpc: mockBitcoind({ utxos, tip: HEIGHT, failing }), sets: ['random-blocks', 'vintage-alpha-omega', 'nakamoto'] });
+  assert.equal(failed.code, 2, failed.stdout);
+  assert.ok(failed.mismatches.some(r => r.reasons.includes('gettxout_failed')));
+
+  const nothing = await runBaseline({ ours: { height: 1000 }, rpc: mockBitcoind({ utxos, tip: HEIGHT }), sets: ['recent'] });
+  assert.equal(nothing.code, 2);
+  assert.equal(nothing.report.summary.total.checked, 0);
+});
+
+test('baseline: the genesis output counts as unspent', async () => {
+  const zero = ENTRIES.find(e => e.sat === 0 && e.location);
+  assert.ok(zero, 'sat 0 is in the baseline');
+  const mutate = (sat, body) => {
+    if (sat === 0) {
+      body.location.offset = 1;
+      body.location.satpoint = `${body.location.outpoint}:1`;
+    }
+    return body;
+  };
+  // bitcoind never reports the genesis output; the check must still run.
+  const res = await runBaseline({ ours: { height: 10, mutate }, rpc: mockBitcoind({ utxos: new Map(), tip: HEIGHT }), sets: ['milestones'] });
+  assert.equal(res.code, 1);
+  assert.deepEqual(
+    res.mismatches.map(r => [r.sat, r.reasons]),
+    [[0, ['satpoint_differs']]],
+  );
+});
+
+test('baseline: claims newer than our height fail unless ours moved during the run', async () => {
+  const ourHeight = HEIGHT - 5000;
+  const fake = new Map();
+  for (const e of ENTRIES) if (!e.location && e.expect === 'tracked' && e.height <= ourHeight) fake.set(`${'ff'.repeat(32)}:${e.sat % 1000}`, ourHeight + 2);
+  assert.ok(fake.size > 0);
+  const utxos = new Map([...recordedUtxos(), ...fake]);
+  const stuck = await runBaseline({ ours: { height: ourHeight, unlocated: 'fake' }, rpc: mockBitcoind({ utxos, tip: HEIGHT }), sets: ['random-blocks'] });
+  assert.equal(stuck.code, 1);
+  assert.ok(stuck.mismatches.every(r => r.reasons[0] === 'claim_output_created_after_our_height'));
+  // Ours advanced 5 blocks while answering: those claims are skipped.
+  const moving = await runBaseline({
+    ours: { height: ourHeight, unlocated: 'fake', onSat: (sat, st) => (st.height = ourHeight + 5) },
+    rpc: mockBitcoind({ utxos, tip: HEIGHT }),
+    sets: ['random-blocks'],
+  });
+  assert.equal(moving.code, 0, moving.stdout);
+  assert.ok(moving.report.skips.ours_moved_during_run > 0);
+});
+
+test('baseline: at or past the baseline height ours must have lost at least as much', async () => {
+  const res = await runBaseline({ ours: { height: HEIGHT, lostSats: meta.oracle_lost_sats - 1 }, rpc: mockBitcoind({ utxos: recordedUtxos(), tip: HEIGHT }), sets: ['lost'] });
+  assert.equal(res.code, 1);
+  assert.deepEqual(
+    res.report.globals.map(g => [g.check, g.ok]),
+    [['lost_sats_at_least_baseline', false]],
+  );
+});

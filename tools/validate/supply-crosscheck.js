@@ -16,6 +16,7 @@
 
 const fs = require('node:fs');
 const { Ours } = require('./lib/ours');
+const { rowSatBounds } = require('./lib/sampling');
 const { parseArgs, intOpt, listOpt, makeLogger, JsonlWriter } = require('./lib/util');
 
 const YEAR = 365 * 86_400;
@@ -51,6 +52,11 @@ class RowAccumulator {
     if (!out) {
       if (this.problems.length < 20) this.problems.push({ problem: 'unspent_without_output', line });
       return;
+    }
+    if (typeof out.created_time !== 'number') {
+      // Without it neither `extracted` nor the activity windows can be
+      // recomputed for this output.
+      if (this.problems.length < 20) this.problems.push({ problem: 'output_without_created_time', outpoint: loc.outpoint });
     }
     let o = this.outputs.get(loc.outpoint);
     if (!o) {
@@ -185,12 +191,19 @@ function compareHolders(reported, holders, top) {
 
 async function crosscheckRow(ours, row, { status, top, log }) {
   const acc = new RowAccumulator({ extractedMaxValue: status.extracted_max_value, extractedSince: status.extracted_since });
+  // The supply snapshot is published after each commit, so it can lag
+  // /sats: read it before and after the stream and keep the result only if
+  // both snapshots and /status agree on the height (the caller retries).
+  const supply = await ours.supply();
   const reported = top ? await ours.supplyRow(row.id, top) : null;
-  const supply = reported ? null : await ours.supply();
   const rowSupply = reported || supply.rows.find(r => r.id === row.id);
   if (!rowSupply) throw new Error(`/supply has no row ${row.id}`);
-  await ours.sats(row.id, line => acc.add(line));
-  const tipTime = supply?.time ?? (await ours.supply()).time;
+  // Every sat of a height-scoped or block-confined row lies in these bounds.
+  const bounds = rowSatBounds(row);
+  await ours.sats(row.id, line => acc.add(line), bounds ? { from: bounds[0], to: bounds[1] } : {});
+  const supplyAfter = await ours.supply();
+  const heights = { status: status.height, supply: supply.height, supply_after: supplyAfter.height };
+  const tipTime = supply.time;
   const computed = acc.result({ tipTime, top });
   const diffs = [];
   const s = rowSupply.stats || {};
@@ -221,7 +234,7 @@ async function crosscheckRow(ours, row, { status, top, log }) {
   for (const p of acc.outputFlagProblems()) diffs.push({ field: 'output.extracted', ...p });
   for (const p of acc.problems) diffs.push({ field: 'sats_line', ...p });
   log.info(`  ${row.id}: ${acc.lines} pieces, ${acc.outputs.size} outputs, ${diffs.length ? `${diffs.length} differences` : 'ok'}`);
-  return { row: row.id, lines: acc.lines, outputs: acc.outputs.size, reported: rowSupply.stats, computed: computed.stats, holder_readings: readings, diffs };
+  return { row: row.id, heights, lines: acc.lines, outputs: acc.outputs.size, reported: rowSupply.stats, computed: computed.stats, holder_readings: readings, diffs };
 }
 
 async function main(argv, io = {}) {
@@ -249,8 +262,9 @@ async function main(argv, io = {}) {
       try {
         const res = await crosscheckRow(ours, row, { status, top, log });
         const after = await ours.status();
-        if (after.height !== status.height) {
-          log.info(`  ${row.id}: height moved ${status.height} -> ${after.height} during the check, retrying`);
+        const seen = [res.heights.supply, res.heights.supply_after, after.height];
+        if (seen.some(h => h !== status.height)) {
+          log.info(`  ${row.id}: heights moved during the check (status ${status.height}, supply ${seen.join(' / ')}), retrying`);
           continue;
         }
         results.push({ height: status.height, ...res });

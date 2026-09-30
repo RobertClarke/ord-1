@@ -154,7 +154,8 @@ function chooseSats(b, { tip, lost, opts }) {
       const overwritten = h === height;
       b.add('bip30', sm.uncommonSat(h), 'uncommon', overwritten ? 'known_diff' : 'tracked');
       b.add('bip30', sm.blackSat(h), 'black', overwritten ? 'known_diff' : 'tracked');
-      b.add('bip30', sm.firstSat(h) + 1 + rng.int(sm.subsidy(h) - 2), 'plain', overwritten ? 'known_diff' : 'untracked');
+      // A random other sat of the block: not tracked, overwritten or not.
+      b.add('bip30', sm.firstSat(h) + 1 + rng.int(sm.subsidy(h) - 2), 'plain', 'untracked');
     }
   }
 

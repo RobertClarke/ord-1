@@ -1,7 +1,7 @@
 'use strict';
 
 const sm = require('./satmath');
-const { Reservoir, mapLimit } = require('./util');
+const { Reservoir, mapLimit, makeRng } = require('./util');
 
 // Blocks whose fees exceeded the subsidy (bitcoind getblockstats, checked
 // 2026-09-29): 409008 291.5 BTC of fees, 818087 85.2, 840000 37.6 (halving
@@ -12,18 +12,57 @@ const ALL_EDGES = ['epochs', 'block9', 'vintage', 'milestones', 'fee-heavy', 'fe
 
 const randomSatIn = (rng, piece) => piece.start + rng.int(piece.len);
 
+// Sat bounds implied by a type (only for types confined to known blocks).
+const TYPE_BOUNDS = {
+  block9: [sm.BLOCK9.start, sm.BLOCK9.end],
+  '450x': [sm.X450.start, sm.X450.end],
+  vintage: [sm.VINTAGE.start, sm.VINTAGE.end],
+  block78: [sm.firstSat(78), sm.firstSat(79)],
+  block286: [sm.firstSat(286), sm.firstSat(287)],
+  block_666: [sm.firstSat(666), sm.firstSat(667)],
+  nakamoto: [sm.firstSat(9), sm.firstSat(29_098)],
+  alpha_jan_feb_2009: [0, sm.firstSat(sm.FIRST_MARCH_2009_BLOCK)],
+};
+
+// [from, to) holding every sat of the row, when the row's height scope or
+// its all_of types confine it; else null. The fork's /sats walks every
+// tracked piece in [from, to), so bounds make a row stream much cheaper.
+function rowSatBounds(row) {
+  let lo = 0;
+  let hi = sm.SUPPLY;
+  let bounded = false;
+  if (Array.isArray(row.heights) && row.heights.length === 2) {
+    lo = Math.max(lo, sm.firstSat(row.heights[0]));
+    hi = Math.min(hi, sm.firstSat(row.heights[1] + 1));
+    bounded = true;
+  }
+  const types = [...(row.all_of || []), ...(row.range ? [row.id] : [])];
+  for (const t of types) {
+    const b = TYPE_BOUNDS[t];
+    if (!b) continue;
+    lo = Math.max(lo, b[0]);
+    hi = Math.min(hi, b[1]);
+    bounded = true;
+  }
+  return bounded && lo < hi ? [lo, hi] : null;
+}
+
 // Streams /sats for each row: a uniform sample of `perRow` pieces (then a
 // random sat inside each), every lost / burned / overwritten piece seen,
-// and all pieces of the range rows (block9, 450x).
-async function sampleRows(ours, rows, { perRow, rng, log, parallel = 3, keepRangeRows = ['block9', '450x'] }) {
+// and all pieces of the range rows (block9, 450x). Each row draws from its
+// own generator (`${seed}:${row.id}`), so a seed reproduces the sample
+// whatever order the streams interleave in.
+async function sampleRows(ours, rows, { perRow, seed, log, parallel = 3, keepRangeRows = ['block9', '450x'] }) {
   const samples = new Map();
   const special = { lost: [], burned: [], overwritten: [] };
   const rangePieces = new Map();
   const lines = new Map();
   const errors = [];
   await mapLimit(rows, parallel, async row => {
+    const rng = makeRng(`${seed}:${row.id}`);
     const reservoir = new Reservoir(perRow, rng);
     const keep = keepRangeRows.includes(row.id) ? [] : null;
+    const bounds = rowSatBounds(row);
     try {
       const n = await ours.sats(row.id, line => {
         const piece = line.piece;
@@ -32,7 +71,7 @@ async function sampleRows(ours, rows, { perRow, rng, log, parallel = 3, keepRang
         const kind = line.location?.kind;
         if (kind && kind !== 'unspent' && special[kind] && special[kind].length < 2000) special[kind].push({ row: row.id, piece });
         if (keep && keep.length < 500_000) keep.push({ start: piece.start, len: piece.len, offset: piece.offset });
-      });
+      }, bounds ? { from: bounds[0], to: bounds[1] } : {});
       lines.set(row.id, n);
     } catch (err) {
       errors.push({ row: row.id, error: err.message });
@@ -88,7 +127,13 @@ function lostCandidates(lostIndex, { palindromesPerRange = 50 } = {}) {
 
 // Edge sets. `add(sat, set, expect)` receives every pick.
 async function buildEdges(ctx, add) {
-  const { ours, oracle, rng, log, height, edges, rowData, feeHeavy = FEE_HEAVY_BLOCKS } = ctx;
+  const { ours, oracle, seed, log, height, edges, rowData, feeHeavy = FEE_HEAVY_BLOCKS, feesRecentBlocks = 500 } = ctx;
+  const rng = makeRng(`${seed}:edges`);
+  // Whole ranges the index tracks (block 9 by default).
+  const ranges = sm.rangesFromStatus(ctx.oursStatus);
+  const untracked = s => sm.isCertainlyUntracked(s, ranges);
+  // Moves are only kept from `moves_from` up (the fork's --moves-retention).
+  const movesFrom = Number.isInteger(ctx.oursStatus?.moves_from) ? ctx.oursStatus.moves_from : 0;
   const on = name => edges.includes(name);
   const mined = sm.firstSat(height + 1);
   const both = (h, set) => {
@@ -132,7 +177,7 @@ async function buildEdges(ctx, add) {
     let n = 0;
     for (let guard = 0; n < 30 && guard < 100_000; guard++) {
       const s = rng.int(sm.VINTAGE.end);
-      if (sm.isCertainlyUntracked(s)) {
+      if (untracked(s)) {
         add(s, 'edge:vintage-plain', 'untracked');
         n++;
       }
@@ -188,8 +233,11 @@ async function buildEdges(ctx, add) {
   }
 
   if (on('fee-heavy')) {
+    const unretained = feeHeavy.filter(h => h <= height && h < movesFrom);
+    if (unretained.length) log.info(`  fee-heavy blocks ${unretained.join(', ')} are below moves_from ${movesFrom}: only their uncommon/black sats`);
     for (const h of feeHeavy.filter(h => h <= height)) {
       both(h, 'edge:fee-heavy');
+      if (h < movesFrom) continue;
       const moves = await ours.blockMoves(h).catch(() => null);
       if (!moves) {
         log.warn(`/block/${h}/moves unavailable`);
@@ -211,34 +259,47 @@ async function buildEdges(ctx, add) {
   }
 
   if (on('fees')) {
-    // Every block-9 move of the chain: sats that went through a fee or got lost.
-    let windows = 0;
+    // Sats that went through a fee (or got lost): every block-9 move the
+    // fork kept, and all moves of the most recent blocks; plus what their
+    // coinbases received from fees (pieces outside the block's subsidy).
     const seen = new Set();
-    for (let from = 0; from <= height; from += 9_999) {
+    let picked = 0;
+    const take = (p, cap) => {
+      if (picked >= cap) return;
+      add(p.start, 'edge:fees');
+      if (p.len > 1) add(p.start + p.len - 1, 'edge:fees');
+      picked++;
+    };
+    const onMove = cap => line => {
+      const m = line.move || {};
+      const key = `${line.height}:${m.txid}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      for (const p of [...(m.fee_pieces || []), ...(m.lost_pieces || [])]) take(p, cap);
+      if (m.coinbase) {
+        const lo = sm.firstSat(line.height);
+        const hi = lo + sm.subsidy(line.height);
+        for (const o of m.outputs || []) for (const p of o.pieces || []) if (p.start < lo || p.start >= hi) take(p, cap);
+      }
+    };
+    let windows = 0;
+    for (let from = Math.max(0, movesFrom); from <= height; from += 10_000) {
       const to = Math.min(from + 9_999, height);
       try {
-        await ours.moves(
-          from,
-          to,
-          line => {
-            const m = line.move || {};
-            const key = `${line.height}:${m.txid}`;
-            if (seen.has(key)) return;
-            seen.add(key);
-            for (const p of [...(m.fee_pieces || []), ...(m.lost_pieces || [])]) {
-              add(p.start, 'edge:fees');
-              if (p.len > 1) add(p.start + p.len - 1, 'edge:fees');
-            }
-          },
-          { row: 'block9' },
-        );
+        await ours.moves(from, to, onMove(Infinity), { row: 'block9' });
         windows++;
       } catch (err) {
-        log.warn(`/moves ${from}-${to}: ${err.message}`);
-        break;
+        log.warn(`/moves?row=block9 ${from}-${to}: ${err.message}`);
       }
     }
-    log.info(`  block-9 moves scanned in ${windows} windows (${seen.size} moves)`);
+    const recentFrom = Math.max(movesFrom, height - feesRecentBlocks + 1, 0);
+    const before = picked;
+    try {
+      await ours.moves(recentFrom, height, onMove(picked + 300));
+    } catch (err) {
+      log.warn(`/moves ${recentFrom}-${height}: ${err.message}`);
+    }
+    log.info(`  fees: block-9 moves from ${Math.max(0, movesFrom)} in ${windows} windows, all moves from ${recentFrom}: ${seen.size} moves, ${picked} fee/lost pieces (${picked - before} recent)`);
   }
 
   if (on('lost')) {
@@ -269,7 +330,7 @@ async function buildEdges(ctx, add) {
     let n = 0;
     for (let guard = 0; n < 100 && guard < 100_000; guard++) {
       const s = sm.VINTAGE.end + rng.int(mined - sm.VINTAGE.end);
-      if (sm.isCertainlyUntracked(s)) {
+      if (untracked(s)) {
         add(s, 'edge:untracked', 'untracked');
         n++;
       }
@@ -277,4 +338,4 @@ async function buildEdges(ctx, add) {
   }
 }
 
-module.exports = { FEE_HEAVY_BLOCKS, ALL_EDGES, sampleRows, lostCandidates, buildEdges };
+module.exports = { FEE_HEAVY_BLOCKS, ALL_EDGES, sampleRows, lostCandidates, buildEdges, rowSatBounds };
