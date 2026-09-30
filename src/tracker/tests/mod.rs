@@ -3,6 +3,7 @@
 
 mod bench;
 mod differential;
+mod mainnet;
 mod scenarios;
 
 use {
