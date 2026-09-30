@@ -837,6 +837,10 @@ fn supply_history() {
     4
   );
 
+  // A huge `every` is one bucket ending at `to`.
+  let history = server.json("/supply/uncommon/history?from=1&every=4294967295");
+  assert_eq!(history["points"][0]["height"], 3);
+
   server.error("/supply/uncommon/history?from=3&to=1", 400);
   server.error("/supply/uncommon/history?every=0", 400);
   server.error("/supply/nope/history", 404);

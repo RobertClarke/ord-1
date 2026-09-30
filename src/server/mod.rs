@@ -407,7 +407,8 @@ async fn supply_history(
     let render = state.render(reader);
     let mut result = Vec::with_capacity(points as usize);
     for point in 0..points {
-      let end = (from + (point + 1) * every - 1).min(to);
+      let end =
+        (u64::from(from) + u64::from(point + 1) * u64::from(every) - 1).min(u64::from(to)) as u32;
       let stats = reader
         .row_stats_at(row, end)?
         .map(|(_, stats)| stats)
