@@ -1,0 +1,17 @@
+{
+  "format": "ORDB3NAM v1: see tools/export-monitoring-data.js",
+  "generated_by": "tools/export-monitoring-data.js",
+  "source": {
+    "file": "data/bounty3-names-map.json",
+    "sha256": "c7e7e337edcee6f8144ce738054bfa482237d523ed1de1e5664d363af95447b3",
+    "commit": "4461a634412314ccb6399163632a26c2709ef180"
+  },
+  "bin": {
+    "file": "data/bounty3-names.bin",
+    "bytes": 249016,
+    "sha256": "6e938ad3d7792c523ed3d62d707413ce3909826860dd39a6335dddaf60530e62"
+  },
+  "count": 12450,
+  "first": 5316945154122,
+  "last": 1922423761311063
+}
