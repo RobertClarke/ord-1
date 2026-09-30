@@ -1,0 +1,371 @@
+{
+  "note": "Oracle (ord 0.29-ish, --index-sats) calibration from gp, 2026-09-29/30. Run 1 read /output fully (JSON.parse); run 2 streamed and scanned it like oracle-check (lib/oracle.js). Run 2 overlapped a bitcoind-heavy trace on gp, which may explain its slower /sat numbers.",
+  "runs": [
+    {
+      "run": 1,
+      "oracle_height": 969243,
+      "sat": [
+        {
+          "concurrency": 1,
+          "requests": 300,
+          "errors": 0,
+          "statuses": {
+            "200": 300
+          },
+          "wall_s": 1.7,
+          "throughput_rps": 175.2,
+          "p50_ms": 5.1,
+          "p90_ms": 9,
+          "p99_ms": 13.2,
+          "max_ms": 38.2
+        },
+        {
+          "concurrency": 4,
+          "requests": 300,
+          "errors": 0,
+          "statuses": {
+            "200": 300
+          },
+          "wall_s": 0.3,
+          "throughput_rps": 874.7,
+          "p50_ms": 3.6,
+          "p90_ms": 7.7,
+          "p99_ms": 25.7,
+          "max_ms": 28.2
+        },
+        {
+          "concurrency": 8,
+          "requests": 300,
+          "errors": 0,
+          "statuses": {
+            "200": 300
+          },
+          "wall_s": 0.2,
+          "throughput_rps": 1397.6,
+          "p50_ms": 3,
+          "p90_ms": 15,
+          "p99_ms": 20.4,
+          "max_ms": 21.5
+        },
+        {
+          "concurrency": 16,
+          "requests": 300,
+          "errors": 0,
+          "statuses": {
+            "200": 300
+          },
+          "wall_s": 0.2,
+          "throughput_rps": 1219.5,
+          "p50_ms": 3.2,
+          "p90_ms": 34.8,
+          "p99_ms": 47.2,
+          "max_ms": 63.9
+        },
+        {
+          "concurrency": 32,
+          "requests": 300,
+          "errors": 0,
+          "statuses": {
+            "200": 300
+          },
+          "wall_s": 0.2,
+          "throughput_rps": 1212.4,
+          "p50_ms": 3.5,
+          "p90_ms": 69.3,
+          "p99_ms": 89.6,
+          "max_ms": 90.9
+        }
+      ],
+      "output_full_parse": [
+        {
+          "concurrency": 1,
+          "requests": 300,
+          "errors": 0,
+          "statuses": {
+            "200": 300
+          },
+          "wall_s": 95.3,
+          "throughput_rps": 3.1,
+          "p50_ms": 19,
+          "p90_ms": 582.8,
+          "p99_ms": 6955,
+          "max_ms": 15704.1
+        },
+        {
+          "concurrency": 4,
+          "requests": 300,
+          "errors": 1,
+          "statuses": {
+            "200": 299
+          },
+          "wall_s": 38.5,
+          "throughput_rps": 7.8,
+          "p50_ms": 6,
+          "p90_ms": 861.8,
+          "p99_ms": 11230.8,
+          "max_ms": 15598.6
+        },
+        {
+          "concurrency": 8,
+          "requests": 300,
+          "errors": 1,
+          "statuses": {
+            "200": 299
+          },
+          "wall_s": 67.6,
+          "throughput_rps": 4.4,
+          "p50_ms": 13.9,
+          "p90_ms": 752.4,
+          "p99_ms": 8576.5,
+          "max_ms": 11149.4
+        },
+        {
+          "concurrency": 16,
+          "requests": 300,
+          "errors": 1,
+          "statuses": {
+            "200": 299
+          },
+          "wall_s": 55.4,
+          "throughput_rps": 5.4,
+          "p50_ms": 28.6,
+          "p90_ms": 1486.7,
+          "p99_ms": 14285.9,
+          "max_ms": 23794.1
+        },
+        {
+          "concurrency": 32,
+          "requests": 300,
+          "errors": 0,
+          "statuses": {
+            "200": 300
+          },
+          "wall_s": 20.5,
+          "throughput_rps": 14.7,
+          "p50_ms": 33.7,
+          "p90_ms": 1192.5,
+          "p99_ms": 6963.3,
+          "max_ms": 20412.3
+        }
+      ],
+      "lost_output": {
+        "ms": 11,
+        "ranges": 5519,
+        "sats": 2895844904,
+        "status_lost_sats": 2895844904
+      }
+    },
+    {
+      "run": 2,
+      "oracle_height": 969247,
+      "sat": [
+        {
+          "concurrency": 1,
+          "requests": 300,
+          "errors": 0,
+          "statuses": {
+            "200": 300
+          },
+          "wall_s": 5.4,
+          "throughput_rps": 55.2,
+          "p50_ms": 17.1,
+          "p90_ms": 24.8,
+          "p99_ms": 31.3,
+          "max_ms": 51.7
+        },
+        {
+          "concurrency": 4,
+          "requests": 300,
+          "errors": 0,
+          "statuses": {
+            "200": 300
+          },
+          "wall_s": 1.2,
+          "throughput_rps": 246,
+          "p50_ms": 15.6,
+          "p90_ms": 22.7,
+          "p99_ms": 31.4,
+          "max_ms": 41.5
+        },
+        {
+          "concurrency": 8,
+          "requests": 300,
+          "errors": 0,
+          "statuses": {
+            "200": 300
+          },
+          "wall_s": 0.5,
+          "throughput_rps": 595,
+          "p50_ms": 11.8,
+          "p90_ms": 18.9,
+          "p99_ms": 27.8,
+          "max_ms": 240.4
+        },
+        {
+          "concurrency": 16,
+          "requests": 300,
+          "errors": 0,
+          "statuses": {
+            "200": 300
+          },
+          "wall_s": 0.3,
+          "throughput_rps": 1046.8,
+          "p50_ms": 13.9,
+          "p90_ms": 20.5,
+          "p99_ms": 28,
+          "max_ms": 29.4
+        },
+        {
+          "concurrency": 32,
+          "requests": 300,
+          "errors": 0,
+          "statuses": {
+            "200": 300
+          },
+          "wall_s": 0.2,
+          "throughput_rps": 1320.6,
+          "p50_ms": 16,
+          "p90_ms": 38.1,
+          "p99_ms": 49.8,
+          "max_ms": 51.2
+        }
+      ],
+      "output_streamed": [
+        {
+          "concurrency": 1,
+          "requests": 300,
+          "errors": 0,
+          "statuses": {
+            "200": 300
+          },
+          "wall_s": 136.7,
+          "throughput_rps": 2.2,
+          "p50_ms": 22.8,
+          "p90_ms": 867.3,
+          "p99_ms": 8828.5,
+          "max_ms": 30250.6
+        },
+        {
+          "concurrency": 4,
+          "requests": 300,
+          "errors": 0,
+          "statuses": {
+            "200": 300
+          },
+          "wall_s": 61.7,
+          "throughput_rps": 4.9,
+          "p50_ms": 25.9,
+          "p90_ms": 909.1,
+          "p99_ms": 8610.1,
+          "max_ms": 32970.8
+        },
+        {
+          "concurrency": 8,
+          "requests": 300,
+          "errors": 0,
+          "statuses": {
+            "200": 300
+          },
+          "wall_s": 21.4,
+          "throughput_rps": 14.1,
+          "p50_ms": 69.5,
+          "p90_ms": 1456.7,
+          "p99_ms": 5691.5,
+          "max_ms": 10842.1
+        },
+        {
+          "concurrency": 16,
+          "requests": 300,
+          "errors": 0,
+          "statuses": {
+            "200": 300
+          },
+          "wall_s": 37.8,
+          "throughput_rps": 7.9,
+          "p50_ms": 77.1,
+          "p90_ms": 4046.8,
+          "p99_ms": 31327.9,
+          "max_ms": 35986.3
+        },
+        {
+          "concurrency": 32,
+          "requests": 300,
+          "errors": 2,
+          "statuses": {
+            "200": 298
+          },
+          "wall_s": 70.7,
+          "throughput_rps": 4.2,
+          "p50_ms": 93.1,
+          "p90_ms": 10775.6,
+          "p99_ms": 53819.4,
+          "max_ms": 56473
+        }
+      ],
+      "output_ranges_per_output": {
+        "p50": 1381,
+        "p90": 412031,
+        "p99": 3628595,
+        "max": 24523412
+      },
+      "output_biggest": [
+        {
+          "path": "/output/560d7a6e1df01a5884b634186a85e0839adb2eff827b83eac65bd8131f035d43:1",
+          "ranges": 24523412,
+          "ms": 32452
+        },
+        {
+          "path": "/output/7910fdb3063ddd617eee659bfba1852f2e68be80e4e772590be3bcfe2ac944a4:1",
+          "ranges": 23813773,
+          "ms": 32971
+        },
+        {
+          "path": "/output/407b50462a5b4f13e3c0092bdf4a7e35067b907c985a9e839aacf52bb5fade47:1",
+          "ranges": 22250735,
+          "ms": 30251
+        },
+        {
+          "path": "/output/0278254aa0d98a52c01da470e2cd859f004a9209829946c7fa869985d84d7cd7:0",
+          "ranges": 14338905,
+          "ms": 18686
+        },
+        {
+          "path": "/output/1027347e0ffa2c2d9534e69a8801653e133f8e55f0c4308da664f3aa92dad1b7:1",
+          "ranges": 6599491,
+          "ms": 8828
+        },
+        {
+          "path": "/output/6e2a308e71423848426830d72e15d911c0e81d91cc14a5d73d6927e34d22e47e:1",
+          "ranges": 6508388,
+          "ms": 9321
+        },
+        {
+          "path": "/output/3ca2188e9805310b0cc9d57b2fb800efeb74a6eeb6f616bac864f887fe4e74c1:0",
+          "ranges": 5677702,
+          "ms": 56473
+        },
+        {
+          "path": "/output/7865ed91d3be93c3158edcaf0f708ac9d816e03857df93fbd2491081752595c4:1",
+          "ranges": 5647042,
+          "ms": 31831
+        },
+        {
+          "path": "/output/6b169e5f7e6454c6bdd60a32de89e56a015aabe998255b3169331078eb80961e:0",
+          "ranges": 4714867,
+          "ms": 53819
+        },
+        {
+          "path": "/output/bbc63e739cc98a36cdfaefbf6428115d5897869506b068f28ab38275ac199c85:1",
+          "ranges": 4674527,
+          "ms": 35986
+        }
+      ],
+      "lost_output": {
+        "ms": 75,
+        "ranges": 5519,
+        "sats": 2895844904,
+        "status_lost_sats": 2895844904
+      }
+    }
+  ]
+}
