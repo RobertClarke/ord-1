@@ -3,7 +3,10 @@
  * Exports the rare-sat rule data of bitcoin-monitoring into the files the
  * tracker embeds, plus JS-generated test vectors.
  *
- * Usage: node tools/export-monitoring-data.js <path-to-bitcoin-monitoring>
+ * Usage: node tools/export-monitoring-data.js <path-to-bitcoin-monitoring> [--check]
+ *
+ * --check regenerates into a temporary directory and exits 1 if any
+ * committed file differs (the data is stale), without touching the repo.
  *
  * Reads (never writes) the bitcoin-monitoring checkout:
  *   src/services/exoticSatRanges.js  EXOTIC_RANGES (require()d)
@@ -46,7 +49,8 @@
  *   psbtBuilder.js arrays for the Rust drift check.
  *
  * Deterministic: the sat sample uses a fixed-seed PRNG, so re-running on the
- * same sources reproduces the files byte for byte.
+ * same sources reproduces the files byte for byte. Provenance is the sha256
+ * of each source file, recorded in the manifests and the fixture.
  */
 
 'use strict';
@@ -54,19 +58,30 @@
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
-const { execFileSync } = require('child_process');
 
 const SUPPLY = 2099999997690000n;
 const COIN = 100000000n;
 const HALVING = 210000;
 
-const root = process.argv[2];
+const args = process.argv.slice(2);
+const check = args.includes('--check');
+const root = args.find(arg => arg !== '--check');
 if (!root) {
-  console.error('usage: node tools/export-monitoring-data.js <path-to-bitcoin-monitoring>');
+  console.error('usage: node tools/export-monitoring-data.js <path-to-bitcoin-monitoring> [--check]');
   process.exit(2);
 }
 const monitoring = path.resolve(root);
-const repo = path.resolve(__dirname, '..');
+const committed = path.resolve(__dirname, '..');
+const repo = check
+  ? fs.mkdtempSync(path.join(require('os').tmpdir(), 'export-monitoring-data-'))
+  : committed;
+const OUTPUTS = [
+  'data/exotic-ranges.bin',
+  'data/exotic-ranges.json',
+  'data/bounty3-names.bin',
+  'data/bounty3-names.json',
+  'tests/fixtures/sat-types.json',
+];
 
 const SOURCES = {
   exotic: 'src/services/exoticSatRanges.js',
@@ -83,13 +98,6 @@ function sourceHash(relative) {
   return sha256(fs.readFileSync(path.join(monitoring, relative)));
 }
 
-function monitoringCommit() {
-  try {
-    return execFileSync('git', ['-C', monitoring, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
-  } catch (_) {
-    return null;
-  }
-}
 
 const { EXOTIC_RANGES, getExoticRangeIndex, findOverlapWindow } = require(
   path.join(monitoring, SOURCES.exotic)
@@ -221,7 +229,6 @@ function writeExoticRanges() {
     source: {
       file: SOURCES.exotic,
       sha256: sourceHash(SOURCES.exotic),
-      commit: monitoringCommit(),
     },
     bin: { file: 'data/exotic-ranges.bin', bytes: bin.length, sha256: sha256(bin) },
     total_sats: Number(totalSats),
@@ -265,7 +272,6 @@ function writeBounty3() {
     source: {
       file: SOURCES.bounty3,
       sha256: sourceHash(SOURCES.bounty3),
-      commit: monitoringCommit(),
     },
     bin: { file: 'data/bounty3-names.bin', bytes: bin.length, sha256: sha256(bin) },
     count: bounty3.length,
@@ -627,7 +633,6 @@ function writeFixture() {
     sources: Object.fromEntries(
       Object.entries(SOURCES).map(([key, file]) => [key, { file, sha256: sourceHash(file) }])
     ),
-    commit: monitoringCommit(),
     special_sat_types: SPECIAL_SAT_TYPES,
     required_combination_types: REQUIRED_COMBINATION_TYPES,
     historic_block_types: HISTORIC_BLOCK_TYPES,
@@ -650,6 +655,23 @@ fs.mkdirSync(path.join(repo, 'data'), { recursive: true });
 const exotic = writeExoticRanges();
 const names = writeBounty3();
 const fixture = writeFixture();
+
+if (check) {
+  const stale = OUTPUTS.filter(file => {
+    const committedFile = path.join(committed, file);
+    return (
+      !fs.existsSync(committedFile) ||
+      !fs.readFileSync(committedFile).equals(fs.readFileSync(path.join(repo, file)))
+    );
+  });
+  fs.rmSync(repo, { recursive: true, force: true });
+  if (stale.length > 0) {
+    console.error(`stale: ${stale.join(', ')}; re-run without --check and commit`);
+    process.exit(1);
+  }
+  console.log('up to date');
+  process.exit(0);
+}
 
 console.log(
   JSON.stringify(

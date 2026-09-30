@@ -3,8 +3,7 @@
   "generated_by": "tools/export-monitoring-data.js",
   "source": {
     "file": "data/bounty3-names-map.json",
-    "sha256": "c7e7e337edcee6f8144ce738054bfa482237d523ed1de1e5664d363af95447b3",
-    "commit": "4461a634412314ccb6399163632a26c2709ef180"
+    "sha256": "c7e7e337edcee6f8144ce738054bfa482237d523ed1de1e5664d363af95447b3"
   },
   "bin": {
     "file": "data/bounty3-names.bin",
