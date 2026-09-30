@@ -111,6 +111,7 @@ pub fn default_rows() -> Vec<Row> {
       "Nakamoto palindrome",
       &[Nakamoto, PalindromesInteger],
     ),
+    row("pizza_uncommon", "Pizza uncommon", &[Pizza, Uncommon]),
     row("pizza_alpha", "Pizza alpha", &[Pizza, Alpha]),
     row("pizza_omega", "Pizza omega", &[Pizza, Omega]),
     row(
@@ -118,6 +119,7 @@ pub fn default_rows() -> Vec<Row> {
       "Pizza palindrome",
       &[Pizza, PalindromesInteger],
     ),
+    row("jpeg_uncommon", "JPEG uncommon", &[Jpeg, Uncommon]),
     row("jpeg_alpha", "JPEG alpha", &[Jpeg, Alpha]),
     row("jpeg_omega", "JPEG omega", &[Jpeg, Omega]),
     row(
@@ -125,12 +127,18 @@ pub fn default_rows() -> Vec<Row> {
       "JPEG palindrome",
       &[Jpeg, PalindromesInteger],
     ),
+    row("hitman_uncommon", "Hitman uncommon", &[Hitman, Uncommon]),
     row("hitman_alpha", "Hitman alpha", &[Hitman, Alpha]),
     row("hitman_omega", "Hitman omega", &[Hitman, Omega]),
     row(
       "hitman_palindrome",
       "Hitman palindrome",
       &[Hitman, PalindromesInteger],
+    ),
+    row(
+      "sr_uncommon",
+      "Silk Road uncommon",
+      &[Sr1stAuction, Uncommon],
     ),
     row("sr_alpha", "Silk Road alpha", &[Sr1stAuction, Alpha]),
     row("sr_omega", "Silk Road omega", &[Sr1stAuction, Omega]),
@@ -170,10 +178,12 @@ mod tests {
        block286_alpha block286_omega block286_palindrome \
        block_666_alpha block_666_omega block_666_palindrome \
        nakamoto_uncommon nakamoto_black nakamoto_alpha nakamoto_omega nakamoto_palindrome \
-       pizza_alpha pizza_omega pizza_palindrome jpeg_alpha jpeg_omega jpeg_palindrome \
-       hitman_alpha hitman_omega hitman_palindrome \
-       sr_alpha sr_omega sr_black sr_palindrome_3d \
+       pizza_uncommon pizza_alpha pizza_omega pizza_palindrome \
+       jpeg_uncommon jpeg_alpha jpeg_omega jpeg_palindrome \
+       hitman_uncommon hitman_alpha hitman_omega hitman_palindrome \
+       sr_uncommon sr_alpha sr_omega sr_black sr_palindrome_3d \
        uncommon_2009 rare_2009 black_2009 palindrome_2d_2009"
     );
+    assert_eq!(ids.len(), 66);
   }
 }

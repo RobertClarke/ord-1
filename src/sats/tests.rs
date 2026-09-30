@@ -677,3 +677,103 @@ fn catalog_is_shareable() {
   fn assert_send_sync<T: Send + Sync>() {}
   assert_send_sync::<SatCatalog>();
 }
+
+/// The first sat of every block inside the exotic type's ranges.
+fn uncommons_inside(catalog: &SatCatalog, t: SatType) -> Vec<u64> {
+  let mut sats = Vec::new();
+  for &(start, end) in catalog.exotic.ranges(t) {
+    anchors::Anchor::of(SatType::Uncommon)
+      .unwrap()
+      .for_each(&catalog.lists, start, end, |sat| sats.push(sat));
+  }
+  sats
+}
+
+#[test]
+fn collection_uncommon_rows() {
+  // Counting first-of-block sats inside EXOTIC_RANGES with the JS
+  // (getBlockForSat / getFirstSatOfBlock, hitman's overlapping ranges
+  // de-duplicated) gives these.
+  let expected = [
+    ("pizza_uncommon", SatType::Pizza, 378),
+    ("jpeg_uncommon", SatType::Jpeg, 20),
+    ("hitman_uncommon", SatType::Hitman, 56),
+    ("sr_uncommon", SatType::Sr1stAuction, 1_699),
+  ];
+  for catalog in [default_catalog(), rangeless_catalog(), custom_catalog()] {
+    for (id, t, total) in expected {
+      let row = catalog.row_id(id).unwrap();
+      assert_eq!(catalog.row_total(row), total, "{id}");
+      let sats = uncommons_inside(catalog, t);
+      assert_eq!(sats.len() as u64, total, "{id}");
+      // Every one is tracked and counted by the per-sat path, alone and in
+      // the coinbase run that starts with it.
+      for &sat in &sats {
+        assert!(catalog.is_tracked(sat));
+        assert!(
+          catalog
+            .types(sat)
+            .contains_all(TypeSet::of(&[t, SatType::Uncommon]))
+        );
+        assert!(catalog.sat_rows(sat).contains(&row), "{id} {sat}");
+        let (start, len) = catalog.tracked_runs(sat, sat + 1_000)[0];
+        assert_eq!(start, sat);
+        assert!(
+          catalog.row_counts(start, len).contains(&(row, 1)),
+          "{id} {sat}"
+        );
+      }
+    }
+    // Block 9 holds none of them, whatever the path.
+    let counts = catalog.row_counts(45_000_000_000, 5_000_000_000);
+    for (id, _, _) in expected {
+      let row = catalog.row_id(id).unwrap();
+      assert!(counts.iter().all(|&(r, _)| r != row), "{id}");
+    }
+  }
+}
+
+#[test]
+fn collection_uncommon_rows_in_long_runs() {
+  // Tracked ranges around the first uncommon of each collection make long
+  // runs, counted by the anchors' arithmetic: compare with brute force.
+  let catalog = default_catalog();
+  let mut ranges = Vec::new();
+  for t in [
+    SatType::Pizza,
+    SatType::Jpeg,
+    SatType::Hitman,
+    SatType::Sr1stAuction,
+  ] {
+    let sat = uncommons_inside(catalog, t)[0];
+    ranges.push(TrackedRange {
+      id: t.name().into(),
+      start: sat - 20_000,
+      end: sat + 20_000,
+    });
+  }
+  let wide = SatCatalog::new(&TrackerConfig {
+    ranges: ranges.clone(),
+    ..TrackerConfig::default()
+  })
+  .unwrap();
+  for range in &ranges {
+    let len = range.end - range.start;
+    assert_eq!(
+      wide.tracked_runs(range.start, range.end),
+      [(range.start, len)]
+    );
+    let counts = wide.row_counts(range.start, len);
+    assert_eq!(
+      counts,
+      brute_row_counts(&wide, range.start, len),
+      "{}",
+      range.id
+    );
+    let id = match range.id.as_str() {
+      "sr_1st_auction" => "sr_uncommon".to_string(),
+      other => format!("{other}_uncommon"),
+    };
+    assert!(counts.contains(&(wide.row_id(&id).unwrap(), 1)), "{id}");
+  }
+}

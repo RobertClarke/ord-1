@@ -146,9 +146,10 @@ block78_alpha block78_omega block78_palindrome
 block286_alpha block286_omega block286_palindrome
 block_666_alpha block_666_omega block_666_palindrome
 nakamoto_uncommon nakamoto_black nakamoto_alpha nakamoto_omega nakamoto_palindrome
-pizza_alpha pizza_omega pizza_palindrome jpeg_alpha jpeg_omega jpeg_palindrome
-hitman_alpha hitman_omega hitman_palindrome
-sr_alpha sr_omega sr_black sr_palindrome_3d
+pizza_uncommon pizza_alpha pizza_omega pizza_palindrome
+jpeg_uncommon jpeg_alpha jpeg_omega jpeg_palindrome
+hitman_uncommon hitman_alpha hitman_omega hitman_palindrome
+sr_uncommon sr_alpha sr_omega sr_black sr_palindrome_3d
 uncommon_2009 rare_2009 black_2009 palindrome_2d_2009
 ```
 
