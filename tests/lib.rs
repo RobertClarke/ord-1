@@ -1,9 +1,4 @@
-//! Integration tests: the `ord` binary against mockcore.
-//!
-//! Tests marked `#[ignore = "needs source"]` drive `ord` against mockcore
-//! and need the block sources (and mockcore's `getblock <hash> 3`); run them
-//! with `cargo test --test integration -- --ignored` once `rst/source` is
-//! merged.
+//! Integration tests: the `ord` binary and the block sources against mockcore.
 
 use {
   bitcoin::{Network, OutPoint, Txid},
@@ -22,6 +17,7 @@ use {
 
 mod cli;
 mod regtest;
+mod source_mockcore;
 
 const COIN: u64 = 100_000_000;
 const BLOCK: u64 = 50 * COIN;

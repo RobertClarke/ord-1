@@ -22,7 +22,7 @@ pub trait Api {
   fn get_block_header(
     &self,
     block_hash: BlockHash,
-    verbose: bool,
+    verbose: Option<bool>,
   ) -> Result<Value, jsonrpc_core::Error>;
 
   #[rpc(name = "getblockheaderinfo")]
@@ -34,8 +34,13 @@ pub trait Api {
   #[rpc(name = "getblockstats")]
   fn get_block_stats(&self, height: usize) -> Result<GetBlockStatsResult, jsonrpc_core::Error>;
 
+  /// `verbosity` is 0–3 or a bool (`verbose`), 1 when omitted.
   #[rpc(name = "getblock")]
-  fn get_block(&self, blockhash: BlockHash, verbosity: u64) -> Result<String, jsonrpc_core::Error>;
+  fn get_block(
+    &self,
+    blockhash: BlockHash,
+    verbosity: Option<Value>,
+  ) -> Result<Value, jsonrpc_core::Error>;
 
   #[rpc(name = "getblockcount")]
   fn get_block_count(&self) -> Result<u64, jsonrpc_core::Error>;

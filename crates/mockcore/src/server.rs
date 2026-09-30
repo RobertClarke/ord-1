@@ -18,6 +18,15 @@ impl Server {
   fn not_found() -> jsonrpc_core::Error {
     jsonrpc_core::Error::new(jsonrpc_core::types::error::ErrorCode::ServerError(-8))
   }
+
+  /// Core's `RPC_INVALID_ADDRESS_OR_KEY` for unknown block hashes.
+  fn block_not_found() -> jsonrpc_core::Error {
+    jsonrpc_core::Error {
+      code: jsonrpc_core::types::error::ErrorCode::ServerError(-5),
+      message: "Block not found".into(),
+      data: None,
+    }
+  }
 }
 
 impl Api for Server {
@@ -44,11 +53,13 @@ impl Api for Server {
   }
 
   fn get_blockchain_info(&self) -> Result<GetBlockchainInfoResult, jsonrpc_core::Error> {
+    let state = self.state();
+    let height = u64::try_from(state.hashes.len() - 1).unwrap();
     Ok(GetBlockchainInfoResult {
       chain: self.network,
-      blocks: 0,
-      headers: 0,
-      best_block_hash: self.state().hashes[0],
+      blocks: height,
+      headers: height,
+      best_block_hash: *state.hashes.last().unwrap(),
       difficulty: 0.0,
       median_time: 0,
       verification_progress: 0.0,
@@ -94,46 +105,17 @@ impl Api for Server {
   fn get_block_header(
     &self,
     block_hash: BlockHash,
-    verbose: bool,
+    verbose: Option<bool>,
   ) -> Result<Value, jsonrpc_core::Error> {
-    if verbose {
-      let height = match self
-        .state()
-        .hashes
-        .iter()
-        .position(|hash| *hash == block_hash)
-      {
-        Some(height) => height,
-        None => return Err(Self::not_found()),
-      };
-
-      Ok(
-        serde_json::to_value(GetBlockHeaderResult {
-          bits: String::new(),
-          chainwork: hex::decode(
-            "0000000000000000000000000000000000000000000000000000000000000000",
-          )
-          .unwrap(),
-          confirmations: 0,
-          difficulty: 0.0,
-          hash: block_hash,
-          height,
-          median_time: None,
-          merkle_root: TxMerkleNode::all_zeros(),
-          n_tx: 0,
-          next_block_hash: None,
-          nonce: 0,
-          previous_block_hash: None,
-          time: 0,
-          version: bitcoin::blockdata::block::Version::ONE,
-          version_hex: Some(vec![0, 0, 0, 0]),
-        })
-        .unwrap(),
-      )
+    let state = self.state();
+    if verbose.unwrap_or(true) {
+      state
+        .header_json(&block_hash)
+        .ok_or_else(Self::block_not_found)
     } else {
-      match self.state().blocks.get(&block_hash) {
+      match state.blocks.get(&block_hash) {
         Some(block) => Ok(serde_json::to_value(hex::encode(serialize(&block.header))).unwrap()),
-        None => Err(Self::not_found()),
+        None => Err(Self::block_not_found()),
       }
     }
   }
@@ -215,13 +197,33 @@ impl Api for Server {
   fn get_block(
     &self,
     block_hash: BlockHash,
-    verbosity: u64,
-  ) -> Result<String, jsonrpc_core::Error> {
-    assert_eq!(verbosity, 0, "Verbosity level {verbosity} is unsupported");
-    match self.state().blocks.get(&block_hash) {
-      Some(block) => Ok(hex::encode(serialize(block))),
-      None => Err(Self::not_found()),
+    verbosity: Option<Value>,
+  ) -> Result<Value, jsonrpc_core::Error> {
+    let verbosity = match verbosity {
+      None | Some(Value::Null) => 1,
+      Some(Value::Bool(verbose)) => u64::from(verbose),
+      Some(Value::Number(number)) if number.as_u64().is_some_and(|n| n <= 3) => {
+        number.as_u64().unwrap()
+      }
+      Some(other) => {
+        return Err(jsonrpc_core::Error::invalid_params(format!(
+          "unsupported verbosity {other}"
+        )));
+      }
+    };
+
+    let state = self.state();
+
+    if verbosity == 0 {
+      return match state.blocks.get(&block_hash) {
+        Some(block) => Ok(Value::String(hex::encode(serialize(block)))),
+        None => Err(Self::block_not_found()),
+      };
     }
+
+    state
+      .block_json(&block_hash, verbosity)
+      .ok_or_else(Self::block_not_found)
   }
 
   fn get_block_count(&self) -> Result<u64, jsonrpc_core::Error> {
