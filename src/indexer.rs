@@ -61,6 +61,10 @@ pub struct Timings {
   pub last_commit_seconds: f64,
   /// Unix time of the last commit.
   pub last_commit_at: Option<u64>,
+  /// Unix time bitcoind last answered the indexer: a poll of its tip, or
+  /// blocks delivered during the fast sync. With `last_commit_at`, tells a
+  /// client how stale the index may be while `error` is set.
+  pub last_poll_ok_at: Option<u64>,
   pub commits: u64,
   pub commit_seconds_total: f64,
   /// Time the tracker took to compute the last supply snapshot.
@@ -566,9 +570,10 @@ impl Indexer {
       let Some(tip) = self.retry("getblockcount", || self.node.block_count())? else {
         return Ok(true);
       };
-      self
-        .published
-        .update_status(|status| status.bitcoind_height = Some(tip));
+      self.published.update_status(|status| {
+        status.bitcoind_height = Some(tip);
+        status.timings.last_poll_ok_at = Some(unix_now());
+      });
 
       let target = match self.options.height_limit {
         Some(limit) if limit <= tip => limit.checked_sub(1),
@@ -734,6 +739,9 @@ impl Indexer {
     let supply = state.engine.supply(self.options.fast_sync_supply_top);
     let supply_seconds = supply_start.elapsed().as_secs_f64();
     let stats = source.stats();
+    self
+      .published
+      .update_status(|status| status.timings.last_poll_ok_at = Some(unix_now()));
     log::info!(
       "fast sync: committing {} blocks to {} ({} UTXOs in the value map, {:.1} GB fetched)",
       batch.len(),
@@ -772,9 +780,10 @@ impl Indexer {
         Ok(count) => count,
         Err(err) => return Ok(Step::Retry(err)),
       };
-      self
-        .published
-        .update_status(|status| status.bitcoind_height = Some(count));
+      self.published.update_status(|status| {
+        status.bitcoind_height = Some(count);
+        status.timings.last_poll_ok_at = Some(unix_now());
+      });
 
       // With --height-limit, bitcoind's chain ends below the limit for us.
       let count = match self.options.height_limit {
@@ -940,6 +949,13 @@ impl Indexer {
   }
 }
 
+fn unix_now() -> u64 {
+  SystemTime::now()
+    .duration_since(UNIX_EPOCH)
+    .map(|duration| duration.as_secs())
+    .unwrap_or_default()
+}
+
 /// The meta of an index this process would build.
 pub fn expected_meta(chain: Chain, config: &TrackerConfig, fingerprint: String) -> IndexMeta {
   IndexMeta {
@@ -1042,10 +1058,7 @@ impl Batch {
 
     let last = self.deltas.last();
     let blocks = self.deltas.len() as u64;
-    let now = SystemTime::now()
-      .duration_since(UNIX_EPOCH)
-      .map(|duration| duration.as_secs())
-      .unwrap_or_default();
+    let now = unix_now();
 
     if let Some(last) = last {
       log::debug!(

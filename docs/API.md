@@ -68,7 +68,8 @@ supply numbers, not here.
   "catalog_fingerprint": "…",
   "moves_retention": "4032", "moves_from": 965206,
   "timings": { "blocks_per_second": 0.1, "last_commit_blocks": 1,
-               "last_commit_seconds": 0.02, "last_commit_at": 1790734130, "commits": 12,
+               "last_commit_seconds": 0.02, "last_commit_at": 1790734130,
+               "last_poll_ok_at": 1790734141, "commits": 12,
                "commit_seconds_total": 0.4, "supply_seconds": 0.05,
                "fast_sync_seconds": null, "restore_seconds": 2.1 },
   "error": null
@@ -81,6 +82,13 @@ the index as it is, read-only, not indexing). `moves_retention` is
 `--moves-retention` (a number of blocks or `"all"`); `moves_from` is the
 lowest height whose moves are kept. `error` is the last indexing error
 (e.g. bitcoind unreachable), cleared by the next commit.
+
+Staleness: `mode` stays `live` while bitcoind is unreachable; `error` then
+says why, and two unix times tell how stale the index may be:
+`timings.last_commit_at` (the last block committed) and
+`timings.last_poll_ok_at` (the last time bitcoind answered: a poll of its
+tip every 2 s when live, or blocks delivered during the fast sync). Both are
+`null` until they first happen, and stay `null` in `serving` mode.
 
 ### `GET /rows`
 Row definitions, in `RowId` order.

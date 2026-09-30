@@ -761,6 +761,9 @@ fn status() {
     })
   );
   assert!(status["timings"]["blocks_per_second"].is_number());
+  for key in ["last_commit_at", "last_poll_ok_at"] {
+    assert!(status["timings"].get(key).is_some(), "timings.{key}");
+  }
 
   // `ord server --no-sync`.
   server

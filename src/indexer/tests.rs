@@ -834,3 +834,32 @@ fn height_limit_stops_below_it() {
   context.run(options()).unwrap();
   context.assert_consistent();
 }
+
+#[test]
+fn status_tells_when_bitcoind_last_answered() {
+  let context = Context::new(30);
+  let start = unix_now();
+  context.run(options()).unwrap();
+  let status = context.published.status();
+  assert!(status.timings.last_poll_ok_at.unwrap() >= start);
+  assert!(status.timings.last_commit_at.unwrap() >= start);
+  assert_eq!(status.error, None);
+
+  // bitcoind stops answering: the times stay, the error says why.
+  context
+    .published
+    .update_status(|status| status.timings.last_poll_ok_at = Some(1));
+  context.node.mine(1);
+  context.node.failures.store(1000, Ordering::Relaxed);
+  assert!(
+    context
+      .run(IndexerOptions {
+        max_retries: Some(2),
+        ..options()
+      })
+      .is_err()
+  );
+  let status = context.published.status();
+  assert_eq!(status.timings.last_poll_ok_at, Some(1));
+  assert!(status.error.unwrap().contains("connection refused"));
+}
