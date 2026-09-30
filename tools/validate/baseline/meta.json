@@ -1,0 +1,281 @@
+{
+  "created": "2026-09-30T03:26:36.400Z",
+  "seed": "baseline-v1",
+  "oracle_height": 969245,
+  "oracle_height_end": 969252,
+  "oracle_lost_sats": 2895844904,
+  "lost_ranges": 5519,
+  "bitcoind_height": 969248,
+  "fee_heavy_blocks": [
+    {
+      "height": 409008,
+      "subsidy": 2500000000,
+      "totalfee": 29153275103
+    },
+    {
+      "height": 788695,
+      "subsidy": 625000000,
+      "totalfee": 670074657
+    },
+    {
+      "height": 818087,
+      "subsidy": 625000000,
+      "totalfee": 8521634113
+    },
+    {
+      "height": 840000,
+      "subsidy": 312500000,
+      "totalfee": 3762561499
+    },
+    {
+      "height": 840001,
+      "subsidy": 312500000,
+      "totalfee": 448584464
+    },
+    {
+      "height": 840002,
+      "subsidy": 312500000,
+      "totalfee": 699004535
+    }
+  ],
+  "counts": {
+    "random-blocks": {
+      "entries": 3992,
+      "located": 2165,
+      "direct": 2002,
+      "lost": 0,
+      "burned": 0,
+      "untracked": 0,
+      "oracle_inconsistent": 0
+    },
+    "nakamoto": {
+      "entries": 38,
+      "located": 21,
+      "direct": 19,
+      "lost": 0,
+      "burned": 0,
+      "untracked": 0,
+      "oracle_inconsistent": 0
+    },
+    "milestones": {
+      "entries": 679,
+      "located": 437,
+      "direct": 389,
+      "lost": 0,
+      "burned": 0,
+      "untracked": 0,
+      "oracle_inconsistent": 0
+    },
+    "recent": {
+      "entries": 10,
+      "located": 10,
+      "direct": 5,
+      "lost": 0,
+      "burned": 0,
+      "untracked": 0,
+      "oracle_inconsistent": 0
+    },
+    "fee-heavy": {
+      "entries": 12,
+      "located": 7,
+      "direct": 6,
+      "lost": 0,
+      "burned": 0,
+      "untracked": 0,
+      "oracle_inconsistent": 0
+    },
+    "bip30": {
+      "entries": 12,
+      "located": 4,
+      "direct": 4,
+      "lost": 0,
+      "burned": 0,
+      "untracked": 2,
+      "oracle_inconsistent": 2
+    },
+    "vintage-plain": {
+      "entries": 250,
+      "located": 0,
+      "direct": 0,
+      "lost": 0,
+      "burned": 0,
+      "untracked": 250,
+      "oracle_inconsistent": 0
+    },
+    "vintage-alpha-omega": {
+      "entries": 250,
+      "located": 237,
+      "direct": 4,
+      "lost": 0,
+      "burned": 0,
+      "untracked": 0,
+      "oracle_inconsistent": 0
+    },
+    "untracked": {
+      "entries": 250,
+      "located": 0,
+      "direct": 0,
+      "lost": 0,
+      "burned": 0,
+      "untracked": 250,
+      "oracle_inconsistent": 0
+    },
+    "lost": {
+      "entries": 229,
+      "located": 229,
+      "direct": 0,
+      "lost": 229,
+      "burned": 0,
+      "untracked": 0,
+      "oracle_inconsistent": 0
+    },
+    "block9": {
+      "entries": 500,
+      "located": 500,
+      "direct": 1,
+      "lost": 0,
+      "burned": 0,
+      "untracked": 0,
+      "oracle_inconsistent": 0
+    }
+  },
+  "oracle_http": {
+    "requests": 528,
+    "retries": 0,
+    "errors": 0
+  },
+  "updated": "2026-09-30T03:59:32.359Z",
+  "block9": {
+    "traced_to": 150000,
+    "trace": {
+      "blocks": 149991,
+      "txs": 1718397,
+      "moves": 101,
+      "feeEvents": 0,
+      "bytes": 687981985,
+      "lost_pieces": 0,
+      "seconds": 547
+    },
+    "outputs_traced": 15,
+    "outputs_confirmed": 8,
+    "outputs_spent_later": 7,
+    "disagreements": [],
+    "confirmed_sats": 4258000000,
+    "outputs": [
+      {
+        "outpoint": "a16f3ce4dd5deb92d98ef5cf8afeaf0775ebca408f708b2146c4fb42b41e14be:0",
+        "address": null,
+        "value": 1000000000,
+        "pieces": [
+          {
+            "offset": 0,
+            "start": 46000000000,
+            "len": 1000000000
+          }
+        ]
+      },
+      {
+        "outpoint": "828ef3b079f9c23829c56fe86e85b4a69d9e06e5b54ea597eef5fb3ffef509fe:1",
+        "address": null,
+        "value": 1800000000,
+        "pieces": [
+          {
+            "offset": 0,
+            "start": 48200000000,
+            "len": 1800000000
+          }
+        ]
+      },
+      {
+        "outpoint": "298ca2045d174f8a158961806ffc4ef96fad02d71a6b84d9fa0491813a776160:0",
+        "address": null,
+        "value": 100000000,
+        "pieces": [
+          {
+            "offset": 0,
+            "start": 47000000000,
+            "len": 100000000
+          }
+        ]
+      },
+      {
+        "outpoint": "a3b0e9e7cddbbe78270fa4182a7675ff00b92872d8df7d14265a2b1e379a9d33:0",
+        "address": null,
+        "value": 6100000000,
+        "pieces": [
+          {
+            "offset": 5000000000,
+            "start": 47100000000,
+            "len": 100000000
+          },
+          {
+            "offset": 5100000000,
+            "start": 47200000000,
+            "len": 1000000000
+          }
+        ]
+      },
+      {
+        "outpoint": "73d6acba92d6dfaf204c0b4dd7cc561a96f55c03e9bc151d9f6e2a0d7b943fcd:1",
+        "address": "142SuQBUHiBAmcQgNL9Dbhj1aEYuCRmtSv",
+        "value": 100000000,
+        "pieces": [
+          {
+            "offset": 0,
+            "start": 45900000000,
+            "len": 100000000
+          }
+        ]
+      },
+      {
+        "outpoint": "87434ea8012c266fbeed552642acb451f18127e1ac2967eb3cd60ac6a4871dc0:1",
+        "address": "142SuQBUHiBAmcQgNL9Dbhj1aEYuCRmtSv",
+        "value": 69000000,
+        "pieces": [
+          {
+            "offset": 0,
+            "start": 45831000000,
+            "len": 69000000
+          }
+        ]
+      },
+      {
+        "outpoint": "10966f66302586da5bbce86fa5634ecddcec7b281fc12d54771b690b984f169e:0",
+        "address": "1KWSBZAZKKmpujfyxi7UMTFKRaq6xyNvAG",
+        "value": 10000000,
+        "pieces": [
+          {
+            "offset": 1000000,
+            "start": 45000000000,
+            "len": 1000000
+          },
+          {
+            "offset": 2000000,
+            "start": 45001000000,
+            "len": 8000000
+          }
+        ]
+      },
+      {
+        "outpoint": "6a95bf5ad27f846d63db8e8a541675f2e090ed8eed5deb1210027168e43e7fad:0",
+        "address": "1CtkhMaeBqovbLQNUvmvpYqNa9wyPzhWdT",
+        "value": 80000000,
+        "pieces": [
+          {
+            "offset": 0,
+            "start": 45300000000,
+            "len": 80000000
+          }
+        ]
+      }
+    ]
+  },
+  "sets": {
+    "block9": {
+      "oracle_height": 969248,
+      "oracle_height_end": 969252,
+      "created": "2026-09-30T03:59:32.358Z",
+      "seed": "baseline-v1"
+    }
+  }
+}
