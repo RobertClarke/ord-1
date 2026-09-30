@@ -17,7 +17,7 @@ This document is the contract with the bitcoin-monitoring supply dashboard
 
 **Piece**
 ```json
-{ "offset": 0, "start": 45000000000, "len": 1, "types": ["uncommon", "alpha", "block9", "450x", "nakamoto", "vintage", "megasat_alpha"] }
+{ "offset": 0, "start": 45000000000, "len": 1, "types": ["uncommon", "alpha", "vintage", "block9", "450x", "nakamoto", "alpha_jan_feb_2009"] }
 ```
 `types` are the types of the piece's first sat (for `len > 1` pieces the
 other sats may have fewer types). `offset` meaning depends on the holder
@@ -63,7 +63,7 @@ supply numbers, not here.
   "started": 1790734000,
   "tracked_utxos": 1234567, "tracked_pieces": 2345678,
   "lost_sats": 2895844904,
-  "ranges": [{ "id": "vintage", "start": 0, "end": 5000000000000 }],
+  "ranges": [{ "id": "block9", "start": 45000000000, "end": 50000000000 }],
   "extracted_max_value": 10000, "extracted_since": 1670976000,
   "catalog_fingerprint": "…"
 }
