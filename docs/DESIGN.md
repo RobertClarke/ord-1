@@ -97,8 +97,11 @@ For sat `s` in block `h` at `offset = s - first_sat(h)`, `subsidy = subsidy(h)`:
 | `palindromes_integer_1d` / `_2d` / `_3d` | palindrome with exactly 1 / 2 / 3 distinct digits |
 | `palindromes_perfect_palinception` | palindrome whose digit string is `sub` repeated ≥2 times, `sub` itself a palindrome with ≥2 distinct digits (`isPerfectPalinception`) |
 
-Note `s == 0` yields mythic, legendary, epic, rare, uncommon, alpha,
-megasat_alpha, palindromes_integer, palindromes_integer_1d (exactly as JS).
+Note `s == 0` yields mythic, legendary, epic, rare, uncommon, alpha and
+megasat_alpha, but **not** the palindrome types: the scanner's palindrome
+generator (`generatePalindromesInRange`) never yields 0, although a bare
+`getSatTypes(0)` would say it is one. The scanner is what the runtime and the
+old supply script used, so it wins.
 
 ### 2.2 Exotic range types
 
@@ -213,8 +216,9 @@ Per row, maintained incrementally as tracked UTXOs are created and removed:
   UTXO was created at a block with time ≥ tip time − N·365 days).
 * Holders: per `script_pubkey`, `{ count, extracted_count, utxos }`; exposes
   `holders`, `extracted_holders`, and on request the top N extracted /
-  non-extracted holders with `last_received` (latest creation time among the
-  holder's UTXOs that contain the row).
+  non-extracted holders. In each list, `utxos` and `last_received` (latest
+  creation height/time) are computed over that list's outputs only: the
+  holder's extracted outputs for the extracted list, the rest for the other.
 
 Per block, the tracker emits the row deltas; the store keeps a per-row
 history `(row, height) → RowStats` for every block where the row changed, so
