@@ -280,13 +280,17 @@ impl Store {
         .with_context(|| format!("failed to create {}", parent.display()))?;
     }
 
+    // redb also "repairs" a file it initializes: only report real repairs.
+    let existed = path.metadata().is_ok_and(|metadata| metadata.len() > 0);
     let db = Database::builder()
       .set_cache_size(options.cache_size)
-      .set_repair_callback(|session| {
-        log::info!(
-          "repairing the index after an unclean shutdown: {:.0}%",
-          session.progress() * 100.0
-        )
+      .set_repair_callback(move |session| {
+        if existed {
+          log::info!(
+            "repairing the index after an unclean shutdown: {:.0}%",
+            session.progress() * 100.0
+          )
+        }
       })
       .create(path)
       .map_err(|err| match err {
