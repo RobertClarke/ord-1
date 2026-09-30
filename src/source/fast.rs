@@ -16,7 +16,7 @@
 //! consumer's `next_block` is a channel receive.
 
 use {
-  super::{Rpc, enters_utxo_set, utxo::UtxoMap},
+  super::{RetryPolicy, Rpc, enters_utxo_set, utxo::UtxoMap},
   crate::model::{ResolvedBlock, ResolvedInput, ResolvedTx},
   anyhow::{Context, anyhow, ensure},
   bitcoin::{
@@ -30,7 +30,7 @@ use {
     panic::{self, AssertUnwindSafe},
     sync::{
       Arc,
-      atomic::{AtomicU64, Ordering},
+      atomic::{AtomicBool, AtomicU64, Ordering},
     },
     thread::{self, JoinHandle},
     time::{Duration, Instant},
@@ -98,6 +98,8 @@ pub struct FastSourceDiagnostics {
 pub struct FastSource {
   output: Receiver<anyhow::Result<Resolved>>,
   permits: Sender<()>,
+  /// Set to stop the threads' RPC retries.
+  cancel: Arc<AtomicBool>,
   /// Dropped to stop the threads.
   shutdown: Option<Sender<()>>,
   workers: Vec<JoinHandle<()>>,
@@ -180,8 +182,21 @@ const HASH_BATCH: u32 = 2_000;
 const JOIN_DEADLINE: Duration = Duration::from_secs(2);
 
 impl FastSource {
+  /// Starts the pipeline. A failed fast sync cannot resume (the UTXO value
+  /// map is lost), so its requests retry transient failures with at least
+  /// `RetryPolicy::patient()` (~11 minutes, enough for a bitcoind restart).
   pub fn start(rpc: Rpc, options: FastSyncOptions) -> anyhow::Result<Self> {
     let tip = rpc.block_count()?;
+
+    let cancel = Arc::new(AtomicBool::new(false));
+    let patient = RetryPolicy::patient();
+    let rpc = if rpc.retry_policy().total_delay() < patient.total_delay() {
+      rpc.with_retries(patient)
+    } else {
+      rpc
+    }
+    .with_cancel(cancel.clone());
+
     ensure!(
       options.stop_height <= tip,
       "fast sync stop height {} is above bitcoind's tip {tip}",
@@ -234,6 +249,7 @@ impl FastSource {
     Ok(Self {
       output: output_rx,
       permits: permits_tx,
+      cancel,
       shutdown: Some(shutdown_tx),
       workers,
       resolver: Some(resolver),
@@ -315,6 +331,7 @@ impl FastSource {
   /// the UTXO map) always, fetchers stuck in a slow request only up to a
   /// deadline. Returns the resolver's panic message, if it panicked.
   fn stop(&mut self) -> Option<String> {
+    self.cancel.store(true, Ordering::Relaxed);
     self.shutdown.take();
 
     let panic = self.resolver.take().and_then(|resolver| {

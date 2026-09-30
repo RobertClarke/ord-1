@@ -21,10 +21,10 @@ use {
     path::{Path, PathBuf},
     sync::{
       Arc, PoisonError, RwLock,
-      atomic::{AtomicU64, Ordering},
+      atomic::{AtomicBool, AtomicU64, Ordering},
     },
     thread,
-    time::Duration,
+    time::{Duration, Instant},
   },
 };
 
@@ -80,19 +80,44 @@ impl Default for RetryPolicy {
   }
 }
 
+impl RetryPolicy {
+  /// 70 attempts, 0.1 s doubling up to 10 s: rides out a bitcoind restart
+  /// (~11 minutes). For work that cannot resume after a failure, like the
+  /// fast sync.
+  pub fn patient() -> Self {
+    Self {
+      attempts: 70,
+      ..Self::default()
+    }
+  }
+
+  /// Total time slept before giving up.
+  pub fn total_delay(&self) -> Duration {
+    let mut delay = self.initial_delay;
+    let mut total = Duration::ZERO;
+    for _ in 1..self.attempts {
+      total += delay;
+      delay = (delay * 2).min(self.max_delay);
+    }
+    total
+  }
+}
+
 /// Blocking, thread-safe, cheaply cloneable JSON-RPC client with a keep-alive
 /// connection pool; retries transient failures (connection reset, 5xx, work
 /// queue full) with backoff.
 #[derive(Clone)]
 pub struct Rpc {
   inner: Arc<Inner>,
+  retry: RetryPolicy,
+  /// Set to stop retrying (the owner is shutting down).
+  cancel: Option<Arc<AtomicBool>>,
 }
 
 struct Inner {
   client: Client,
   url: String,
   auth: Auth,
-  retry: RetryPolicy,
   next_id: AtomicU64,
 }
 
@@ -205,10 +230,42 @@ impl Rpc {
         client,
         url,
         auth,
-        retry,
         next_id: AtomicU64::new(1),
       }),
+      retry,
+      cancel: None,
     })
+  }
+
+  pub fn retry_policy(&self) -> RetryPolicy {
+    self.retry
+  }
+
+  /// This client (same connection pool and credentials) with another retry
+  /// policy.
+  pub fn with_retries(&self, retry: RetryPolicy) -> Self {
+    Self {
+      retry: RetryPolicy {
+        attempts: retry.attempts.max(1),
+        ..retry
+      },
+      ..self.clone()
+    }
+  }
+
+  /// This client, giving up (instead of retrying) once `cancel` is set.
+  pub(crate) fn with_cancel(&self, cancel: Arc<AtomicBool>) -> Self {
+    Self {
+      cancel: Some(cancel),
+      ..self.clone()
+    }
+  }
+
+  fn cancelled(&self) -> bool {
+    self
+      .cancel
+      .as_ref()
+      .is_some_and(|cancel| cancel.load(Ordering::Relaxed))
   }
 
   /// `getblockchaininfo.chain`: "main", "test", "testnet4", "signet", "regtest".
@@ -420,7 +477,7 @@ impl Rpc {
     method: &str,
     mut attempt: impl FnMut() -> Result<T, Failure>,
   ) -> anyhow::Result<T> {
-    let policy = self.inner.retry;
+    let policy = self.retry;
     let mut delay = policy.initial_delay;
     let mut n = 1;
     loop {
@@ -439,7 +496,13 @@ impl Rpc {
             "bitcoind RPC `{method}` attempt {n}/{} failed, retrying in {delay:?}: {error:#}",
             policy.attempts
           );
-          thread::sleep(delay);
+          let wake = Instant::now() + delay;
+          while let Some(left) = wake.checked_duration_since(Instant::now()) {
+            if self.cancelled() {
+              return Err(error.context(format!("bitcoind RPC `{method}` cancelled")));
+            }
+            thread::sleep(left.min(CANCEL_POLL));
+          }
           delay = (delay * 2).min(policy.max_delay);
           n += 1;
         }
@@ -449,6 +512,9 @@ impl Rpc {
 }
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// How often a retry backoff checks for cancellation.
+const CANCEL_POLL: Duration = Duration::from_millis(20);
 
 fn basic_auth(credentials: &str) -> anyhow::Result<HeaderValue> {
   let mut header = HeaderValue::from_str(&format!(
@@ -623,7 +689,6 @@ mod tests {
       io::{BufRead, BufReader, Write},
       net::{TcpListener, TcpStream},
       sync::Mutex,
-      time::Instant,
     },
   };
 
@@ -828,6 +893,47 @@ mod tests {
       format!("{error:#}").contains("failed after 4 attempts"),
       "{error:#}"
     );
+  }
+
+  #[test]
+  fn retry_policy_is_per_handle() {
+    let server = Server::start(|_, _| Reply::status(503, "Work queue depth exceeded"));
+    let rpc = server.rpc(RpcAuth::None);
+    let patient = rpc.with_retries(fast_retries(6));
+    assert_eq!(patient.retry_policy().attempts, 6);
+    assert!(patient.block_count().is_err());
+    assert_eq!(server.requests().len(), 6);
+    assert!(rpc.block_count().is_err());
+    assert_eq!(server.requests().len(), 10);
+  }
+
+  #[test]
+  fn cancelling_stops_retrying() {
+    let server = Server::start(|_, _| Reply::status(503, "Work queue depth exceeded"));
+    let cancel = Arc::new(AtomicBool::new(false));
+    let rpc = server
+      .rpc(RpcAuth::None)
+      .with_retries(RetryPolicy::patient())
+      .with_cancel(cancel.clone());
+    let worker = thread::spawn(move || rpc.block_count());
+    while server.requests().len() < 3 {
+      thread::sleep(Duration::from_millis(5));
+    }
+    let start = Instant::now();
+    cancel.store(true, Ordering::Relaxed);
+    let error = worker.join().unwrap().unwrap_err();
+    assert!(start.elapsed() < Duration::from_millis(500));
+    assert!(format!("{error:#}").contains("cancelled"), "{error:#}");
+  }
+
+  #[test]
+  fn retry_policy_delays() {
+    assert_eq!(
+      RetryPolicy::default().total_delay(),
+      Duration::from_millis(100 + 200 + 400 + 800 + 1600 + 3200 + 6400 + 10_000 + 10_000)
+    );
+    let patient = RetryPolicy::patient().total_delay();
+    assert!(patient > Duration::from_secs(600) && patient < Duration::from_secs(720));
   }
 
   #[test]

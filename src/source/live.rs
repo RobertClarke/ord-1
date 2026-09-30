@@ -21,7 +21,7 @@ use {
     collections::BTreeMap,
     sync::{
       Arc,
-      atomic::{AtomicU32, Ordering},
+      atomic::{AtomicBool, AtomicU32, Ordering},
     },
     thread,
   },
@@ -82,6 +82,14 @@ struct Blocks {
   done: bool,
   /// Dropped (with the iterator) to stop the workers.
   _shutdown: Sender<()>,
+  /// Set on drop to stop the workers' RPC retries.
+  cancel: Arc<AtomicBool>,
+}
+
+impl Drop for Blocks {
+  fn drop(&mut self) {
+    self.cancel.store(true, Ordering::Relaxed);
+  }
 }
 
 impl Blocks {
@@ -94,6 +102,8 @@ impl Blocks {
     }
     let (results_tx, results_rx) = unbounded();
     let next_height = Arc::new(AtomicU32::new(from));
+    let cancel = Arc::new(AtomicBool::new(false));
+    let source = LiveSource::new(source.rpc.with_cancel(cancel.clone()));
 
     for i in 0..threads.min((to - from) as usize + 1) {
       let source = source.clone();
@@ -137,6 +147,7 @@ impl Blocks {
       to,
       done: false,
       _shutdown: shutdown_tx,
+      cancel,
     }
   }
 }

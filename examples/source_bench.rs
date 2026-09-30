@@ -64,6 +64,10 @@ struct Args {
   /// Benchmark the live source over `--from..=--to` instead.
   #[arg(long)]
   live_only: bool,
+  /// Benchmark fetching and decoding `--from..=--to` with `getblock <hash> 0`
+  /// on `--fetch-threads` threads (no UTXO map), e.g. to pick fetch_threads.
+  #[arg(long)]
+  fetch_only: bool,
   #[arg(long, default_value_t = 10)]
   report_secs: u64,
   #[arg(long, env = "ORD_BITCOIN_RPC_URL")]
@@ -103,6 +107,8 @@ fn main() -> anyhow::Result<()> {
 
   if args.live_only {
     live_only(&args, rpc)
+  } else if args.fetch_only {
+    fetch_only(&args, rpc)
   } else {
     fast(&args, rpc)
   }
@@ -185,13 +191,14 @@ fn fast(args: &Args, rpc: Rpc) -> anyhow::Result<()> {
       let secs = last_report.elapsed().as_secs_f64();
       let bytes = stats.bytes_fetched;
       println!(
-        "{:>7.0}s height {:>7} | {:>6.0} blocks/s {:>6.1} MB/s (avg {:>6.1}) | {:>11} utxos | rss {:>5.2} GiB (peak {:>5.2}) | ready {:>3} | resolve {:>4.0}% wait {:>4.0}% | consumer wait {:>4.0}% | fetch {:.0}s prepare {:.0}s | compared {}",
+        "{:>7.0}s height {:>7} | {:>6.0} blocks/s {:>6.1} MB/s (avg {:>6.1}) | {:>11} utxos {:>9} tombstones | rss {:>5.2} GiB (peak {:>5.2}) | ready {:>3} | resolve {:>4.0}% wait {:>4.0}% | consumer wait {:>4.0}% | fetch {:.0}s prepare {:.0}s | compared {}",
         start.elapsed().as_secs_f64(),
         block_height(&stats.height),
         interval.blocks as f64 / secs,
         (bytes - interval.bytes_mark) as f64 / secs / 1e6,
         bytes as f64 / start.elapsed().as_secs_f64() / 1e6,
         stats.utxos,
+        diagnostics.map_tombstones,
         rss_gib("VmRSS:"),
         rss_gib("VmHWM:"),
         diagnostics.ready_blocks,
@@ -242,6 +249,70 @@ fn fast(args: &Args, rpc: Rpc) -> anyhow::Result<()> {
   drop(source);
   println!("dropped the fast source in {:?}", drop_start.elapsed());
 
+  Ok(())
+}
+
+fn fetch_only(args: &Args, rpc: Rpc) -> anyhow::Result<()> {
+  let mut hashes = Vec::new();
+  let mut height = args.from;
+  while height <= args.to {
+    let end = args.to.min(height.saturating_add(1999));
+    hashes.extend(rpc.block_hashes(height..end + 1)?);
+    height = end + 1;
+  }
+
+  let start = Instant::now();
+  let next = Arc::new(AtomicU64::new(0));
+  let bytes = Arc::new(AtomicU64::new(0));
+  let hashes = Arc::new(hashes);
+
+  let workers = (0..args.fetch_threads)
+    .map(|_| {
+      let (rpc, next, bytes, hashes) = (rpc.clone(), next.clone(), bytes.clone(), hashes.clone());
+      thread::spawn(move || -> anyhow::Result<()> {
+        loop {
+          let i = next.fetch_add(1, Ordering::Relaxed) as usize;
+          let Some(hash) = hashes.get(i) else {
+            return Ok(());
+          };
+          let raw = rpc.block_raw(*hash)?;
+          bytes.fetch_add(raw.len() as u64, Ordering::Relaxed);
+          let block = bitcoin::consensus::deserialize::<bitcoin::Block>(&raw)?;
+          for tx in &block.txdata {
+            std::hint::black_box(tx.compute_txid());
+          }
+        }
+      })
+    })
+    .collect::<Vec<_>>();
+
+  let mut last = (Instant::now(), 0);
+  while workers.iter().any(|worker| !worker.is_finished()) {
+    thread::sleep(Duration::from_millis(100));
+    if last.0.elapsed() >= Duration::from_secs(args.report_secs) {
+      let now = bytes.load(Ordering::Relaxed);
+      println!(
+        "{:>6.0}s {:>7} blocks {:>6.1} MB/s",
+        start.elapsed().as_secs_f64(),
+        next.load(Ordering::Relaxed).min(hashes.len() as u64),
+        (now - last.1) as f64 / last.0.elapsed().as_secs_f64() / 1e6
+      );
+      last = (Instant::now(), now);
+    }
+  }
+  for worker in workers {
+    worker.join().unwrap()?;
+  }
+
+  let elapsed = start.elapsed().as_secs_f64();
+  println!(
+    "fetched {} blocks, {:.2} GB raw in {elapsed:.1}s with {} threads: {:.1} blocks/s, {:.1} MB/s raw",
+    hashes.len(),
+    bytes.load(Ordering::Relaxed) as f64 / 1e9,
+    args.fetch_threads,
+    hashes.len() as f64 / elapsed,
+    bytes.load(Ordering::Relaxed) as f64 / elapsed / 1e6,
+  );
   Ok(())
 }
 

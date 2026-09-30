@@ -353,6 +353,26 @@ fn dropping_the_fast_source_stops_it_promptly() {
 }
 
 #[test]
+fn dropping_the_fast_source_while_bitcoind_is_down_is_prompt() {
+  let core = mockcore::builder().network(Network::Regtest).build();
+  core.mine_blocks(50);
+  let mut source = FastSource::start(connect(&core), options(50, 4, 2)).unwrap();
+  assert_eq!(source.next_block().unwrap().unwrap().height, 0);
+
+  // The fetchers now fail and keep retrying (for minutes).
+  drop(core);
+  std::thread::sleep(Duration::from_millis(300));
+
+  let start = Instant::now();
+  drop(source);
+  assert!(
+    start.elapsed() < Duration::from_secs(1),
+    "{:?}",
+    start.elapsed()
+  );
+}
+
+#[test]
 fn live_blocks_iterator() {
   let core = mockcore::builder().network(Network::Regtest).build();
   core.mine_blocks(10);
