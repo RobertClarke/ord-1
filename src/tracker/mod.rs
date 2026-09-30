@@ -8,8 +8,10 @@
 //! # State
 //!
 //! * Tracked UTXOs live in a slab of `Slot`s, found by outpoint through a
-//!   hash map keyed by the txid's first 8 bytes. Every slot caches its per-row
-//!   counts, so spending it never recomputes them.
+//!   hash map that hashes only the txid's first 8 bytes and the vout. Every
+//!   slot caches its per-row counts, so spending it never recomputes them;
+//!   an output that receives an input's pieces intact takes over the input's
+//!   slot, so those pieces keep their locator entries.
 //! * The sat locator maps each piece's first sat to its holder (a slot, a
 //!   lost piece or an overwritten UTXO); pieces longer than one sat are also
 //!   kept in an ordered map so a sat inside one is found by predecessor search.
@@ -390,6 +392,8 @@ impl Tracker {
     Ok(tracker)
   }
 
+  /// The full state; `utxos` sorted by outpoint, `lost` and `overwritten`
+  /// in the order they happened.
   pub fn snapshot(&self) -> TrackerSnapshot {
     let mut utxos: Vec<(OutPoint, TrackedUtxo)> = self
       .slots
