@@ -237,9 +237,9 @@ impl Default for TrackerConfig {
   fn default() -> Self {
     Self {
       ranges: vec![TrackedRange {
-        id: "vintage".into(),
-        start: 0,
-        end: 5_000_000_000_000,
+        id: "block9".into(),
+        start: 45_000_000_000,
+        end: 50_000_000_000,
       }],
       extracted_max_value: 10_000,
       extracted_since_time: 1_670_976_000,
