@@ -43,6 +43,49 @@ fn random_txid(rng: &mut Rng) -> Txid {
 
 #[test]
 #[ignore]
+fn catalog_costs() {
+  let t = Instant::now();
+  let catalog = SatCatalog::new(&TrackerConfig::default()).unwrap();
+  eprintln!("SatCatalog::new in {:.2?}", t.elapsed());
+  let t = Instant::now();
+  let totals: Vec<u64> = (0..catalog.rows().len() as RowId)
+    .map(|row| catalog.row_total(row))
+    .collect();
+  eprintln!("all {} row totals in {:.2?}", totals.len(), t.elapsed());
+  for (row, total) in catalog.rows().iter().zip(&totals) {
+    eprintln!("  {:32} {total}", row.id);
+  }
+  let t = Instant::now();
+  let mut runs = 0;
+  let mut sats = 0;
+  for height in (0..6_930_000u64).step_by(7) {
+    let first = first_sat(height);
+    for (_, len) in catalog.tracked_runs(first, first + subsidy(height)) {
+      runs += 1;
+      sats += len;
+    }
+  }
+  eprintln!(
+    "tracked_runs for every 7th coinbase: {:.2?} ({runs} runs, {sats} sats)",
+    t.elapsed()
+  );
+  let t = Instant::now();
+  let mut n = 0u64;
+  for i in 0..1_000_000u64 {
+    n += catalog
+      .types(i.wrapping_mul(2_099_999_997_689_999) % 2_099_999_997_690_000)
+      .len() as u64;
+  }
+  eprintln!("1M random types() in {:.2?} ({n})", t.elapsed());
+  let t = Instant::now();
+  for i in 0..1_000_000u64 {
+    n += catalog.row_counts(first_sat(i % 6_930_000), 1).len() as u64;
+  }
+  eprintln!("1M single-sat row_counts in {:.2?} ({n})", t.elapsed());
+}
+
+#[test]
+#[ignore]
 fn tracker_throughput() {
   let utxos = env("BENCH_UTXOS", 1_600_000);
   let blocks = env("BENCH_BLOCKS", 300) as u32;
@@ -50,7 +93,8 @@ fn tracker_throughput() {
   let tracked_percent = env("BENCH_TRACKED_PERCENT", 1);
   let config = TrackerConfig::default();
   let catalog = catalog_for(&config);
-  let start: u32 = 870_000;
+  // Past every block whose boundary sats the synthetic UTXOs hold.
+  let start = (utxos / 2 + 1).max(870_000) as u32;
   let mut rng = Rng(0x1234_5678);
 
   // Tracked UTXOs: the uncommon and black sats of blocks 0..utxos/2, each

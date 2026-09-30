@@ -329,6 +329,18 @@ impl Tracker {
     tracker.lost_sats = snapshot.lost_sats;
     let tip = snapshot.height;
     let within_tip = |height: u32| tip.is_some_and(|tip| height <= tip);
+    // Every piece must hold sats already mined, or a later coinbase would
+    // mint them a second time.
+    let mined_end = tip.map_or(0, |tip| crate::sats::math::first_sat(u64::from(tip) + 1));
+    let check_mined = |pieces: &[Piece]| -> anyhow::Result<()> {
+      for piece in pieces {
+        ensure!(
+          piece.end() <= mined_end,
+          "piece {piece:?} holds sats not mined by height {tip:?}"
+        );
+      }
+      Ok(())
+    };
 
     for (outpoint, utxo) in snapshot.utxos {
       ensure!(
@@ -336,6 +348,7 @@ impl Tracker {
         "UTXO {outpoint} created above the tip"
       );
       check_pieces(utxo.value, &utxo.pieces).with_context(|| format!("UTXO {outpoint}"))?;
+      check_mined(&utxo.pieces)?;
       ensure!(
         (utxo.kind == UtxoKind::Unspendable) == is_unspendable(&utxo.script_pubkey),
         "UTXO {outpoint} has the wrong kind"
@@ -350,6 +363,7 @@ impl Tracker {
       tracker.attach(slot);
     }
 
+    check_mined(&snapshot.lost)?;
     for piece in snapshot.lost {
       tracker.push_lost(piece)?;
     }
@@ -360,6 +374,7 @@ impl Tracker {
         "overwritten UTXO {outpoint} has bad heights"
       );
       check_pieces(utxo.value, &utxo.pieces).with_context(|| format!("UTXO {outpoint}"))?;
+      check_mined(&utxo.pieces)?;
       let rows = tracker.piece_rows(&utxo.pieces)?;
       tracker.push_overwritten(Overwritten {
         outpoint,
@@ -409,11 +424,20 @@ impl Tracker {
 
   /// Applies the next block (`height == self.height() + 1`, or 0 when
   /// empty; `header.prev_blockhash` must equal `self.hash()`).
+  ///
+  /// Inconsistent input (wrong height, parent or hash, outputs exceeding
+  /// inputs, a tracked input with another value, spending an unspendable
+  /// output, value overflow) is an error, and the tracker is left exactly
+  /// as it was.
   pub fn apply_block(&mut self, block: &ResolvedBlock) -> anyhow::Result<BlockDelta> {
     self.apply(block)
   }
 
   /// Reverts the tip block; `delta` is what `apply_block` returned for it.
+  /// A delta that does not match the tip is an error, with nothing changed
+  /// (it is validated up front; an error after that point, like a row not
+  /// landing on the delta's `before` stats, means the state was already
+  /// inconsistent).
   pub fn undo_block(&mut self, delta: &BlockDelta) -> anyhow::Result<()> {
     self.undo(delta)
   }
@@ -479,6 +503,12 @@ impl Tracker {
 
   pub fn piece_count(&self) -> usize {
     self.piece_count
+  }
+
+  /// `RowStats::mined` per row, indexed by `RowId` (what `Store::commit`
+  /// persists next to the deltas).
+  pub fn mined(&self) -> Vec<u64> {
+    self.stats.iter().map(|stats| stats.mined).collect()
   }
 
   /// All sats (tracked or not) lost so far.

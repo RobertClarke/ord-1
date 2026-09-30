@@ -634,5 +634,124 @@ fn supply_active_windows_and_holders() {
   )
   .unwrap();
   assert_eq!(restored.supply(3), tracker.supply(3));
-  let _ = times;
+  assert_eq!(times.len(), 5);
+}
+
+#[test]
+fn reorg_to_a_competing_block() {
+  let (mut tracker, mut chain) = at_halving();
+  let a = txid(1);
+  tracker
+    .apply_block(&chain.block(vec![coinbase(a, vec![out(S)])]))
+    .unwrap();
+  let base = tracker.snapshot();
+  let (parent, next) = (chain.prev, chain.next);
+
+  // Block X spends A to script 2 and pays the coinbase to script 3.
+  let x = chain.block(vec![
+    coinbase(txid(2), vec![out_to(S + 10, 3)]),
+    tx(txid(3), &[(op(a, 0), S)], vec![out_to(S - 10, 2)]),
+  ]);
+  let delta_x = tracker.apply_block(&x).unwrap();
+  assert_eq!(located(&tracker, F).1, op(txid(3), 0));
+
+  // The competitor Y at the same height spends A differently.
+  tracker.undo_block(&delta_x).unwrap();
+  assert_eq!(tracker.snapshot(), base);
+  let mut fork = Chain::at(Some(next - 1));
+  fork.prev = parent;
+  fork.next_time = Some(chain.time_of(next) + 1);
+  let y = fork.block(vec![
+    coinbase(txid(4), vec![out_to(S - 7, 5)]),
+    tx(
+      txid(5),
+      &[(op(a, 0), S)],
+      vec![out_to(1, 6), out_to(S - 1, 7)],
+    ),
+  ]);
+  assert_ne!(x.hash, y.hash);
+  let delta_y = tracker.apply_block(&y).unwrap();
+  assert_eq!(
+    located(&tracker, F),
+    (LocationKind::Unspent, op(txid(5), 0), 0)
+  );
+  assert_eq!(tracker.hash(), Some(y.hash));
+  // The coinbase under-claims by 7: the black of Y's block is lost.
+  assert_eq!(delta_y.lost.len(), 1);
+  assert_eq!(tracker.lost_sats(), 7);
+  assert_eq!(row(&tracker, "uncommon").extracted, 1);
+  tracker.verify().unwrap();
+  // X no longer extends the tip.
+  assert!(tracker.apply_block(&x).is_err());
+}
+
+#[test]
+fn restore_rejects_inconsistent_snapshots() {
+  let (tracker, chain) = at_halving();
+  let catalog = tracker.catalog().clone();
+  let config = tracker.config().clone();
+  let base = tracker.snapshot();
+  let utxo = |pieces: Vec<Piece>| TrackedUtxo {
+    value: S,
+    script_pubkey: script(1),
+    height: H - 1,
+    kind: UtxoKind::Spendable,
+    pieces,
+  };
+  let with = |utxos: Vec<(OutPoint, TrackedUtxo)>| TrackerSnapshot {
+    utxos,
+    ..base.clone()
+  };
+  let restore = |snapshot| Tracker::restore(catalog.clone(), config.clone(), snapshot);
+  // Sats not mined yet at the tip.
+  assert!(restore(with(vec![(op(txid(1), 0), utxo(vec![piece(0, F, 1)]))])).is_err());
+  // The same sat twice.
+  let sat = F - 1;
+  assert!(
+    restore(with(vec![
+      (op(txid(1), 0), utxo(vec![piece(0, sat, 1)])),
+      (op(txid(2), 0), utxo(vec![piece(5, sat, 1)])),
+    ]))
+    .is_err()
+  );
+  // Unmerged, overlapping or out-of-value pieces.
+  for pieces in [
+    vec![piece(0, sat - 1, 1), piece(1, sat, 1)],
+    vec![piece(0, sat - 1, 2), piece(1, sat - 10, 1)],
+    vec![piece(S, sat, 1)],
+    vec![],
+  ] {
+    assert!(restore(with(vec![(op(txid(1), 0), utxo(pieces))])).is_err());
+  }
+  // Wrong kind, UTXO above the tip, row count mismatch, times.
+  let mut burned = utxo(vec![piece(0, sat, 1)]);
+  burned.kind = UtxoKind::Unspendable;
+  assert!(restore(with(vec![(op(txid(1), 0), burned)])).is_err());
+  let mut future = utxo(vec![piece(0, sat, 1)]);
+  future.height = H;
+  assert!(restore(with(vec![(op(txid(1), 0), future)])).is_err());
+  assert!(
+    restore(TrackerSnapshot {
+      mined: vec![0],
+      ..base.clone()
+    })
+    .is_err()
+  );
+  assert!(
+    restore(TrackerSnapshot {
+      times: vec![0],
+      ..base.clone()
+    })
+    .is_err()
+  );
+  // A valid one restores.
+  let ok = restore(with(vec![(op(txid(1), 0), utxo(vec![piece(7, sat, 1)]))])).unwrap();
+  assert_eq!(ok.locate(sat).unwrap().offset, 7);
+  assert_eq!(chain.next, H);
+}
+
+#[test]
+fn tracker_is_send() {
+  fn assert_send<T: Send>() {}
+  assert_send::<Tracker>();
 }

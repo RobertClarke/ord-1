@@ -374,6 +374,11 @@ impl Tracker {
     for part in &parts[i..] {
       push_merged(&mut fee, part.piece);
     }
+    // Fee sats go to the coinbase after the subsidy and earlier fees.
+    let fee_base = math::subsidy(height.into())
+      .checked_add(ctx.fees)
+      .filter(|base| base.checked_add(input_value - output_value).is_some())
+      .context("coinbase stream offsets overflow")?;
 
     // Nothing can fail from here on. Detach the inputs.
     let mut move_inputs = Vec::with_capacity(inputs.len());
@@ -463,8 +468,6 @@ impl Tracker {
       self.attach(id);
     }
 
-    // Fee sats go to the coinbase after the subsidy and earlier fees.
-    let fee_base = math::subsidy(height.into()) + ctx.fees;
     for piece in &fee {
       push_merged(
         &mut ctx.fee_pieces,

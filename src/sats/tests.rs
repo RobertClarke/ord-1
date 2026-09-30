@@ -632,3 +632,48 @@ fn invalid_rows_and_configs_are_rejected() {
   assert_eq!(catalog.row_counts(45_000_000_000, 5_000_000_000), [(0, 50)]);
   assert_eq!(catalog.row_counts(45_000_000_000, 16), [(0, 1)]);
 }
+
+#[test]
+fn totals_match_the_fixture_where_it_lists_every_sat() {
+  // The fixture holds every 1d/2d palindrome, every palinception, every
+  // bounty3 sat and both boundary sats of every palindromic height.
+  let catalog = default_catalog();
+  let count = |f: &dyn Fn(u64, TypeSet) -> bool| {
+    fixture()
+      .sats
+      .iter()
+      .filter(|&&(sat, types)| f(sat, types))
+      .count() as u64
+  };
+  let total = |id: &str| catalog.row_total(catalog.row_id(id).unwrap());
+  assert_eq!(
+    total("paliblock"),
+    count(&|_, t| t.contains(SatType::Paliblock))
+  );
+  assert_eq!(
+    total("palindrome_1d"),
+    count(&|_, t| t.contains(SatType::PalindromesInteger1d))
+  );
+  assert_eq!(
+    total("palindrome_2d"),
+    count(&|_, t| t.contains(SatType::PalindromesInteger2d))
+  );
+  assert_eq!(
+    total("palindrome_perfect_palinception"),
+    count(&|_, t| t.contains(SatType::PalindromesPerfectPalinception))
+  );
+  assert_eq!(
+    total("bounty3_name"),
+    count(&|_, t| t.contains(SatType::Bounty3Name))
+  );
+  assert_eq!(
+    total("palindrome_2d_2009"),
+    count(&|sat, t| t.contains(SatType::PalindromesInteger2d) && sat < first_sat(32_490))
+  );
+}
+
+#[test]
+fn catalog_is_shareable() {
+  fn assert_send_sync<T: Send + Sync>() {}
+  assert_send_sync::<SatCatalog>();
+}
