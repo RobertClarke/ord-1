@@ -127,7 +127,7 @@ function lostCandidates(lostIndex, { palindromesPerRange = 50 } = {}) {
 
 // Edge sets. `add(sat, set, expect)` receives every pick.
 async function buildEdges(ctx, add) {
-  const { ours, oracle, seed, log, height, edges, rowData, feeHeavy = FEE_HEAVY_BLOCKS, feesRecentBlocks = 500 } = ctx;
+  const { ours, oracle, seed, log, height, edges, rowData, feeHeavy = FEE_HEAVY_BLOCKS, feesRecentBlocks = 200 } = ctx;
   const rng = makeRng(`${seed}:edges`);
   // Whole ranges the index tracks (block 9 by default).
   const ranges = sm.rangesFromStatus(ctx.oursStatus);

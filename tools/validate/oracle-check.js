@@ -38,7 +38,7 @@ const { parseArgs, intOpt, listOpt, makeLogger, sleep, JsonlWriter, readJsonl } 
 const USAGE = `usage:
   oracle-check.js --ours=URL --oracle=URL [--samples-per-row=20] [--seed=S] [--concurrency=16] [--scan-concurrency=8]
                   [--rows=a,b | --skip-rows] [--edges=${ALL_EDGES.join(',')}|none]
-                  [--fee-heavy-blocks=h,…] [--sats=n,…] [--untracked-sats=n,…]
+                  [--fee-heavy-blocks=h,…] [--fees-recent-blocks=200] [--sats=n,…] [--untracked-sats=n,…]
                   [--out=FILE.jsonl] [--summary-json=FILE] [--samples-out=FILE.jsonl]
                   [--sync-timeout=3600] [--retries=3] [--quiet]
   oracle-check.js --ours=URL --baseline[=DIR] [--oracle=URL] [--rpc-url=URL] [--out=FILE.jsonl]
@@ -162,7 +162,8 @@ async function live(opts, log, stdout) {
   const rowData = await sampleRows(ours, sampled, { perRow, seed, log });
   for (const [rowId, sats] of rowData.samples) for (const s of sats) samples.add(s, `row:${rowId}`, 'tracked');
   log.info(`edge sets: ${edges.join(', ') || 'none'}`);
-  await buildEdges({ ours, oracle, seed, log, height: height0, edges, rowData, feeHeavy, oursStatus: st }, (sat, set, expect) => samples.add(sat, set, expect));
+  const feesRecentBlocks = intOpt(opts, 'feesRecentBlocks', 200);
+  await buildEdges({ ours, oracle, seed, log, height: height0, edges, rowData, feeHeavy, feesRecentBlocks, oursStatus: st }, (sat, set, expect) => samples.add(sat, set, expect));
   for (const s of listOpt(opts, 'sats') || []) samples.add(Number(s), 'cli', 'tracked');
   for (const s of listOpt(opts, 'untrackedSats') || []) samples.add(Number(s), 'cli-untracked', 'untracked');
 
