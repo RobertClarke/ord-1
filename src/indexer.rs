@@ -327,12 +327,26 @@ impl IndexerOptions {
       retry_interval: Duration::from_secs(1),
       max_retries: None,
       height_limit: settings.height_limit,
-      utxo_capacity: match settings.chain {
-        Chain::Mainnet => 190_000_000,
-        Chain::Testnet4 | Chain::Signet => 10_000_000,
-        Chain::Regtest => 100_000,
-      },
+      utxo_capacity: utxo_capacity(settings.chain, settings.height_limit),
     }
+  }
+}
+
+/// Initial capacity of the fast sync's UTXO value map: mainnet peaks at
+/// ~190 M entries (the source sizes its table for 200 M); a height limit
+/// scales it down (the UTXO set grew roughly with the square of the height).
+fn utxo_capacity(chain: Chain, height_limit: Option<u32>) -> usize {
+  let full = match chain {
+    Chain::Mainnet => 200_000_000,
+    Chain::Testnet4 | Chain::Signet => 10_000_000,
+    Chain::Regtest => 100_000,
+  };
+  match height_limit {
+    Some(limit) if chain == Chain::Mainnet && limit < 900_000 => {
+      let fraction = f64::from(limit) / 900_000.0;
+      ((full as f64 * fraction * fraction) as usize).max(1_000_000)
+    }
+    _ => full,
   }
 }
 
@@ -630,7 +644,7 @@ impl Indexer {
     let mut source = match self.node.fast_blocks(FastSyncOptions {
       stop_height: stop,
       fetch_threads: self.options.fetch_threads,
-      buffer_blocks: (self.options.fetch_threads * 4).max(64),
+      buffer_blocks: 256,
       utxo_capacity: self.options.utxo_capacity,
     }) {
       Ok(source) => source,
