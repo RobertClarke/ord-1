@@ -613,7 +613,10 @@ impl SatCatalog {
   }
 
   /// Exactly the JS `getSatTypes(sat)` + exotic range membership +
-  /// `bounty3_name` + `alpha_jan_feb_2009`.
+  /// `bounty3_name` + `alpha_jan_feb_2009`, assembled the way the runtime
+  /// scanner types a point sat (see the module docs): `paliblock` is
+  /// normalized over the rule, bounty3 and exotic types together, and sat 0
+  /// is not a palindrome.
   pub fn types(&self, sat: u64) -> TypeSet {
     use {
       SatType::*,
