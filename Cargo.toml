@@ -54,6 +54,7 @@ rustc-hash = "2.1.0"
 serde.workspace = true
 serde_json.workspace = true
 tokio = { version = "1.43.0", features = ["rt-multi-thread", "macros", "signal", "net", "sync", "time"] }
+tokio-stream = "0.1.14"
 tower-http = { version = "0.7.0", features = ["compression-br", "compression-gzip", "cors"] }
 
 [dev-dependencies]

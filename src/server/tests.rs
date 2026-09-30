@@ -1,0 +1,1347 @@
+//! Server tests: the router on a store holding hand-made blocks, queried
+//! over HTTP, with the JSON shapes of docs/API.md.
+
+use {
+  super::*,
+  crate::{
+    indexer::Status,
+    model::{
+      BlockDelta, Holder, Move, MoveInput, MoveOutput, Piece, RowCounts, RowDelta, RowSupply,
+      SupplySnapshot, TrackedUtxo, UtxoKind,
+    },
+    store::{IndexMeta, SCHEMA_VERSION, StoreOptions},
+  },
+  bitcoin::{
+    CompactTarget, Network, TxMerkleNode, Txid,
+    block::{Header, Version},
+    hashes::{Hash, sha256d},
+  },
+  pretty_assertions::assert_eq,
+  reqwest::blocking::Client,
+  serde_json::{Value, json},
+  std::{
+    net::TcpListener,
+    sync::atomic::{AtomicBool, Ordering},
+    thread,
+  },
+  tempfile::TempDir,
+};
+
+const COIN: u64 = 5_000_000_000;
+
+/// Tracks block 0 whole (range row `block0`), every first (`uncommon`) and
+/// last (`black`) sat of a 50 BTC block; `alpha` is every multiple of 1e8.
+struct FakeCatalog {
+  rows: Vec<RowInfo>,
+}
+
+impl FakeCatalog {
+  fn new() -> Self {
+    let row = |id: &str, types: &[&'static str], range: bool| RowInfo {
+      id: id.into(),
+      label: id.to_uppercase(),
+      all_of: types.to_vec(),
+      any_of: Vec::new(),
+      heights: None,
+      range,
+    };
+    let mut rows = vec![
+      row("uncommon", &["uncommon"], false),
+      row("black", &["black"], false),
+      row("block0", &["block0"], true),
+      row("alpha", &["alpha"], false),
+    ];
+    rows[3].heights = Some((0, 5923));
+    Self { rows }
+  }
+}
+
+fn multiples(start: u64, end: u64, step: u64, rem: u64) -> u64 {
+  // Count of n in [start, end) with n % step == rem.
+  let below = |x: u64| {
+    if x <= rem {
+      0
+    } else {
+      (x - rem - 1) / step + 1
+    }
+  };
+  below(end) - below(start)
+}
+
+impl Catalog for FakeCatalog {
+  fn types(&self, sat: u64) -> Vec<&'static str> {
+    let mut types = Vec::new();
+    if sat.is_multiple_of(COIN) {
+      types.push("uncommon");
+    }
+    if sat % COIN == COIN - 1 {
+      types.push("black");
+    }
+    if sat.is_multiple_of(100_000_000) {
+      types.push("alpha");
+    }
+    if sat < COIN {
+      types.push("block0");
+    }
+    types
+  }
+
+  fn is_tracked(&self, sat: u64) -> bool {
+    sat < COIN || sat.is_multiple_of(COIN) || sat % COIN == COIN - 1
+  }
+
+  fn rows(&self) -> &[RowInfo] {
+    &self.rows
+  }
+
+  fn row_counts(&self, start: u64, len: u64) -> RowCounts {
+    let end = start + len;
+    [
+      (0, multiples(start, end, COIN, 0)),
+      (1, multiples(start, end, COIN, COIN - 1)),
+      (2, end.min(COIN).saturating_sub(start.min(COIN))),
+      (3, multiples(start, end, 100_000_000, 0)),
+    ]
+    .into_iter()
+    .filter(|(_, count)| *count > 0)
+    .collect()
+  }
+
+  fn row_total(&self, row: RowId) -> u64 {
+    [6_930_000, 6_930_000, COIN, 20_999_999][usize::from(row)]
+  }
+
+  fn fingerprint(&self) -> String {
+    "fake-catalog".into()
+  }
+}
+
+fn txid(n: u8) -> Txid {
+  Txid::from_raw_hash(sha256d::Hash::hash(&[n]))
+}
+
+fn p2pk() -> ScriptBuf {
+  let mut bytes = vec![0x41, 0x04];
+  bytes.extend([7; 64]);
+  bytes.push(0xac);
+  ScriptBuf::from_bytes(bytes)
+}
+
+fn p2wpkh(n: u8) -> ScriptBuf {
+  let mut bytes = vec![0x00, 0x14];
+  bytes.extend([n; 20]);
+  ScriptBuf::from_bytes(bytes)
+}
+
+fn p2tr() -> ScriptBuf {
+  let mut bytes = vec![0x51, 0x20];
+  bytes.extend([9; 32]);
+  ScriptBuf::from_bytes(bytes)
+}
+
+fn op_return() -> ScriptBuf {
+  ScriptBuf::from_bytes(vec![0x6a, 0x04, 1, 2, 3, 4])
+}
+
+fn address(script: &ScriptBuf) -> Value {
+  Address::from_script(script, Network::Regtest)
+    .map(|address| json!(address.to_string()))
+    .unwrap_or(Value::Null)
+}
+
+const TIMES: [u32; 4] = [1_231_006_505, 1_231_469_665, 1_700_000_000, 1_700_000_600];
+
+fn piece(offset: u64, start: u64, len: u64) -> Piece {
+  Piece { offset, start, len }
+}
+
+fn utxo(value: u64, script: ScriptBuf, height: u32, pieces: Vec<Piece>) -> TrackedUtxo {
+  TrackedUtxo {
+    value,
+    kind: if script.is_op_return() {
+      UtxoKind::Unspendable
+    } else {
+      UtxoKind::Spendable
+    },
+    script_pubkey: script,
+    height,
+    pieces,
+  }
+}
+
+fn move_output(vout: u32, utxo: &TrackedUtxo) -> MoveOutput {
+  MoveOutput {
+    vout,
+    value: utxo.value,
+    script_pubkey: utxo.script_pubkey.clone(),
+    kind: utxo.kind,
+    pieces: utxo.pieces.clone(),
+  }
+}
+
+fn coinbase(txid: Txid, outputs: Vec<MoveOutput>, mined: Vec<Piece>, lost: Vec<Piece>) -> Move {
+  Move {
+    txid,
+    tx_index: 0,
+    coinbase: true,
+    input_value: 0,
+    output_value: outputs.iter().map(|output| output.value).sum(),
+    inputs: Vec::new(),
+    outputs,
+    fee: Vec::new(),
+    mined,
+    lost,
+  }
+}
+
+fn stats(mined: u64, located: u64, burned: u64, lost: u64, extracted: u64) -> RowStats {
+  RowStats {
+    mined,
+    located,
+    burned,
+    lost,
+    overwritten: 0,
+    extracted,
+    holders: located.min(3),
+    extracted_holders: extracted.min(1),
+  }
+}
+
+struct Scenario {
+  a: OutPoint,
+  b: OutPoint,
+  t0: OutPoint,
+  t1: OutPoint,
+  c: OutPoint,
+  u0: OutPoint,
+  u1: OutPoint,
+  d: OutPoint,
+  deltas: Vec<BlockDelta>,
+}
+
+/// Block 0: coinbase A holds block 0's sats but the last (lost).
+/// Block 1: coinbase B holds its uncommon and black sats.
+/// Block 2: T spends B: T:0 (546 sats, P2TR, extracted) gets the uncommon,
+///   T:1 the black; 9,454 sats of fee; coinbase C.
+/// Block 3: U spends C: U:0 (OP_RETURN) burns C's uncommon, U:1 the black;
+///   coinbase D.
+fn scenario() -> Scenario {
+  let (a, b, c, d) = (
+    OutPoint::new(txid(0), 0),
+    OutPoint::new(txid(1), 0),
+    OutPoint::new(txid(2), 0),
+    OutPoint::new(txid(3), 0),
+  );
+  let (t0, t1) = (OutPoint::new(txid(20), 0), OutPoint::new(txid(20), 1));
+  let (u0, u1) = (OutPoint::new(txid(30), 0), OutPoint::new(txid(30), 1));
+
+  let utxo_a = utxo(COIN - 1, p2pk(), 0, vec![piece(0, 0, COIN - 1)]);
+  let utxo_b = utxo(
+    COIN,
+    p2wpkh(1),
+    1,
+    vec![piece(0, COIN, 1), piece(COIN - 1, 2 * COIN - 1, 1)],
+  );
+  let utxo_t0 = utxo(546, p2tr(), 2, vec![piece(0, COIN, 1)]);
+  let utxo_t1 = utxo(
+    4_999_990_000,
+    p2wpkh(2),
+    2,
+    vec![piece(COIN - 1 - 546, 2 * COIN - 1, 1)],
+  );
+  let utxo_c = utxo(
+    COIN + 9_454,
+    p2wpkh(3),
+    2,
+    vec![piece(0, 2 * COIN, 1), piece(COIN - 1, 3 * COIN - 1, 1)],
+  );
+  let utxo_u0 = utxo(1_000, op_return(), 3, vec![piece(0, 2 * COIN, 1)]);
+  let utxo_u1 = utxo(
+    COIN + 8_454,
+    p2wpkh(3),
+    3,
+    vec![piece(COIN - 1 - 1_000, 3 * COIN - 1, 1)],
+  );
+  let utxo_d = utxo(
+    COIN,
+    p2wpkh(4),
+    3,
+    vec![piece(0, 3 * COIN, 1), piece(COIN - 1, 4 * COIN - 1, 1)],
+  );
+
+  let mut deltas = Vec::new();
+  let mut prev = None;
+  let mut push = |height: u32,
+                  moves: Vec<Move>,
+                  spent: Vec<(OutPoint, TrackedUtxo)>,
+                  created: Vec<(OutPoint, TrackedUtxo)>,
+                  lost: Vec<Piece>,
+                  rows: Vec<RowDelta>| {
+    let header = Header {
+      version: Version::ONE,
+      prev_blockhash: prev.unwrap_or_else(BlockHash::all_zeros),
+      merkle_root: TxMerkleNode::all_zeros(),
+      time: TIMES[height as usize],
+      bits: CompactTarget::from_consensus(0x207f_ffff),
+      nonce: height,
+    };
+    prev = Some(header.block_hash());
+    deltas.push(BlockDelta {
+      height,
+      hash: header.block_hash(),
+      header,
+      moves,
+      spent,
+      created,
+      overwritten: Vec::new(),
+      lost,
+      lost_sats_before: u64::from(height > 0),
+      lost_sats_after: 1,
+      rows,
+    });
+  };
+
+  push(
+    0,
+    vec![coinbase(
+      a.txid,
+      vec![move_output(0, &utxo_a)],
+      vec![piece(0, 0, COIN)],
+      vec![piece(0, COIN - 1, 1)],
+    )],
+    Vec::new(),
+    vec![(a, utxo_a.clone())],
+    vec![piece(0, COIN - 1, 1)],
+    vec![
+      RowDelta {
+        row: 0,
+        before: RowStats::default(),
+        after: stats(1, 1, 0, 0, 0),
+      },
+      RowDelta {
+        row: 1,
+        before: RowStats::default(),
+        after: stats(1, 0, 0, 1, 0),
+      },
+      RowDelta {
+        row: 2,
+        before: RowStats::default(),
+        after: stats(COIN, COIN - 1, 0, 1, 0),
+      },
+      RowDelta {
+        row: 3,
+        before: RowStats::default(),
+        after: stats(50, 50, 0, 0, 0),
+      },
+    ],
+  );
+
+  push(
+    1,
+    vec![coinbase(
+      b.txid,
+      vec![move_output(0, &utxo_b)],
+      utxo_b.pieces.clone(),
+      Vec::new(),
+    )],
+    Vec::new(),
+    vec![(b, utxo_b.clone())],
+    Vec::new(),
+    vec![
+      RowDelta {
+        row: 0,
+        before: stats(1, 1, 0, 0, 0),
+        after: stats(2, 2, 0, 0, 0),
+      },
+      RowDelta {
+        row: 1,
+        before: stats(1, 0, 0, 1, 0),
+        after: stats(2, 1, 0, 1, 0),
+      },
+      RowDelta {
+        row: 3,
+        before: stats(50, 50, 0, 0, 0),
+        after: stats(51, 51, 0, 0, 0),
+      },
+    ],
+  );
+
+  push(
+    2,
+    vec![
+      Move {
+        txid: t0.txid,
+        tx_index: 1,
+        coinbase: false,
+        input_value: COIN,
+        output_value: 546 + 4_999_990_000,
+        inputs: vec![MoveInput {
+          vin: 0,
+          outpoint: b,
+          utxo: utxo_b.clone(),
+        }],
+        outputs: vec![move_output(0, &utxo_t0), move_output(1, &utxo_t1)],
+        fee: Vec::new(),
+        mined: Vec::new(),
+        lost: Vec::new(),
+      },
+      coinbase(
+        c.txid,
+        vec![move_output(0, &utxo_c)],
+        utxo_c.pieces.clone(),
+        Vec::new(),
+      ),
+    ],
+    vec![(b, utxo_b.clone())],
+    vec![
+      (t0, utxo_t0.clone()),
+      (t1, utxo_t1.clone()),
+      (c, utxo_c.clone()),
+    ],
+    Vec::new(),
+    vec![
+      RowDelta {
+        row: 0,
+        before: stats(2, 2, 0, 0, 0),
+        after: stats(3, 3, 0, 0, 1),
+      },
+      RowDelta {
+        row: 1,
+        before: stats(2, 1, 0, 1, 0),
+        after: stats(3, 2, 0, 1, 0),
+      },
+      RowDelta {
+        row: 3,
+        before: stats(51, 51, 0, 0, 0),
+        after: stats(52, 52, 0, 0, 1),
+      },
+    ],
+  );
+
+  push(
+    3,
+    vec![
+      Move {
+        txid: u0.txid,
+        tx_index: 1,
+        coinbase: false,
+        input_value: COIN + 9_454,
+        output_value: COIN + 9_454,
+        inputs: vec![MoveInput {
+          vin: 0,
+          outpoint: c,
+          utxo: utxo_c.clone(),
+        }],
+        outputs: vec![move_output(0, &utxo_u0), move_output(1, &utxo_u1)],
+        fee: Vec::new(),
+        mined: Vec::new(),
+        lost: Vec::new(),
+      },
+      coinbase(
+        d.txid,
+        vec![move_output(0, &utxo_d)],
+        utxo_d.pieces.clone(),
+        Vec::new(),
+      ),
+    ],
+    vec![(c, utxo_c.clone())],
+    vec![
+      (u0, utxo_u0.clone()),
+      (u1, utxo_u1.clone()),
+      (d, utxo_d.clone()),
+    ],
+    Vec::new(),
+    vec![
+      RowDelta {
+        row: 0,
+        before: stats(3, 3, 0, 0, 1),
+        after: stats(4, 3, 1, 0, 1),
+      },
+      RowDelta {
+        row: 1,
+        before: stats(3, 2, 0, 1, 0),
+        after: stats(4, 3, 0, 1, 0),
+      },
+      RowDelta {
+        row: 3,
+        before: stats(52, 52, 0, 0, 1),
+        after: stats(53, 52, 1, 0, 1),
+      },
+    ],
+  );
+
+  Scenario {
+    a,
+    b,
+    t0,
+    t1,
+    c,
+    u0,
+    u1,
+    d,
+    deltas,
+  }
+}
+
+struct TestServer {
+  _dir: TempDir,
+  url: String,
+  client: Client,
+  scenario: Scenario,
+  store: Arc<Store>,
+  published: Arc<Published>,
+  shutdown: Option<tokio::sync::oneshot::Sender<()>>,
+  thread: Option<thread::JoinHandle<()>>,
+}
+
+impl TestServer {
+  /// The scenario indexed up to `height` (nothing when `None`).
+  fn new(height: Option<u32>) -> Self {
+    Self::with_retention(height, MovesRetention::All)
+  }
+
+  fn with_retention(height: Option<u32>, retention: MovesRetention) -> Self {
+    let dir = TempDir::new().unwrap();
+    let store = Arc::new(
+      Store::open_with(
+        &dir.path().join("index.redb"),
+        StoreOptions {
+          cache_size: 16 << 20,
+          moves_retention: retention,
+          quick_repair: false,
+        },
+      )
+      .unwrap(),
+    );
+    store
+      .init(&IndexMeta {
+        schema_version: SCHEMA_VERSION,
+        chain: "regtest".into(),
+        config: TrackerConfig::default(),
+        catalog_fingerprint: "fake-catalog".into(),
+        height: None,
+        hash: None,
+        fast_sync_complete: false,
+      })
+      .unwrap();
+
+    let scenario = scenario();
+    let published = Arc::new(Published::default());
+    if let Some(height) = height {
+      let deltas = &scenario.deltas[..=height as usize];
+      store.commit(deltas, &[4, 4, COIN, 53], true).unwrap();
+      let last = deltas.last().unwrap();
+      published.update_status(|status| {
+        *status = Status {
+          mode: Mode::Live,
+          height: Some(last.height),
+          hash: Some(last.hash),
+          time: Some(last.header.time),
+          bitcoind_height: Some(last.height + 1),
+          fast_sync_complete: true,
+          tracked_utxos: 6,
+          tracked_pieces: 9,
+          lost_sats: 1,
+          ..Status::default()
+        };
+      });
+      published.set_supply(SupplySnapshot {
+        height: Some(last.height),
+        hash: Some(last.hash),
+        time: Some(last.header.time),
+        rows: (0..4)
+          .map(|row| RowSupply {
+            row,
+            stats: stats(4, 3, 1, 0, 1),
+            active_non_extracted: vec![(1, 1), (2, 2), (3, 2), (4, 2), (5, 2), (7, 2)],
+            top_extracted_holders: vec![Holder {
+              script_pubkey: p2tr(),
+              count: 1,
+              utxos: 1,
+              last_received_height: 2,
+            }],
+            top_non_extracted_holders: vec![
+              Holder {
+                script_pubkey: p2wpkh(4),
+                count: 1,
+                utxos: 1,
+                last_received_height: 3,
+              },
+              Holder {
+                script_pubkey: p2pk(),
+                count: 1,
+                utxos: 1,
+                last_received_height: 0,
+              },
+            ],
+          })
+          .collect(),
+      });
+    }
+
+    let state = Arc::new(ServerState {
+      store: store.clone(),
+      catalog: Arc::new(FakeCatalog::new()),
+      published: published.clone(),
+      chain: Chain::Regtest,
+      config: TrackerConfig::default(),
+      moves_retention: retention,
+      started: 1_700_000_001,
+    });
+
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let (shutdown, signal) = tokio::sync::oneshot::channel::<()>();
+    let thread = thread::spawn(move || {
+      tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(2)
+        .enable_all()
+        .build()
+        .unwrap()
+        .block_on(async move {
+          serve(
+            state,
+            tokio::net::TcpListener::from_std(listener).unwrap(),
+            async {
+              signal.await.ok();
+            },
+          )
+          .await
+          .unwrap();
+        });
+    });
+
+    Self {
+      _dir: dir,
+      url,
+      client: Client::new(),
+      scenario,
+      store,
+      published,
+      shutdown: Some(shutdown),
+      thread: Some(thread),
+    }
+  }
+
+  fn get(&self, path: &str) -> reqwest::blocking::Response {
+    self
+      .client
+      .get(format!("{}{path}", self.url))
+      .send()
+      .unwrap()
+  }
+
+  #[track_caller]
+  fn json(&self, path: &str) -> Value {
+    let response = self.get(path);
+    assert_eq!(response.status(), 200, "{path}");
+    assert_eq!(
+      response.headers()[header::CONTENT_TYPE],
+      "application/json",
+      "{path}"
+    );
+    response.json().unwrap()
+  }
+
+  #[track_caller]
+  fn error(&self, path: &str, status: u16) -> String {
+    let response = self.get(path);
+    assert_eq!(response.status(), status, "{path}");
+    let body = response.json::<Value>().unwrap();
+    body["error"].as_str().unwrap().to_string()
+  }
+
+  #[track_caller]
+  fn ndjson(&self, path: &str) -> Vec<Value> {
+    let response = self.get(path);
+    assert_eq!(response.status(), 200, "{path}");
+    assert_eq!(
+      response.headers()[header::CONTENT_TYPE],
+      "application/x-ndjson"
+    );
+    response
+      .text()
+      .unwrap()
+      .lines()
+      .map(|line| serde_json::from_str(line).unwrap())
+      .collect()
+  }
+
+  fn hash(&self, height: u32) -> String {
+    self.scenario.deltas[height as usize].hash.to_string()
+  }
+}
+
+impl Drop for TestServer {
+  fn drop(&mut self) {
+    self.shutdown.take().unwrap().send(()).ok();
+    self.thread.take().unwrap().join().unwrap();
+  }
+}
+
+fn piece_json(offset: u64, start: u64, len: u64, types: &[&str]) -> Value {
+  json!({ "offset": offset, "start": start, "len": len, "types": types })
+}
+
+#[test]
+fn status() {
+  let server = TestServer::new(Some(3));
+  let status = server.json("/status");
+  assert_eq!(
+    status,
+    json!({
+      "chain": "regtest",
+      "version": env!("CARGO_PKG_VERSION"),
+      "commit": status["commit"],
+      "height": 3,
+      "hash": server.hash(3),
+      "time": TIMES[3],
+      "bitcoind_height": 4,
+      "mode": "live",
+      "fast_sync_complete": true,
+      "started": 1_700_000_001,
+      "tracked_utxos": 6,
+      "tracked_pieces": 9,
+      "lost_sats": 1,
+      "ranges": serde_json::to_value(TrackerConfig::default().ranges).unwrap(),
+      "extracted_max_value": 10_000,
+      "extracted_since": 1_670_976_000,
+      "catalog_fingerprint": "fake-catalog",
+      "moves_retention": "all",
+      "moves_from": 0,
+      "timings": status["timings"],
+      "error": null,
+    })
+  );
+  assert!(status["timings"]["blocks_per_second"].is_number());
+
+  // Before the first commit, `height` is null.
+  let server = TestServer::new(None);
+  let status = server.json("/status");
+  assert_eq!(status["height"], Value::Null);
+  assert_eq!(status["mode"], "starting");
+}
+
+#[test]
+fn rows() {
+  let server = TestServer::new(None);
+  let rows = server.json("/rows");
+  assert_eq!(
+    rows[0],
+    json!({ "id": "uncommon", "label": "UNCOMMON", "all_of": ["uncommon"], "any_of": [],
+            "heights": null, "range": false, "total": 6_930_000 })
+  );
+  assert_eq!(rows[2]["range"], true);
+  assert_eq!(rows[3]["heights"], json!([0, 5923]));
+  assert_eq!(rows.as_array().unwrap().len(), 4);
+}
+
+#[test]
+fn supply() {
+  let server = TestServer::new(Some(3));
+  let supply = server.json("/supply");
+  assert_eq!(supply["height"], 3);
+  assert_eq!(supply["hash"], server.hash(3));
+  assert_eq!(supply["time"], TIMES[3]);
+  let uncommon = &supply["rows"][0];
+  assert_eq!(
+    uncommon,
+    &json!({
+      "id": "uncommon",
+      "total": 6_930_000,
+      "stats": { "mined": 4, "located": 3, "burned": 1, "lost": 0, "overwritten": 0,
+                 "extracted": 1, "holders": 3, "extracted_holders": 1 },
+      "active_non_extracted": { "1y": 1, "2y": 2, "3y": 2, "4y": 2, "5y": 2, "7y": 2 },
+      "delta": {
+        "height": 3,
+        "before": { "mined": 3, "located": 3, "burned": 0, "lost": 0, "overwritten": 0,
+                    "extracted": 1, "holders": 3, "extracted_holders": 1 },
+        "after": { "mined": 4, "located": 3, "burned": 1, "lost": 0, "overwritten": 0,
+                   "extracted": 1, "holders": 3, "extracted_holders": 1 },
+      },
+    })
+  );
+  // block0 did not change in block 3.
+  assert_eq!(supply["rows"][2]["id"], "block0");
+  assert_eq!(supply["rows"][2]["delta"], Value::Null);
+
+  let row = server.json("/supply/uncommon?top=1");
+  assert_eq!(row["id"], "uncommon");
+  assert_eq!(row["delta"]["height"], 3);
+  assert_eq!(
+    row["top_extracted_holders"],
+    json!([{ "address": address(&p2tr()), "script_pubkey": p2tr().to_hex_string(), "n": 1,
+             "utxos": 1, "last_received_height": 2, "last_received_time": TIMES[2] }])
+  );
+  assert_eq!(
+    row["top_non_extracted_holders"],
+    json!([{ "address": address(&p2wpkh(4)), "script_pubkey": p2wpkh(4).to_hex_string(),
+             "n": 1, "utxos": 1, "last_received_height": 3, "last_received_time": TIMES[3] }])
+  );
+  let row = server.json("/supply/uncommon");
+  assert_eq!(
+    row["top_non_extracted_holders"][1]["address"],
+    Value::Null,
+    "P2PK has no address"
+  );
+
+  assert!(
+    server
+      .error("/supply/uncommon?top=1001", 400)
+      .contains("1000")
+  );
+  assert!(server.error("/supply/nope", 404).contains("nope"));
+  assert!(server.error("/supply/uncommon?top=x", 400).contains("top"));
+
+  let server = TestServer::new(None);
+  server.error("/supply", 503);
+  server.error("/supply/uncommon", 503);
+}
+
+#[test]
+fn supply_history() {
+  let server = TestServer::new(Some(3));
+  let history = server.json("/supply/black/history?every=1");
+  assert_eq!(history["row"], "black");
+  let points = history["points"].as_array().unwrap();
+  assert_eq!(points.len(), 4);
+  assert_eq!(points[0]["height"], 0);
+  assert_eq!(points[0]["time"], TIMES[0]);
+  assert_eq!(points[0]["stats"]["lost"], 1);
+  assert_eq!(points[3]["stats"]["located"], 3);
+
+  // Buckets of 2 report the value at their last block; unchanged rows
+  // carry their last value forward.
+  let history = server.json("/supply/block0/history?every=2");
+  let points = history["points"].as_array().unwrap();
+  assert_eq!(
+    points
+      .iter()
+      .map(|point| point["height"].as_u64().unwrap())
+      .collect::<Vec<u64>>(),
+    [1, 3]
+  );
+  assert_eq!(points[1]["stats"]["mined"], COIN);
+
+  let history = server.json("/supply/uncommon/history?from=2&to=2");
+  assert_eq!(history["points"].as_array().unwrap().len(), 1);
+  assert_eq!(history["points"][0]["stats"]["mined"], 3);
+
+  // Default `every` keeps ≤ 2,000 points.
+  assert_eq!(
+    server.json("/supply/uncommon/history")["points"]
+      .as_array()
+      .unwrap()
+      .len(),
+    4
+  );
+
+  // A huge `every` is one bucket ending at `to`.
+  let history = server.json("/supply/uncommon/history?from=1&every=4294967295");
+  assert_eq!(history["points"][0]["height"], 3);
+
+  server.error("/supply/uncommon/history?from=3&to=1", 400);
+  server.error("/supply/uncommon/history?every=0", 400);
+  server.error("/supply/nope/history", 404);
+}
+
+#[test]
+fn sat() {
+  let server = TestServer::new(Some(3));
+  let a = server.scenario.a;
+
+  let output_a = json!({
+    "outpoint": a.to_string(),
+    "value": COIN - 1,
+    "address": null,
+    "script_pubkey": p2pk().to_hex_string(),
+    "kind": "spendable",
+    "created_height": 0,
+    "created_time": TIMES[0],
+    "extracted": false,
+    "pieces": [piece_json(0, 0, COIN - 1, &["uncommon", "alpha", "block0"])],
+    "rows": { "uncommon": 1, "block0": COIN - 1, "alpha": 50 },
+  });
+
+  assert_eq!(
+    server.json("/sat/7"),
+    json!({
+      "sat": 7,
+      "height": 0,
+      "types": ["block0"],
+      "tracked": true,
+      "rows": ["block0"],
+      "location": {
+        "kind": "unspent",
+        "satpoint": format!("{a}:7"),
+        "outpoint": a.to_string(),
+        "offset": 7,
+        "output": output_a,
+      },
+    })
+  );
+
+  let lost = server.json("/sat/4999999999");
+  assert_eq!(lost["rows"], json!(["black", "block0"]));
+  assert_eq!(
+    lost["location"],
+    json!({
+      "kind": "lost",
+      "satpoint": "0000000000000000000000000000000000000000000000000000000000000000:4294967295:0",
+      "outpoint": "0000000000000000000000000000000000000000000000000000000000000000:4294967295",
+      "offset": 0,
+      "output": null,
+    })
+  );
+
+  let extracted = server.json(&format!("/sat/{COIN}"));
+  assert_eq!(extracted["height"], 1);
+  assert_eq!(extracted["types"], json!(["uncommon", "alpha"]));
+  assert_eq!(extracted["rows"], json!(["uncommon", "alpha"]));
+  assert_eq!(extracted["location"]["kind"], "unspent");
+  assert_eq!(
+    extracted["location"]["satpoint"],
+    format!("{}:0", server.scenario.t0)
+  );
+  assert_eq!(extracted["location"]["output"]["extracted"], true);
+  assert_eq!(extracted["location"]["output"]["address"], address(&p2tr()));
+
+  let burned = server.json(&format!("/sat/{}", 2 * COIN));
+  assert_eq!(burned["location"]["kind"], "burned");
+  assert_eq!(
+    burned["location"]["outpoint"],
+    server.scenario.u0.to_string()
+  );
+  assert_eq!(burned["location"]["output"]["kind"], "unspendable");
+  assert_eq!(
+    burned["location"]["output"]["extracted"], false,
+    "unspendable outputs are never extracted"
+  );
+
+  let black = server.json(&format!("/sat/{}", 2 * COIN - 1));
+  assert_eq!(
+    black["location"]["satpoint"],
+    format!("{}:{}", server.scenario.t1, COIN - 1 - 546)
+  );
+
+  assert_eq!(
+    server.json(&format!("/sat/{}", COIN + 1)),
+    json!({ "sat": COIN + 1, "height": 1, "types": [], "tracked": false, "rows": [],
+            "location": null })
+  );
+  // Tracked but not mined yet.
+  let future = server.json(&format!("/sat/{}", 100 * COIN));
+  assert_eq!(future["tracked"], true);
+  assert_eq!(future["location"], Value::Null);
+
+  server.error("/sat/x", 400);
+  server.error("/sat/-1", 400);
+  assert!(
+    server
+      .error("/sat/2099999997690000", 400)
+      .contains("beyond")
+  );
+  server.json("/sat/2099999997689999");
+
+  TestServer::new(None).error("/sat/0", 503);
+}
+
+#[test]
+fn output_endpoint() {
+  let server = TestServer::new(Some(3));
+  let Scenario { t1, u1, d, b, .. } = server.scenario;
+  assert_eq!(
+    server.json(&format!("/output/{t1}")),
+    json!({
+      "outpoint": t1.to_string(),
+      "value": 4_999_990_000u64,
+      "address": address(&p2wpkh(2)),
+      "script_pubkey": p2wpkh(2).to_hex_string(),
+      "kind": "spendable",
+      "created_height": 2,
+      "created_time": TIMES[2],
+      "extracted": false,
+      "pieces": [piece_json(COIN - 1 - 546, 2 * COIN - 1, 1, &["black"])],
+      "rows": { "black": 1 },
+    })
+  );
+  assert_eq!(
+    server.json(&format!("/output/{d}"))["rows"],
+    json!({ "uncommon": 1, "black": 1, "alpha": 1 })
+  );
+  server.json(&format!("/output/{u1}"));
+  assert!(
+    server
+      .error(&format!("/output/{b}"), 404)
+      .contains("no tracked sat")
+  );
+  server.error("/output/nonsense", 400);
+  server.error(&format!("/output/{}", b.txid), 400);
+}
+
+#[test]
+fn address_and_script() {
+  let server = TestServer::new(Some(3));
+  let Scenario { c, u1, .. } = server.scenario;
+  let _ = c;
+
+  let by_script = server.json(&format!("/script/{}", p2wpkh(3).to_hex_string()));
+  assert_eq!(by_script["address"], address(&p2wpkh(3)));
+  assert_eq!(by_script["script_pubkey"], p2wpkh(3).to_hex_string());
+  assert_eq!(
+    by_script["outputs"]
+      .as_array()
+      .unwrap()
+      .iter()
+      .map(|output| output["outpoint"].as_str().unwrap().to_string())
+      .collect::<Vec<String>>(),
+    [u1.to_string()]
+  );
+  assert_eq!(by_script["rows"], json!({ "black": 1 }));
+
+  let by_address = server.json(&format!(
+    "/address/{}",
+    address(&p2wpkh(3)).as_str().unwrap()
+  ));
+  assert_eq!(by_address, by_script);
+
+  // P2PK: no address, but the script works.
+  let p2pk_outputs = server.json(&format!("/script/{}", p2pk().to_hex_string()));
+  assert_eq!(p2pk_outputs["address"], Value::Null);
+  assert_eq!(p2pk_outputs["outputs"].as_array().unwrap().len(), 1);
+
+  // Burned outputs are found by their script too.
+  assert_eq!(
+    server.json(&format!("/script/{}", op_return().to_hex_string()))["outputs"][0]["kind"],
+    "unspendable"
+  );
+
+  // Nothing tracked: empty.
+  let empty = server.json(&format!("/script/{}", p2wpkh(99).to_hex_string()));
+  assert_eq!(empty["outputs"], json!([]));
+  assert_eq!(empty["rows"], json!({}));
+
+  // A mainnet address on regtest.
+  assert!(
+    server
+      .error("/address/bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq", 400)
+      .contains("regtest")
+  );
+  server.error("/address/nonsense", 400);
+  server.error("/script/zz", 400);
+}
+
+#[test]
+fn block_and_moves() {
+  let server = TestServer::new(Some(3));
+  let Scenario { b, t0, t1, c, .. } = server.scenario;
+
+  assert_eq!(
+    server.json("/block/2"),
+    json!({
+      "height": 2,
+      "hash": server.hash(2),
+      "prev_hash": server.hash(1),
+      "time": TIMES[2],
+      "moves": 2,
+      "rows_moved": { "uncommon": 2, "black": 2, "alpha": 2 },
+    })
+  );
+  assert_eq!(
+    server.json("/block/0")["rows_moved"],
+    json!({ "uncommon": 1, "black": 1, "block0": COIN, "alpha": 50 })
+  );
+  server.error("/block/4", 404);
+  server.error("/block/x", 400);
+
+  let moves = server.json("/block/2/moves");
+  assert_eq!(moves["height"], 2);
+  assert_eq!(moves["hash"], server.hash(2));
+  assert_eq!(moves["time"], TIMES[2]);
+  assert_eq!(
+    moves["moves"][0],
+    json!({
+      "txid": t0.txid.to_string(),
+      "tx_index": 1,
+      "coinbase": false,
+      "input_value": COIN,
+      "output_value": 546 + 4_999_990_000u64,
+      "fee": 9_454,
+      "inputs": [{
+        "vin": 0,
+        "outpoint": b.to_string(),
+        "value": COIN,
+        "address": address(&p2wpkh(1)),
+        "script_pubkey": p2wpkh(1).to_hex_string(),
+        "created_height": 1,
+        "created_time": TIMES[1],
+        "extracted": false,
+        "pieces": [
+          piece_json(0, COIN, 1, &["uncommon", "alpha"]),
+          piece_json(COIN - 1, 2 * COIN - 1, 1, &["black"]),
+        ],
+      }],
+      "outputs": [
+        {
+          "vout": 0,
+          "value": 546,
+          "address": address(&p2tr()),
+          "script_pubkey": p2tr().to_hex_string(),
+          "kind": "spendable",
+          "extracted": true,
+          "pieces": [piece_json(0, COIN, 1, &["uncommon", "alpha"])],
+        },
+        {
+          "vout": t1.vout,
+          "value": 4_999_990_000u64,
+          "address": address(&p2wpkh(2)),
+          "script_pubkey": p2wpkh(2).to_hex_string(),
+          "kind": "spendable",
+          "extracted": false,
+          "pieces": [piece_json(COIN - 1 - 546, 2 * COIN - 1, 1, &["black"])],
+        },
+      ],
+      "fee_pieces": [],
+      "mined_pieces": [],
+      "lost_pieces": [],
+      "rows": { "uncommon": 1, "black": 1, "alpha": 1 },
+    })
+  );
+  let coinbase = &moves["moves"][1];
+  assert_eq!(coinbase["txid"], c.txid.to_string());
+  assert_eq!(coinbase["coinbase"], true);
+  assert_eq!(coinbase["fee"], 0);
+  assert_eq!(coinbase["inputs"], json!([]));
+  assert_eq!(
+    coinbase["mined_pieces"],
+    json!([
+      piece_json(0, 2 * COIN, 1, &["uncommon", "alpha"]),
+      piece_json(COIN - 1, 3 * COIN - 1, 1, &["black"]),
+    ])
+  );
+
+  // The genesis coinbase minted block 0 and lost its last sat.
+  let genesis = server.json("/block/0/moves");
+  assert_eq!(
+    genesis["moves"][0]["lost_pieces"],
+    json!([piece_json(0, COIN - 1, 1, &["black", "block0"])])
+  );
+  assert_eq!(
+    genesis["moves"][0]["rows"],
+    json!({ "uncommon": 1, "black": 1, "block0": COIN, "alpha": 50 })
+  );
+}
+
+#[test]
+fn moves_stream() {
+  let server = TestServer::new(Some(3));
+  let lines = server.ndjson("/moves?from=0&to=3");
+  assert_eq!(
+    lines
+      .iter()
+      .map(|line| (
+        line["height"].as_u64().unwrap(),
+        line["move"]["tx_index"].as_u64().unwrap()
+      ))
+      .collect::<Vec<_>>(),
+    [(0, 0), (1, 0), (2, 1), (2, 0), (3, 1), (3, 0)]
+  );
+  assert_eq!(lines[2]["time"], TIMES[2]);
+  assert_eq!(lines[2]["move"]["fee"], 9_454);
+
+  // Only moves that moved block0 sats.
+  let lines = server.ndjson("/moves?from=0&to=3&row=block0");
+  assert_eq!(lines.len(), 1);
+  assert_eq!(lines[0]["height"], 0);
+
+  // `to` defaults to the tip.
+  assert_eq!(server.ndjson("/moves?from=3").len(), 2);
+
+  server.error("/moves", 400);
+  server.error("/moves?from=0&to=10001", 400);
+  server.error("/moves?from=3&to=1", 400);
+  server.error("/moves?from=0&row=nope", 404);
+
+  // With bounded retention, older moves are refused with the floor.
+  let server = TestServer::with_retention(Some(3), MovesRetention::Blocks(2));
+  assert!(
+    server
+      .error("/moves?from=0", 404)
+      .contains("kept from height 2")
+  );
+  assert_eq!(server.ndjson("/moves?from=2").len(), 4);
+  assert_eq!(server.json("/block/0")["moves"], Value::Null);
+  assert_eq!(server.json("/block/0")["rows_moved"], Value::Null);
+  server.error("/block/1/moves", 404);
+  assert_eq!(server.json("/status")["moves_from"], 2);
+}
+
+#[test]
+fn sats_stream() {
+  let server = TestServer::new(Some(3));
+  let Scenario { t0, u0, d, .. } = server.scenario;
+
+  let lines = server.ndjson("/sats?row=uncommon");
+  assert_eq!(
+    lines
+      .iter()
+      .map(|line| (
+        line["piece"]["start"].as_u64().unwrap(),
+        line["count"].as_u64().unwrap(),
+        line["location"]["kind"].as_str().unwrap().to_string()
+      ))
+      .collect::<Vec<_>>(),
+    [
+      (0, 1, "unspent".to_string()),
+      (COIN, 1, "unspent".into()),
+      (2 * COIN, 1, "burned".into()),
+      (3 * COIN, 1, "unspent".into()),
+    ]
+  );
+  assert_eq!(lines[1]["location"]["outpoint"], t0.to_string());
+  assert_eq!(lines[1]["location"]["satpoint"], format!("{t0}:0"));
+  assert_eq!(lines[1]["location"]["output"]["value"], 546);
+  assert_eq!(
+    lines[1]["location"]["output"]["rows"],
+    json!({ "uncommon": 1, "alpha": 1 })
+  );
+  // Outputs come without their pieces unless asked for.
+  assert!(lines[1]["location"]["output"].get("pieces").is_none());
+  let full = server.ndjson("/sats?row=uncommon&pieces=true");
+  assert_eq!(
+    full[1]["location"]["output"]["pieces"],
+    json!([piece_json(0, COIN, 1, &["uncommon", "alpha"])])
+  );
+  server.error("/sats?row=uncommon&pieces=maybe", 400);
+  assert_eq!(lines[2]["location"]["outpoint"], u0.to_string());
+  assert_eq!(lines[3]["location"]["output"]["outpoint"], d.to_string());
+  assert_eq!(
+    lines[0]["piece"],
+    piece_json(0, 0, COIN - 1, &["uncommon", "alpha", "block0"])
+  );
+
+  // Pieces are cut to [from, to).
+  let lines = server.ndjson("/sats?row=block0&from=10&to=20");
+  assert_eq!(lines.len(), 1);
+  assert_eq!(lines[0]["piece"], piece_json(10, 10, 10, &["block0"]));
+  assert_eq!(lines[0]["count"], 10);
+  assert_eq!(lines[0]["location"]["offset"], 10);
+  assert_eq!(
+    lines[0]["location"]["satpoint"],
+    format!("{}:10", server.scenario.a)
+  );
+
+  let lines = server.ndjson("/sats?row=black");
+  assert_eq!(
+    lines
+      .iter()
+      .map(|line| line["location"]["kind"].as_str().unwrap().to_string())
+      .collect::<Vec<_>>(),
+    ["lost", "unspent", "unspent", "unspent"]
+  );
+  assert_eq!(lines[0]["location"]["output"], Value::Null);
+
+  server.error("/sats", 400);
+  server.error("/sats?row=nope", 404);
+  server.error("/sats?row=uncommon&from=5&to=5", 400);
+  TestServer::new(None).error("/sats?row=uncommon", 503);
+}
+
+#[test]
+fn blocks() {
+  let server = TestServer::new(Some(3));
+  assert_eq!(
+    server.json("/blocks?from=1&to=2"),
+    json!([
+      { "height": 1, "hash": server.hash(1), "time": TIMES[1] },
+      { "height": 2, "hash": server.hash(2), "time": TIMES[2] },
+    ])
+  );
+  assert_eq!(server.json("/blocks?from=0").as_array().unwrap().len(), 4);
+  // Past the tip: only indexed blocks.
+  assert_eq!(
+    server
+      .json("/blocks?from=2&to=100")
+      .as_array()
+      .unwrap()
+      .len(),
+    2
+  );
+  server.error("/blocks?from=0&to=10001", 400);
+  server.error("/blocks", 400);
+}
+
+#[test]
+fn cors_compression_and_unknown_endpoints() {
+  let server = TestServer::new(Some(3));
+  let response = server
+    .client
+    .get(format!("{}/rows", server.url))
+    .header("Origin", "http://dashboard.local")
+    .header("Accept-Encoding", "gzip")
+    .send()
+    .unwrap();
+  assert_eq!(response.status(), 200);
+  assert_eq!(response.headers()["access-control-allow-origin"], "*");
+  assert_eq!(response.headers()["content-encoding"], "gzip");
+
+  let response = server
+    .client
+    .get(format!("{}/moves?from=0", server.url))
+    .header("Accept-Encoding", "br")
+    .send()
+    .unwrap();
+  assert_eq!(response.headers()["content-encoding"], "br");
+
+  assert!(server.error("/nope", 404).contains("API.md"));
+}
+
+#[test]
+fn reads_see_new_commits() {
+  let server = TestServer::new(Some(2));
+  assert_eq!(server.json("/block/2")["height"], 2);
+  server.error("/block/3", 404);
+  server
+    .store
+    .commit(&server.scenario.deltas[3..], &[4, 4, COIN, 53], true)
+    .unwrap();
+  server
+    .published
+    .update_status(|status| status.height = Some(3));
+  assert_eq!(server.json("/block/3")["moves"], 2);
+  assert_eq!(server.json("/status")["height"], 3);
+}
+
+#[test]
+fn concurrent_requests_during_commits() {
+  let server = TestServer::new(Some(0));
+  let done = AtomicBool::new(false);
+  thread::scope(|scope| {
+    let readers = (0..4)
+      .map(|_| {
+        scope.spawn(|| {
+          let mut requests = 0;
+          while !done.load(Ordering::Relaxed) {
+            server.json("/sat/7");
+            server.ndjson("/sats?row=uncommon");
+            requests += 1;
+          }
+          requests
+        })
+      })
+      .collect::<Vec<_>>();
+    for delta in &server.scenario.deltas[1..] {
+      server
+        .store
+        .commit(std::slice::from_ref(delta), &[4, 4, COIN, 53], true)
+        .unwrap();
+      thread::sleep(std::time::Duration::from_millis(20));
+    }
+    done.store(true, Ordering::Relaxed);
+    for reader in readers {
+      assert!(reader.join().unwrap() > 0);
+    }
+  });
+  assert_eq!(server.ndjson("/sats?row=uncommon").len(), 4);
+}

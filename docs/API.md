@@ -65,10 +65,19 @@ supply numbers, not here.
   "lost_sats": 2895844904,
   "ranges": [{ "id": "block9", "start": 45000000000, "end": 50000000000 }],
   "extracted_max_value": 10000, "extracted_since": 1670976000,
-  "catalog_fingerprint": "…"
+  "catalog_fingerprint": "…",
+  "moves_retention": "4032", "moves_from": 965206,
+  "timings": { "blocks_per_second": 0.1, "last_commit_blocks": 1,
+               "last_commit_seconds": 0.02, "last_commit_at": 1790734130, "commits": 12,
+               "commit_seconds_total": 0.4, "supply_seconds": 0.05,
+               "fast_sync_seconds": null, "restore_seconds": 2.1 },
+  "error": null
 }
 ```
-`height` is `null` until the first commit.
+`height` is `null` until the first commit. `moves_retention` is
+`--moves-retention` (a number of blocks or `"all"`); `moves_from` is the
+lowest height whose moves are kept. `error` is the last indexing error
+(e.g. bitcoind unreachable), cleared by the next commit.
 
 ### `GET /rows`
 Row definitions, in `RowId` order.
@@ -138,11 +147,13 @@ Untracked sats: `"tracked": false, "location": null`. `output` is `null` for
 { "height": 9, "hash": "…", "prev_hash": "…", "time": 1231473279,
   "moves": 1, "rows_moved": { "uncommon": 1 } }
 ```
+`moves` and `rows_moved` are `null` below `moves_from` (moves not retained).
 
 ### `GET /block/{height}/moves`
 ```json
 { "height": 170, "hash": "…", "time": 1231731025, "moves": [Move] }
 ```
+404 below `moves_from`.
 **Move**
 ```json
 {
@@ -164,14 +175,18 @@ or received).
 
 ### `GET /moves?from=&to=[&row=]` (NDJSON)
 One line per move, oldest first: `{ "height": 170, "time": …, "move": Move }`.
-`to - from` ≤ 10,000 blocks. With `row`, only moves that moved sats of that
-row.
+`to - from` ≤ 10,000 blocks (`to` is inclusive and defaults to the tip);
+404 when `from` is below `moves_from`. With `row`, only moves that moved sats
+of that row.
 
 ### `GET /sats?row=[&from=&to=]` (NDJSON)
 Every tracked piece of the row (optionally only sats in `[from, to)`), in sat
 order, one line per piece:
 `{ "piece": Piece, "count": 1, "location": { …as in /sat… } }` where `count`
 is the number of the row's sats in the piece. Used for ad-hoc reports.
+The location's `output` leaves out its `pieces` array (mainnet outputs hold
+up to tens of thousands of pieces, which every line would repeat); add
+`&pieces=true` to include it.
 
 ### `GET /blocks?from=&to=`
 `[{ "height": …, "hash": "…", "time": … }]`, `to - from` ≤ 10,000.
