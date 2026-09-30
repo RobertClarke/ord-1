@@ -113,47 +113,65 @@ impl State {
 
   #[track_caller]
   pub(crate) fn mine_block(&mut self, subsidy: u64) -> Block {
-    let coinbase = Transaction {
-      version: Version(2),
-      lock_time: LockTime::ZERO,
-      input: vec![TxIn {
-        previous_output: OutPoint::null(),
-        script_sig: script::Builder::new()
-          .push_int(self.blocks.len().try_into().unwrap())
-          .into_script(),
-        sequence: Sequence::MAX,
-        witness: Witness::new(),
-      }],
-      output: vec![TxOut {
-        value: Amount::from_sat(subsidy)
-          + self
-            .mempool
-            .iter()
-            .map(|tx| {
-              let fee = tx
-                .input
-                .iter()
-                .map(|txin| {
-                  self.transactions[&txin.previous_output.txid].output
-                    [txin.previous_output.vout as usize]
-                    .value
-                })
-                .sum::<Amount>()
-                - tx.output.iter().map(|txout| txout.value).sum::<Amount>();
-              self.transactions.insert(tx.compute_txid(), tx.clone());
+    self.mine_block_with_coinbase(subsidy, None)
+  }
 
-              fee
-            })
-            .sum::<Amount>(),
-        script_pubkey: self.new_address(false).into(),
-      }],
+  /// Mines the mempool into a block. The coinbase pays `subsidy` plus the
+  /// fees to a new wallet address unless `coinbase` is given, which is used
+  /// verbatim (any outputs, any value, or a repeat of an earlier coinbase).
+  #[track_caller]
+  pub(crate) fn mine_block_with_coinbase(
+    &mut self,
+    subsidy: u64,
+    coinbase: Option<Transaction>,
+  ) -> Block {
+    let fees = self
+      .mempool
+      .iter()
+      .map(|tx| {
+        let fee = tx
+          .input
+          .iter()
+          .map(|txin| {
+            self.transactions[&txin.previous_output.txid].output[txin.previous_output.vout as usize]
+              .value
+          })
+          .sum::<Amount>()
+          - tx.output.iter().map(|txout| txout.value).sum::<Amount>();
+        self.transactions.insert(tx.compute_txid(), tx.clone());
+
+        fee
+      })
+      .sum::<Amount>();
+
+    let coinbase = match coinbase {
+      Some(coinbase) => {
+        assert!(coinbase.is_coinbase(), "not a coinbase transaction");
+        coinbase
+      }
+      None => Transaction {
+        version: Version(2),
+        lock_time: LockTime::ZERO,
+        input: vec![TxIn {
+          previous_output: OutPoint::null(),
+          script_sig: script::Builder::new()
+            .push_int(self.blocks.len().try_into().unwrap())
+            .into_script(),
+          sequence: Sequence::MAX,
+          witness: Witness::new(),
+        }],
+        output: vec![TxOut {
+          value: Amount::from_sat(subsidy) + fees,
+          script_pubkey: self.new_address(false).into(),
+        }],
+      },
     };
 
     self
       .transactions
       .insert(coinbase.compute_txid(), coinbase.clone());
 
-    let block = Block {
+    let mut block = Block {
       header: Header {
         version: bitcoin::block::Version::ONE,
         prev_blockhash: *self.hashes.last().unwrap(),
@@ -166,6 +184,8 @@ impl State {
         .chain(self.mempool.drain(0..))
         .collect(),
     };
+
+    block.header.merkle_root = block.compute_merkle_root().unwrap();
 
     for tx in block.txdata.iter() {
       self

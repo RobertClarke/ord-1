@@ -4,7 +4,7 @@ use {
   api::Api,
   base64::Engine,
   bitcoin::{
-    Amount, Block, Network, OutPoint, ScriptBuf, Sequence, Transaction, TxIn, TxOut, Txid,
+    Amount, Block, Network, OutPoint, Script, ScriptBuf, Sequence, Transaction, TxIn, TxOut, Txid,
     WPubkeyHash, Witness, Wtxid,
     address::{Address, NetworkUnchecked},
     amount::SignedAmount,
@@ -69,6 +69,7 @@ pub struct SimulateRawTransactionOptions {
 mod api;
 mod server;
 mod state;
+mod verbose;
 mod wallet;
 
 fn parse_hex_tx(tx: String) -> Transaction {
@@ -140,7 +141,8 @@ impl Builder {
       self.fail_lock_unspent,
     )));
     let server = Server::new(state.clone());
-    let mut io = IoHandler::default();
+    // Accept JSON-RPC 1.0 requests (no `jsonrpc` field) like Core does.
+    let mut io = IoHandler::with_compatibility(jsonrpc_core::Compatibility::Both);
     io.extend_with(server.to_delegate());
 
     let rpc_server = ServerBuilder::new(io)
@@ -283,8 +285,33 @@ impl Handle {
     blocks
   }
 
+  /// Mines one block whose coinbase is `coinbase`, used verbatim (e.g. with
+  /// several outputs, OP_RETURN or zero-value outputs, a value other than
+  /// subsidy plus fees, or the same transaction as an earlier coinbase, as
+  /// in the BIP30 duplicates), followed by the mempool.
+  #[track_caller]
+  pub fn mine_block_with_coinbase(&self, coinbase: Transaction) -> Block {
+    self
+      .state()
+      .mine_block_with_coinbase(50 * COIN_VALUE, Some(coinbase))
+  }
+
   pub fn broadcast_tx(&self, template: TransactionTemplate) -> Txid {
     self.state().broadcast_tx(template)
+  }
+
+  /// Adds `tx` to the mempool as is. It may spend outputs of transactions
+  /// broadcast before it, which puts both in the same block.
+  pub fn broadcast_raw_tx(&self, tx: Transaction) -> Txid {
+    let txid = tx.compute_txid();
+    self.state().mempool.push(tx);
+    txid
+  }
+
+  /// Hash of the block at `height` in the active chain.
+  #[track_caller]
+  pub fn block_hash(&self, height: usize) -> BlockHash {
+    self.state().hashes[height]
   }
 
   pub fn height(&self) -> u64 {
