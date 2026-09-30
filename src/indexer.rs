@@ -385,15 +385,11 @@ impl Indexer {
   }
 
   pub fn expected_meta(&self) -> IndexMeta {
-    IndexMeta {
-      schema_version: SCHEMA_VERSION,
-      chain: self.options.chain.name().into(),
-      config: self.options.config.clone(),
-      catalog_fingerprint: self.factory.fingerprint(),
-      height: None,
-      hash: None,
-      fast_sync_complete: false,
-    }
+    expected_meta(
+      self.options.chain,
+      &self.options.config,
+      self.factory.fingerprint(),
+    )
   }
 
   pub fn run(&self, mode: RunMode) -> anyhow::Result<()> {
@@ -527,53 +523,13 @@ impl Indexer {
   }
 
   fn restore(&self, meta: &IndexMeta) -> anyhow::Result<State> {
-    let start = Instant::now();
-    let engine = if meta.height.is_some() {
-      let snapshot = self.store.load_snapshot()?;
-      log::info!(
-        "restoring the tracker at height {:?}: {} tracked UTXOs",
-        snapshot.height,
-        snapshot.utxos.len()
-      );
-      self.factory.restore(snapshot)?
-    } else {
-      self.factory.fresh()?
-    };
-    ensure!(
-      engine.height() == meta.height && engine.hash() == meta.hash,
-      "the restored tracker is at {:?} {:?} but the index at {:?} {:?}",
-      engine.height(),
-      engine.hash(),
-      meta.height,
-      meta.hash
-    );
-    let restore_seconds = start.elapsed().as_secs_f64();
-
-    let reader = self.store.reader()?;
-    let time = match meta.height {
-      Some(height) => reader.header(height)?.map(|header| header.time),
-      None => None,
-    };
-    let lost_sats = reader.lost_sats()?;
-    drop(reader);
-
-    let supply_start = Instant::now();
-    let supply = engine.supply(self.options.supply_top);
-    let supply_seconds = supply_start.elapsed().as_secs_f64();
-
-    self.published.update_status(|status| {
-      status.height = meta.height;
-      status.hash = meta.hash;
-      status.time = time;
-      status.fast_sync_complete = meta.fast_sync_complete;
-      status.tracked_utxos = engine.utxo_count() as u64;
-      status.tracked_pieces = engine.piece_count() as u64;
-      status.lost_sats = lost_sats;
-      status.timings.restore_seconds = Some(restore_seconds);
-      status.timings.supply_seconds = supply_seconds;
-    });
-    self.published.set_supply(supply);
-
+    let engine = restore(
+      &self.store,
+      &*self.factory,
+      &self.published,
+      meta,
+      self.options.supply_top,
+    )?;
     Ok(State {
       engine,
       fast_sync_complete: meta.fast_sync_complete,
@@ -952,6 +908,78 @@ impl Indexer {
       .set_supply(state.engine.supply(self.options.supply_top));
     Ok(())
   }
+}
+
+/// The meta of an index this process would build.
+pub fn expected_meta(chain: Chain, config: &TrackerConfig, fingerprint: String) -> IndexMeta {
+  IndexMeta {
+    schema_version: SCHEMA_VERSION,
+    chain: chain.name().into(),
+    config: config.clone(),
+    catalog_fingerprint: fingerprint,
+    height: None,
+    hash: None,
+    fast_sync_complete: false,
+  }
+}
+
+/// Rebuilds the tracker from the index (`meta` is its meta) and publishes
+/// the index's status and the tracker's supply.
+pub fn restore(
+  store: &Store,
+  factory: &dyn EngineFactory,
+  published: &Published,
+  meta: &IndexMeta,
+  supply_top: usize,
+) -> anyhow::Result<Box<dyn Engine>> {
+  let start = Instant::now();
+  let engine = if meta.height.is_some() {
+    let snapshot = store.load_snapshot()?;
+    log::info!(
+      "restoring the tracker at height {:?}: {} tracked UTXOs",
+      snapshot.height,
+      snapshot.utxos.len()
+    );
+    factory.restore(snapshot)?
+  } else {
+    factory.fresh()?
+  };
+  ensure!(
+    engine.height() == meta.height && engine.hash() == meta.hash,
+    "the restored tracker is at {:?} {:?} but the index at {:?} {:?}",
+    engine.height(),
+    engine.hash(),
+    meta.height,
+    meta.hash
+  );
+  let restore_seconds = start.elapsed().as_secs_f64();
+
+  let reader = store.reader()?;
+  let time = match meta.height {
+    Some(height) => reader.header(height)?.map(|header| header.time),
+    None => None,
+  };
+  let lost_sats = reader.lost_sats()?;
+  drop(reader);
+
+  let supply_start = Instant::now();
+  let supply = engine.supply(supply_top);
+  let supply_seconds = supply_start.elapsed().as_secs_f64();
+
+  published.update_status(|status| {
+    status.height = meta.height;
+    status.hash = meta.hash;
+    status.time = time;
+    status.fast_sync_complete = meta.fast_sync_complete;
+    status.tracked_utxos = engine.utxo_count() as u64;
+    status.tracked_pieces = engine.piece_count() as u64;
+    status.lost_sats = lost_sats;
+    status.timings.restore_seconds = Some(restore_seconds);
+    status.timings.supply_seconds = supply_seconds;
+  });
+  published.set_supply(supply);
+
+  Ok(engine)
 }
 
 /// Blocks to commit and what to publish once they are.
