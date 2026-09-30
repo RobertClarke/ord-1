@@ -102,12 +102,13 @@ pub struct FastSourceDiagnostics {
   pub ready_blocks: usize,
   /// Size of the UTXO map's allocation.
   pub map_bytes: u64,
-  /// Entries the UTXO map holds before it has to grow (or rehash).
+  /// Entries the UTXO map holds before a shard has to grow.
   pub map_capacity: u64,
-  /// Buckets freed by removes that stay unusable for new entries until the
-  /// map is rehashed (hashbrown tombstones). Once the map is more than half
-  /// full, hashbrown grows it when entries plus tombstones reach capacity.
+  /// Buckets freed by removes that stay unusable for new entries until
+  /// their shard is rebuilt (hashbrown tombstones).
   pub map_tombstones: u64,
+  /// Shard rebuilds that cleared tombstones.
+  pub map_compactions: u64,
   /// Seconds `next_block` waited for the pipeline.
   pub next_block_wait_secs: f64,
 }
@@ -178,6 +179,7 @@ struct Shared {
   map_bytes: AtomicU64,
   map_capacity: AtomicU64,
   map_tombstones: AtomicU64,
+  map_compactions: AtomicU64,
   next_block_wait_nanos: AtomicU64,
 }
 
@@ -343,6 +345,7 @@ impl FastSource {
       map_bytes: shared.map_bytes.load(Ordering::Relaxed),
       map_capacity: shared.map_capacity.load(Ordering::Relaxed),
       map_tombstones: shared.map_tombstones.load(Ordering::Relaxed),
+      map_compactions: shared.map_compactions.load(Ordering::Relaxed),
       next_block_wait_secs: Shared::secs(&shared.next_block_wait_nanos),
     }
   }
@@ -592,8 +595,6 @@ fn prepare(
 /// The in-order stage: owns the UTXO value map.
 struct Resolver {
   map: UtxoMap,
-  /// Entries the table holds without tombstones.
-  full_capacity: u64,
   warned_headroom: bool,
   shared: Arc<Shared>,
   prev_hash: BlockHash,
@@ -609,7 +610,6 @@ impl Resolver {
       .map_capacity
       .store(map.capacity() as u64, Ordering::Relaxed);
     Self {
-      full_capacity: map.capacity() as u64,
       warned_headroom: false,
       map,
       shared,
@@ -720,32 +720,41 @@ impl Resolver {
       }
     }
 
-    // `capacity()` is entries plus free buckets: removes that leave
-    // tombstones lower it, a resize raises it above the table's full size.
-    let capacity = self.map.capacity() as u64;
-    if capacity > self.full_capacity {
+    let maintenance = self.map.maintain();
+    if maintenance.grown > 0 {
       log::warn!(
-        "UTXO value map resized to {capacity} entries at block {} with {} entries; raise utxo_capacity",
+        "UTXO value map: {} shard(s) grew at block {} ({} entries); raise utxo_capacity",
+        maintenance.grown,
         block.height,
         self.map.len(),
       );
-      self.full_capacity = capacity;
       self
         .shared
         .map_bytes
         .store(self.map.allocated_bytes(), Ordering::Relaxed);
-      self.shared.map_capacity.store(capacity, Ordering::Relaxed);
+      self
+        .shared
+        .map_capacity
+        .store(self.map.capacity() as u64, Ordering::Relaxed);
+    }
+    if maintenance.compacted > 0 {
+      log::debug!(
+        "UTXO value map: rebuilt {} shard(s) to clear tombstones at block {}",
+        maintenance.compacted,
+        block.height
+      );
+      Shared::add(&self.shared.map_compactions, maintenance.compacted as u64);
     }
     self
       .shared
       .map_tombstones
-      .store(self.full_capacity - capacity, Ordering::Relaxed);
+      .store(self.map.tombstones() as u64, Ordering::Relaxed);
 
-    let headroom = capacity.saturating_sub(self.map.len() as u64);
-    if !self.warned_headroom && self.full_capacity > 0 && headroom < self.full_capacity / 20 {
+    let headroom = self.map.capacity().saturating_sub(self.map.len());
+    if !self.warned_headroom && headroom < self.map.capacity() / 20 {
       self.warned_headroom = true;
       log::warn!(
-        "UTXO value map is close to resizing (doubling its memory) at block {}: {} entries, {} free buckets; raise utxo_capacity",
+        "UTXO value map is nearly full at block {}: {} entries, room for {} more before shards grow; raise utxo_capacity",
         block.height,
         self.map.len(),
         headroom,
