@@ -98,6 +98,9 @@ struct Slot {
   bucket_pos: u32,
   /// The block (`Tracker::block_seq`) that created the UTXO.
   created_seq: u64,
+  /// `model::is_extracted`, set when the UTXO is attached (it depends only
+  /// on the UTXO and its block's time, so it never changes).
+  extracted: bool,
   live: bool,
 }
 
@@ -584,6 +587,7 @@ impl Tracker {
       script_pos: 0,
       bucket_pos: 0,
       created_seq: seq,
+      extracted: false,
       live: true,
     };
     let id = match self.free_slots.pop() {
@@ -650,9 +654,9 @@ impl Tracker {
     self.slots[id as usize].utxo.pieces = pieces;
   }
 
-  fn extracted(&self, utxo: &TrackedUtxo, count: u64) -> bool {
-    self.times[utxo.height as usize] >= self.config.extracted_since_time
-      && (utxo.value <= self.config.extracted_max_value || count == utxo.value)
+  /// DESIGN.md §5: the same verdict for every row the UTXO holds.
+  fn is_extracted(&self, utxo: &TrackedUtxo) -> bool {
+    crate::model::is_extracted(utxo, self.times[utxo.height as usize], &self.config)
   }
 
   /// Adds a slot's UTXO to the row aggregates, the script index and the
@@ -662,11 +666,14 @@ impl Tracker {
     self.piece_count += self.slots[id as usize].utxo.pieces.len();
     match self.slots[id as usize].utxo.kind {
       UtxoKind::Unspendable => {
+        self.slots[id as usize].extracted = false;
         for &(row, n) in &rows {
           self.touch(row).burned += n;
         }
       }
       UtxoKind::Spendable => {
+        let extracted = self.is_extracted(&self.slots[id as usize].utxo);
+        self.slots[id as usize].extracted = extracted;
         let script = self.script_entry(id);
         let bucket = (self.slots[id as usize].utxo.height >> BUCKET_SHIFT) as usize;
         if self.buckets.len() <= bucket {
@@ -675,7 +682,6 @@ impl Tracker {
         self.slots[id as usize].bucket_pos = self.buckets[bucket].len() as u32;
         self.buckets[bucket].push(id);
         for &(row, n) in &rows {
-          let extracted = self.extracted(&self.slots[id as usize].utxo, n);
           let stats = self.touch(row);
           stats.located += n;
           if extracted {
@@ -726,8 +732,8 @@ impl Tracker {
         if let Some(&moved) = list.get(pos) {
           self.slots[moved as usize].bucket_pos = pos as u32;
         }
+        let extracted = self.slots[id as usize].extracted;
         for &(row, n) in &rows {
-          let extracted = self.extracted(&self.slots[id as usize].utxo, n);
           let stats = self.touch(row);
           stats.located -= n;
           if extracted {

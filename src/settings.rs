@@ -224,8 +224,10 @@ pub struct Options {
   )]
   pub tracked_ranges: Vec<RangeArg>,
 
-  /// Outputs worth at most this many sats count as extracted [default:
-  /// 10000]; needs a reindex when changed
+  /// Extraction allowance: an output counts as extracted when worth at most
+  /// this many sats per individually tracked sat it holds, plus each run of
+  /// tracked-range sats' length and this much again [default: 10000]; needs
+  /// a reindex when changed
   #[arg(long, env = "ORD_EXTRACTED_MAX_VALUE", value_name = "SATS")]
   pub extracted_max_value: Option<u64>,
 

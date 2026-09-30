@@ -479,15 +479,18 @@ fn block9_pieces_split_and_merge() {
   );
   let block9 = row(&tracker, "block9");
   assert_eq!(block9.located, 5_000_000_000);
-  // The split's outputs hold nothing but block 9 sats: extracted for the
-  // block9 row although they are worth more than 10,000 sats. The coinbase
-  // output (1000 block 9 sats in 5e9) is not.
+  // The split's outputs hold nothing but block 9 sats, within their budget
+  // (run length + 10,000): extracted although worth more than 10,000 sats.
+  // The coinbase output (1000 block 9 sats and block 10's individually
+  // tracked sats in 5e9) is not.
   assert_eq!(block9.extracted, 4_999_999_000);
   assert_eq!(block9.extracted_holders, 3);
   assert_eq!(block9.holders, 3);
-  // For the 450x row, output 0 is not all 450x sats.
+  // Output 0 is extracted as a whole, so for every row it holds: its 450x
+  // sats count as extracted too.
   let x450 = row(&tracker, "450x");
-  assert_eq!((x450.located, x450.extracted), (100_000_000, 0));
+  assert_eq!((x450.located, x450.extracted), (100_000_000, 100_000_000));
+  assert_eq!(row(&tracker, "uncommon").extracted, 1);
   tracker.verify().unwrap();
   let mut deltas = vec![delta];
 
@@ -794,4 +797,304 @@ fn undo_rejects_foreign_deltas_and_genesis_needs_a_null_parent() {
   assert_eq!((empty.height(), empty.hash()), (None, None));
   assert_eq!(empty.utxo_count(), 0);
   empty.verify().unwrap();
+}
+
+/// Extraction by budget (DESIGN.md §5): the UTXO's verdict, per the shared
+/// rule, and the row counters it drives.
+fn extracted(tracker: &Tracker, outpoint: OutPoint) -> bool {
+  let utxo = tracker.utxo(&outpoint).unwrap();
+  crate::model::is_extracted(utxo, tracker.time(utxo.height).unwrap(), tracker.config())
+}
+
+/// Mines `blocks` blocks paying each uncommon and black into its own
+/// 330-sat output (scripts 1 and 3); returns those outputs.
+fn mine_padded_sats(tracker: &mut Tracker, chain: &mut Chain, blocks: u64) -> Vec<(OutPoint, u64)> {
+  let mut outputs = Vec::new();
+  for i in 0..blocks {
+    let cb = txid(10_000 + i);
+    tracker
+      .apply_block(&chain.block(vec![coinbase(
+        cb,
+        vec![out_to(330, 1), out_to(S - 660, 2), out_to(330, 3)],
+      )]))
+      .unwrap();
+    assert!(extracted(tracker, op(cb, 0)) && extracted(tracker, op(cb, 2)));
+    outputs.push((op(cb, 0), 330));
+    outputs.push((op(cb, 2), 330));
+  }
+  outputs
+}
+
+#[test]
+fn collector_consolidation_is_extracted() {
+  // 200 rare sats at 330 sats of padding each, consolidated into 66,000
+  // sats (like a collector's address): within the
+  // 2,000,000-sat budget, so extracted, where the old per-row rule
+  // (value ≤ 10,000 or all sats of the row) said no.
+  let (mut tracker, mut chain) = at_halving();
+  let inputs = mine_padded_sats(&mut tracker, &mut chain, 100);
+  assert_eq!(row(&tracker, "uncommon").extracted, 100);
+  let consolidation = txid(1);
+  tracker
+    .apply_block(&chain.block(vec![
+      coinbase(txid(2), vec![out(S)]),
+      tx(consolidation, &inputs, vec![out_to(66_000, 7)]),
+    ]))
+    .unwrap();
+  let utxo = tracker.utxo(&op(consolidation, 0)).unwrap();
+  // Each block's black merges with the next block's uncommon (consecutive
+  // sats at consecutive offsets): 101 pieces of 200 sats. The budget counts
+  // sats, not pieces.
+  assert_eq!(utxo.pieces.len(), 101);
+  assert_eq!(utxo.pieces.iter().map(|p| p.len).sum::<u64>(), 200);
+  assert_eq!(
+    crate::model::extraction_budget(&utxo.pieces, tracker.config()),
+    2_000_000
+  );
+  assert!(extracted(&tracker, op(consolidation, 0)));
+  for id in ["uncommon", "black"] {
+    let stats = row(&tracker, id);
+    assert_eq!((stats.extracted, stats.extracted_holders), (100, 1), "{id}");
+  }
+  // The newest coinbase's uncommon sits in a whole-subsidy output.
+  assert_eq!(row(&tracker, "uncommon").located, 101);
+  let supply = tracker.supply(2);
+  let uncommon = &supply.rows[usize::from(tracker.catalog().row_id("uncommon").unwrap())];
+  assert_eq!(uncommon.top_extracted_holders[0].script_pubkey, script(7));
+  assert_eq!(
+    (
+      uncommon.top_extracted_holders[0].count,
+      uncommon.top_extracted_holders[0].utxos
+    ),
+    (100, 1)
+  );
+  assert_eq!(uncommon.active_non_extracted[0], (1, 1));
+
+  // Seven sats in 70,001 sats is one sat over budget.
+  let (mut tracker, mut chain) = at_halving();
+  let inputs = mine_padded_sats(&mut tracker, &mut chain, 4);
+  let over = txid(3);
+  tracker
+    .apply_block(&chain.block(vec![
+      coinbase(txid(4), vec![out(S)]),
+      tx(
+        over,
+        &[&inputs[..7], &[(op(txid(900), 0), 70_001 - 7 * 330)]].concat(),
+        vec![out_to(70_001, 7)],
+      ),
+    ]))
+    .unwrap();
+  let utxo = tracker.utxo(&op(over, 0)).unwrap();
+  assert_eq!(utxo.pieces.iter().map(|p| p.len).sum::<u64>(), 7);
+  assert!(!extracted(&tracker, op(over, 0)));
+  // The eighth sat, still alone in its 330 sats, is.
+  assert!(extracted(&tracker, inputs[7].0));
+  assert_eq!(
+    row(&tracker, "uncommon").extracted + row(&tracker, "black").extracted,
+    1
+  );
+  tracker.verify().unwrap();
+}
+
+#[test]
+fn near_pure_block9_output_is_extracted() {
+  // 100,000 block 9 sats behind 438 sats of padding: budget
+  // 100,000 + 10,000 = 110,000 ≥ 100,438.
+  let config = TrackerConfig::default();
+  let (mut tracker, mut chain) = tracker_at(&config, Some(8));
+  let a = txid(1);
+  tracker
+    .apply_block(&chain.block(vec![coinbase(a, vec![out(5_000_000_000)])]))
+    .unwrap();
+  let (split, cb) = (txid(2), txid(3));
+  chain.next_time = Some(1_700_000_000);
+  tracker
+    .apply_block(&chain.block(vec![
+      coinbase(cb, vec![out(5_000_000_000)]),
+      tx(
+        split,
+        &[
+          (op(txid(900), 0), 438),
+          (op(a, 0), 5_000_000_000),
+          (op(txid(901), 0), 1_000_000_000),
+        ],
+        vec![out_to(100_438, 2), out_to(5_999_900_000, 3)],
+      ),
+    ]))
+    .unwrap();
+  let chunk = tracker.utxo(&op(split, 0)).unwrap();
+  assert_eq!(chunk.pieces, [piece(438, 45_000_000_000, 100_000)]);
+  assert!(extracted(&tracker, op(split, 0)));
+  // The rest of block 9 shares its output with 1 BTC of other sats: over
+  // its 4,999,910,000-sat budget.
+  assert!(!extracted(&tracker, op(split, 1)));
+  let block9 = row(&tracker, "block9");
+  assert_eq!(
+    (block9.located, block9.extracted, block9.extracted_holders),
+    (5_000_000_000, 100_000, 1)
+  );
+  assert_eq!(row(&tracker, "450x").extracted, 100_000);
+  // Block 9's first sat and the palindrome 45,000,000,054 are in the chunk:
+  // every row of it is extracted.
+  assert_eq!(row(&tracker, "uncommon").extracted, 1);
+  assert_eq!(row(&tracker, "block9_palindrome").extracted, 1);
+  assert_eq!(row(&tracker, "block9_palindrome").located, 50_000);
+  tracker.verify().unwrap();
+
+  // The same chunk worth 110,001 sats would not be.
+  let mut over = tracker.utxo(&op(split, 0)).unwrap().clone();
+  over.value = 110_001;
+  assert!(!crate::model::is_extracted(&over, 1_700_000_000, &config));
+  over.value = 110_000;
+  assert!(crate::model::is_extracted(&over, 1_700_000_000, &config));
+}
+
+#[test]
+fn exchange_output_with_two_uncommons_is_not_extracted() {
+  let (mut tracker, mut chain) = at_halving();
+  let mut uncommons = Vec::new();
+  for i in 0..2 {
+    let cb = txid(20 + i);
+    tracker
+      .apply_block(&chain.block(vec![coinbase(cb, vec![out(1000), out(S - 1000)])]))
+      .unwrap();
+    uncommons.push((op(cb, 0), 1000));
+  }
+  assert_eq!(row(&tracker, "uncommon").extracted, 2);
+  let exchange = txid(1);
+  tracker
+    .apply_block(&chain.block(vec![
+      coinbase(txid(2), vec![out(S)]),
+      tx(
+        exchange,
+        &[
+          uncommons[0],
+          uncommons[1],
+          (op(txid(900), 0), 100_000_000 - 2000),
+        ],
+        vec![out_to(100_000_000, 9)],
+      ),
+    ]))
+    .unwrap();
+  let utxo = tracker.utxo(&op(exchange, 0)).unwrap();
+  assert_eq!(utxo.pieces.len(), 2);
+  assert_eq!(
+    crate::model::extraction_budget(&utxo.pieces, tracker.config()),
+    20_000
+  );
+  assert!(!extracted(&tracker, op(exchange, 0)));
+  let uncommon = row(&tracker, "uncommon");
+  assert_eq!(
+    (
+      uncommon.located,
+      uncommon.extracted,
+      uncommon.extracted_holders
+    ),
+    (3, 0, 0)
+  );
+  tracker.verify().unwrap();
+}
+
+#[test]
+fn piece_straddling_the_block9_edge() {
+  // Block 9's black (range-tracked) and block 10's uncommon (individually
+  // tracked) end up as one piece: budget 1 + 10,000 + 10,000.
+  let config = TrackerConfig::default();
+  let (mut tracker, mut chain) = tracker_at(&config, Some(8));
+  let (a9, a10) = (txid(9), txid(10));
+  tracker
+    .apply_block(&chain.block(vec![coinbase(a9, vec![out(5_000_000_000)])]))
+    .unwrap();
+  tracker
+    .apply_block(&chain.block(vec![coinbase(a10, vec![out(5_000_000_000)])]))
+    .unwrap();
+  let (split9, split10) = (txid(11), txid(12));
+  chain.next_time = Some(1_700_000_000);
+  tracker
+    .apply_block(&chain.block(vec![
+      coinbase(txid(13), vec![out(5_000_000_000)]),
+      tx(
+        split9,
+        &[(op(a9, 0), 5_000_000_000)],
+        vec![out(4_999_999_999), out(1)],
+      ),
+      tx(
+        split10,
+        &[(op(a10, 0), 5_000_000_000)],
+        vec![out(1), out(4_999_999_999)],
+      ),
+    ]))
+    .unwrap();
+  let black9 = 50_000_000_000 - 1;
+  for (value, expected) in [(20_001, true), (20_002, false)] {
+    let (mut tracker, mut chain) = (
+      Tracker::restore(
+        tracker.catalog().clone(),
+        config.clone(),
+        tracker.snapshot(),
+      )
+      .unwrap(),
+      Chain {
+        next: chain.next,
+        prev: chain.prev,
+        next_time: Some(1_700_000_600),
+      },
+    );
+    let edge = txid(14);
+    tracker
+      .apply_block(&chain.block(vec![
+        coinbase(txid(15), vec![out(5_000_000_000)]),
+        tx(
+          edge,
+          &[
+            (op(txid(900), 0), value - 2),
+            (op(split9, 1), 1),
+            (op(split10, 0), 1),
+          ],
+          vec![out_to(value, 4)],
+        ),
+      ]))
+      .unwrap();
+    assert_eq!(
+      tracker.utxo(&op(edge, 0)).unwrap().pieces,
+      [piece(value - 2, black9, 2)]
+    );
+    assert_eq!(extracted(&tracker, op(edge, 0)), expected, "{value}");
+    assert_eq!(
+      row(&tracker, "block9").extracted,
+      // split9's first output is pure block 9 and extracted too.
+      4_999_999_999 + u64::from(expected)
+    );
+    assert_eq!(row(&tracker, "black").extracted, u64::from(expected));
+    tracker.verify().unwrap();
+  }
+}
+
+#[test]
+fn unspendable_outputs_are_never_extracted() {
+  let (mut tracker, mut chain) = at_halving();
+  let a = txid(1);
+  chain.next_time = Some(1_700_000_000);
+  tracker
+    .apply_block(&chain.block(vec![coinbase(a, vec![op_return(1), out(S - 1)])]))
+    .unwrap();
+  let burned = tracker.utxo(&op(a, 0)).unwrap();
+  assert_eq!(burned.kind, UtxoKind::Unspendable);
+  assert!(!extracted(&tracker, op(a, 0)));
+  let uncommon = row(&tracker, "uncommon");
+  assert_eq!(
+    (
+      uncommon.burned,
+      uncommon.located,
+      uncommon.extracted,
+      uncommon.extracted_holders
+    ),
+    (1, 0, 0, 0)
+  );
+  assert_eq!(
+    tracker.supply(1).rows[usize::from(tracker.catalog().row_id("uncommon").unwrap())]
+      .top_extracted_holders,
+    []
+  );
+  tracker.verify().unwrap();
 }

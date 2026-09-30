@@ -70,8 +70,14 @@ use {
 
 pub use rows::{HEIGHTS_2009, default_rows};
 
-/// Bump whenever the port's behaviour changes (it changes the fingerprint).
-pub const RULES_VERSION: &str = "1";
+/// Bump whenever the port's behaviour or the tracker's aggregate rules
+/// change: it changes the fingerprint, so the store refuses indexes built
+/// under the old rules and asks for a reindex.
+///
+/// * 1: the scanner's types, the tracked set and rows.
+/// * 2: extraction by budget (`model::is_extracted`, DESIGN.md §5) instead
+///   of `value ≤ extracted_max_value || row_count == value` per row.
+pub const RULES_VERSION: &str = "2";
 
 /// `psbtBuilder.js` → `SPECIAL_SAT_TYPES`, verbatim and in order (a test
 /// compares it with the array parsed from the JS).

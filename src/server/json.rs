@@ -209,10 +209,17 @@ impl<'a> Render<'a> {
       .map(|address| address.to_string())
   }
 
-  pub fn extracted(&self, kind: UtxoKind, value: u64, created_time: Option<u32>) -> bool {
-    kind == UtxoKind::Spendable
-      && value <= self.config.extracted_max_value
-      && created_time.is_some_and(|time| time >= self.config.extracted_since_time)
+  /// `model::output_extracted` (DESIGN.md §5); an output whose creating
+  /// block's time is unknown is not extracted.
+  pub fn extracted(
+    &self,
+    kind: UtxoKind,
+    value: u64,
+    pieces: &[Piece],
+    created_time: Option<u32>,
+  ) -> bool {
+    created_time
+      .is_some_and(|time| crate::model::output_extracted(kind, value, pieces, time, self.config))
   }
 
   pub fn piece(&self, piece: &Piece) -> PieceJson {
@@ -286,7 +293,7 @@ impl<'a> Render<'a> {
       kind: utxo.kind,
       created_height: utxo.height,
       created_time,
-      extracted: self.extracted(utxo.kind, utxo.value, created_time),
+      extracted: self.extracted(utxo.kind, utxo.value, &utxo.pieces, created_time),
       pieces: with_pieces.then(|| self.pieces(&utxo.pieces)),
       rows: self.row_map(&counts),
     })
@@ -383,7 +390,12 @@ impl<'a> Render<'a> {
         script_pubkey: input.utxo.script_pubkey.to_hex_string(),
         created_height: input.utxo.height,
         created_time,
-        extracted: self.extracted(input.utxo.kind, input.utxo.value, created_time),
+        extracted: self.extracted(
+          input.utxo.kind,
+          input.utxo.value,
+          &input.utxo.pieces,
+          created_time,
+        ),
         pieces: self.pieces(&input.utxo.pieces),
       });
     }
@@ -397,7 +409,7 @@ impl<'a> Render<'a> {
         address: self.address(&output.script_pubkey),
         script_pubkey: output.script_pubkey.to_hex_string(),
         kind: output.kind,
-        extracted: self.extracted(output.kind, output.value, time),
+        extracted: self.extracted(output.kind, output.value, &output.pieces, time),
         pieces: self.pieces(&output.pieces),
       })
       .collect();

@@ -1035,6 +1035,75 @@ fn output_endpoint() {
   server.error(&format!("/output/{}", b.txid), 400);
 }
 
+/// The per-output flag is `model::output_extracted` (DESIGN.md §5): the
+/// value against the pieces' budget, 10,000 sats per individually tracked
+/// sat, a run of range (block 9) sats its length plus 10,000.
+#[test]
+fn extracted_flag_follows_the_budget() {
+  let server = TestServer::new(Some(3));
+  let reader = server.store.reader().unwrap();
+  let render = server.state.render(&reader);
+  let outpoint = OutPoint::new(txid(99), 0);
+  // Two tracked sats, created by block 2 (after extracted_since).
+  let two = |value| {
+    utxo(
+      value,
+      p2wpkh(5),
+      2,
+      vec![piece(0, COIN, 1), piece(330, 2 * COIN, 1)],
+    )
+  };
+  let flag = |utxo: &TrackedUtxo| render.output(outpoint, utxo).unwrap().extracted;
+  assert!(flag(&two(20_000)));
+  assert!(!flag(&two(20_001)));
+  // 100,000 sats of block 9 (the config's range) behind 438 sats of padding.
+  let chunk = utxo(
+    100_438,
+    p2wpkh(5),
+    2,
+    vec![piece(438, 45_000_000_000, 100_000)],
+  );
+  assert!(flag(&chunk));
+  assert!(!flag(&utxo(
+    110_001,
+    p2wpkh(5),
+    2,
+    vec![piece(0, 45_000_000_000, 100_000)]
+  )));
+  // Created before extracted_since, or unspendable: never.
+  assert!(!flag(&utxo(1, p2wpkh(5), 1, vec![piece(0, COIN, 1)])));
+  assert!(!flag(&utxo(1, op_return(), 2, vec![piece(0, COIN, 1)])));
+
+  let m = Move {
+    txid: txid(99),
+    tx_index: 1,
+    coinbase: false,
+    input_value: 40_001,
+    output_value: 40_001,
+    inputs: vec![MoveInput {
+      vin: 0,
+      outpoint: OutPoint::new(txid(98), 0),
+      utxo: two(15_000),
+    }],
+    outputs: vec![move_output(0, &two(20_000)), move_output(1, &two(20_001))],
+    fee: Vec::new(),
+    mined: Vec::new(),
+    lost: Vec::new(),
+  };
+  let json = render.move_json(&m, Some(TIMES[2])).unwrap();
+  assert!(json.inputs[0].extracted);
+  assert_eq!(
+    json
+      .outputs
+      .iter()
+      .map(|output| output.extracted)
+      .collect::<Vec<_>>(),
+    [true, false]
+  );
+  // An unknown block time: not extracted.
+  assert!(!render.move_json(&m, None).unwrap().outputs[0].extracted);
+}
+
 #[test]
 fn address_and_script() {
   let server = TestServer::new(Some(3));

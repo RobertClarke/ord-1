@@ -322,9 +322,26 @@ impl Naive {
       .collect()
   }
 
-  fn extracted(&self, utxo: &NaiveUtxo, count: u64) -> bool {
-    self.times[utxo.height as usize] >= self.config.extracted_since_time
-      && (utxo.value <= self.config.extracted_max_value || count == utxo.value)
+  /// DESIGN.md §5, restated: every tracked sat outside the (single) config
+  /// range allows `extracted_max_value` sats of value, every piece's run
+  /// inside it allows its length plus `extracted_max_value`.
+  fn extracted(&self, utxo: &NaiveUtxo) -> bool {
+    assert!(self.config.ranges.len() <= 1);
+    let max = u128::from(self.config.extracted_max_value);
+    let mut budget = 0u128;
+    for piece in &utxo.pieces {
+      let inside = self.config.ranges.first().map_or(0, |range| {
+        piece
+          .end()
+          .min(range.end)
+          .saturating_sub(piece.start.max(range.start))
+      });
+      budget += u128::from(inside) + max * u128::from(inside > 0);
+      budget += max * u128::from(piece.len - inside);
+    }
+    utxo.kind == UtxoKind::Spendable
+      && self.times[utxo.height as usize] >= self.config.extracted_since_time
+      && u128::from(utxo.value) <= budget
   }
 
   /// Holder statistics and the active windows, recomputed from scratch.
@@ -341,8 +358,8 @@ impl Naive {
       if utxo.kind != UtxoKind::Spendable {
         continue;
       }
+      let ext = self.extracted(utxo);
       for &(row, n) in &utxo.rows {
-        let ext = self.extracted(utxo, n);
         let tally = per_row[usize::from(row)].entry(&utxo.script).or_default();
         tally.0 += n;
         if ext {
@@ -656,6 +673,8 @@ impl Generator {
       *value = match self.rng.below(10) {
         0 => 0,
         1 => left.min([1, 546, 10_000, 10_001][self.rng.below(4) as usize]),
+        // Room for a few tracked sats: extracted only by their budget.
+        2 => left.min(10_001 + self.rng.below(40_000)),
         _ => self.rng.below(left + 1),
       };
       left -= *value;

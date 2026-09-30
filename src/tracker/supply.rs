@@ -102,10 +102,11 @@ impl Tracker {
         if (slot.utxo.height as usize) < from {
           continue;
         }
+        if slot.extracted {
+          continue;
+        }
         for &(row, n) in &slot.rows {
-          if !self.extracted(&slot.utxo, n) {
-            active[usize::from(row)][window] += n;
-          }
+          active[usize::from(row)][window] += n;
         }
       }
     }
@@ -150,9 +151,7 @@ impl Tracker {
       let mut last = 0;
       for &id in &self.script_entries[entry as usize].slots {
         let slot = &self.slots[id as usize];
-        if let Some(&(_, n)) = slot.rows.iter().find(|(r, _)| *r == row)
-          && self.extracted(&slot.utxo, n) == want_extracted
-        {
+        if slot.extracted == want_extracted && slot.rows.iter().any(|(r, _)| *r == row) {
           utxos += 1;
           last = last.max(slot.utxo.height);
         }
