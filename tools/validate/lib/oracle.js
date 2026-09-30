@@ -16,7 +16,7 @@ const { NULL_OUTPOINT } = require('./satmath');
 // * GET /output/<null outpoint>: every lost range in lost order; the sum of
 //   lengths equals /status.lost_sats.
 class Oracle {
-  constructor(base, { concurrency = 16, timeoutMs = 120_000 } = {}) {
+  constructor(base, { concurrency = 16, timeoutMs = 300_000 } = {}) {
     this.http = new JsonClient(base, { concurrency: Math.min(concurrency, 32), timeoutMs, name: 'oracle' });
     this.outputs = new Map();
     this.lost = null;

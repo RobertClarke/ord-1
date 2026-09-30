@@ -35,7 +35,7 @@ const { ALL_EDGES, FEE_HEAVY_BLOCKS, sampleRows, buildEdges } = require('./lib/s
 const { parseArgs, intOpt, listOpt, makeRng, makeLogger, sleep, JsonlWriter, readJsonl } = require('./lib/util');
 
 const USAGE = `usage:
-  oracle-check.js --ours=URL --oracle=URL [--samples-per-row=20] [--seed=S] [--concurrency=16]
+  oracle-check.js --ours=URL --oracle=URL [--samples-per-row=20] [--seed=S] [--concurrency=16] [--scan-concurrency=8]
                   [--rows=a,b | --skip-rows] [--edges=${ALL_EDGES.join(',')}|none]
                   [--fee-heavy-blocks=h,…] [--sats=n,…] [--untracked-sats=n,…]
                   [--out=FILE.jsonl] [--summary-json=FILE]
@@ -160,7 +160,7 @@ async function live(opts, log, stdout) {
   const list = samples.list().filter(s => s.sat < mined);
   log.info(`${list.length} distinct sats to check`);
 
-  const checker = new LiveChecker({ ours, oracle, log, concurrency });
+  const checker = new LiveChecker({ ours, oracle, log, concurrency, scanConcurrency: Math.min(intOpt(opts, 'scanConcurrency', 8), 32) });
   const results = await checker.check(list);
   let after = await heights(ours, oracle);
   let moved = after.ours !== height0 || after.oracle !== height0;
@@ -208,7 +208,9 @@ async function live(opts, log, stdout) {
   if (Object.keys(reasons).length) stdout.write(`mismatch reasons: ${JSON.stringify(reasons)}\n`);
   stdout.write(`known differences (BIP30): ${files.known} -> ${files.knownPath}\n`);
   stdout.write(`mismatches/errors: ${files.mismatches} -> ${files.outPath}\n`);
-  return summary.total.mismatched ? 1 : summary.total.errors ? 2 : 0;
+  // A row that could not be streamed was not sampled: the run is incomplete.
+  for (const e of rowData.errors) stdout.write(`row ${e.row} not sampled: ${e.error}\n`);
+  return summary.total.mismatched ? 1 : summary.total.errors || rowData.errors.length ? 2 : 0;
 }
 
 function loadBaseline(dir) {
@@ -228,7 +230,7 @@ async function baseline(opts, log, stdout) {
   if (typeof status.height !== 'number') throw new Error('ours has no height yet');
   const setsFilter = listOpt(opts, 'sets');
   const list = setsFilter ? entries.filter(e => setsFilter.includes(e.set)) : entries;
-  const checker = new BaselineChecker({ ours, oracle, rpc, log, concurrency });
+  const checker = new BaselineChecker({ ours, oracle, rpc, log, concurrency, scanConcurrency: Math.min(intOpt(opts, 'scanConcurrency', 8), 32) });
   const { results, tip } = await checker.check(list, { height: status.height, lostSats: status.lost_sats });
   const all = [...results.values()].map(r => ({ ...r, sets: r.sets.map(s => `baseline:${s}`) }));
   const summary = summarize(all, []);

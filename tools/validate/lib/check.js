@@ -99,11 +99,13 @@ function compactScan(scan, sat) {
 
 // Live comparison: ours and the oracle at the same height.
 class LiveChecker {
-  constructor({ ours, oracle, log, concurrency = 16 }) {
+  // `scanConcurrency`: parallel /output streams (some are ~0.8 GB).
+  constructor({ ours, oracle, log, concurrency = 16, scanConcurrency = 8 }) {
     this.ours = ours;
     this.oracle = oracle;
     this.log = log;
     this.concurrency = concurrency;
+    this.scanConcurrency = scanConcurrency;
   }
 
   async scan(outpoint, targets) {
@@ -171,7 +173,7 @@ class LiveChecker {
     log.info(`scanning ${claims.size} oracle outputs`);
     const scans = new Map();
     let done = 0;
-    await mapLimit([...claims.keys()], Math.min(this.concurrency, 8), async op => {
+    await mapLimit([...claims.keys()], this.scanConcurrency, async op => {
       scans.set(op, await this.scan(op, [...claims.get(op)]));
       if (++done % 500 === 0) log.info(`  ${done}/${claims.size}`);
     });
@@ -332,12 +334,13 @@ function finalizeKnown(r, sample) {
 // recorded at H0, for sats whose recorded output provably still holds them
 // at H1 (bitcoind gettxout: unspent now and created at or before H1).
 class BaselineChecker {
-  constructor({ ours, oracle = null, rpc, log, concurrency = 16 }) {
+  constructor({ ours, oracle = null, rpc, log, concurrency = 16, scanConcurrency = 8 }) {
     this.ours = ours;
     this.oracle = oracle;
     this.rpc = rpc;
     this.log = log;
     this.concurrency = concurrency;
+    this.scanConcurrency = scanConcurrency;
   }
 
   // Unspent-at-tip test for outpoints, returning outpoint -> { unspent,
@@ -409,7 +412,7 @@ class BaselineChecker {
         if (!byOp.has(loc.outpoint)) byOp.set(loc.outpoint, new Set());
         byOp.get(loc.outpoint).add(e.sat);
       }
-      await mapLimit([...byOp.keys()], Math.min(this.concurrency, 8), async op => {
+      await mapLimit([...byOp.keys()], this.scanConcurrency, async op => {
         try {
           scans.set(op, await this.oracle.output(op, [...byOp.get(op)]));
         } catch (err) {
