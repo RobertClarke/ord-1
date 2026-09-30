@@ -946,12 +946,9 @@ fn resolve_moves(
     };
     let output = block
       .iter()
-      .find(|m| m.txid == reference.outpoint.txid)
-      .and_then(|m| {
-        m.outputs
-          .iter()
-          .find(|output| output.vout == reference.outpoint.vout)
-      })
+      .filter(|m| m.txid == reference.outpoint.txid)
+      .flat_map(|m| &m.outputs)
+      .find(|output| output.vout == reference.outpoint.vout)
       .with_context(|| {
         format!(
           "corrupt index: moves of block {height} refer to output {} of block {}, which is \

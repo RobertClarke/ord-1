@@ -4,6 +4,7 @@ pub mod indexer;
 pub mod model;
 pub mod sats;
 pub mod server;
+pub mod settings;
 pub mod source;
 pub mod store;
 pub mod tracker;
