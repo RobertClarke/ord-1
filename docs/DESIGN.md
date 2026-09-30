@@ -107,10 +107,10 @@ old supply script used, so it wins.
 
 `vintage`, `block9`, `450x`, `block78`, `block286`, `block_666`, `nakamoto`
 (19 blocks), `jpeg` (10 ranges), `pizza` (825), `hitman` (6,200),
-`sr_1st_auction` (405,534). Exported from the JS into
-`data/exotic-ranges.bin` (+ `data/exotic-ranges.json` manifest with counts and
-a sha256) by bitcoin-monitoring's `npm run supply -- export-fork-data`, and
-embedded with `include_bytes!`.
+`sr_1st_auction` (405,534). Exported from the JS into `data/exotic-ranges.bin` (+ a
+`data/exotic-ranges.json` manifest with counts and sha256s) by this repo's
+`tools/export-monitoring-data.js <bitcoin-monitoring checkout>` (`--check`
+reports drift) and embedded with `include_bytes!`.
 
 ### 2.3 Required combinations (from `REQUIRED_COMBINATION_TYPES`)
 
