@@ -25,6 +25,7 @@
 //   as known differences, not failures.
 
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const sm = require('./lib/satmath');
 const { Oracle } = require('./lib/oracle');
@@ -115,8 +116,15 @@ function reasonCounts(results) {
   return counts;
 }
 
+// Without --out, results go to the system temp dir, never the cwd (which
+// may be someone's checkout).
 function writeResults(opts, results, defaultStem) {
-  const outPath = opts.out || `${defaultStem}.mismatches.jsonl`;
+  let outPath = opts.out;
+  if (!outPath) {
+    const dir = path.join(os.tmpdir(), 'ord-validate');
+    fs.mkdirSync(dir, { recursive: true });
+    outPath = path.join(dir, `${defaultStem}.mismatches.jsonl`);
+  }
   const knownPath = outPath.replace(/(\.jsonl)?$/, '.known.jsonl');
   const bad = new JsonlWriter(outPath);
   const known = new JsonlWriter(knownPath);
