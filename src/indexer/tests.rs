@@ -448,6 +448,7 @@ pub(crate) fn fake_market(delta: &BlockDelta) -> MarketDelta {
       sat: coinbase.mined[0].start,
       txid: coinbase.txid,
       vin: 0,
+      tx_index: 0,
     });
   }
   market
@@ -613,6 +614,7 @@ impl Context {
       let height = u32::try_from(sat / 5_000_000_000).unwrap();
       assert_eq!(inscribed.count, 1);
       assert_eq!(inscribed.first_height, height);
+      assert_eq!(inscribed.first_tx_index, 0);
       assert_eq!(inscribed.first_txid, blocks[height as usize].txs[0].txid);
     }
   }

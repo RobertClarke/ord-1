@@ -977,12 +977,13 @@ pub(crate) fn utxo_from_output(output: &MoveOutput, height: u32) -> TrackedUtxo 
 //   rows: n, n × (row before:row_stats after:row_stats)
 // ---------------------------------------------------------------------------
 
-/// Version 2 appends the block's `MarketDelta`.
-const UNDO_V2: u8 = 2;
+/// Version 2 appended the block's `MarketDelta`; version 3 its inscriptions'
+/// transaction indices.
+const UNDO_V3: u8 = 3;
 
 pub(crate) fn encode_undo(delta: &BlockDelta, market: &MarketDelta) -> Vec<u8> {
   let mut enc = Enc::with_capacity(256);
-  enc.u8(UNDO_V2);
+  enc.u8(UNDO_V3);
   enc.raw(delta.hash.as_byte_array());
   enc.raw(&header_bytes(&delta.header));
   enc.blob(&encode_moves(
@@ -1011,6 +1012,7 @@ pub(crate) fn encode_undo(delta: &BlockDelta, market: &MarketDelta) -> Vec<u8> {
     enc.varint(event.sat);
     enc.txid(&event.txid);
     enc.varint(event.vin.into());
+    enc.varint(event.tx_index.into());
   }
   enc.buf
 }
@@ -1019,7 +1021,7 @@ pub(crate) fn decode_undo(bytes: &[u8], height: u32) -> anyhow::Result<(BlockDel
   let mut dec = Dec::new(bytes);
   let version = dec.u8()?;
   ensure!(
-    version == UNDO_V2,
+    version == UNDO_V3,
     "corrupt store record: undo version {version}"
   );
   let hash = BlockHash::from_byte_array(dec.raw(32)?.try_into().unwrap());
@@ -1056,6 +1058,7 @@ pub(crate) fn decode_undo(bytes: &[u8], height: u32) -> anyhow::Result<(BlockDel
       sat: dec.varint()?,
       txid: dec.txid()?,
       vin: dec.u32()?,
+      tx_index: dec.u32()?,
     });
   }
   dec.finish()?;
@@ -1208,20 +1211,28 @@ pub(crate) fn decode_sale(bytes: &[u8]) -> anyhow::Result<(Sale, Option<u64>)> {
   ))
 }
 
-/// Value of the `inscribed` table: count, first txid, first height.
-pub(crate) fn encode_inscribed(count: u32, first_txid: &Txid, first_height: u32) -> Vec<u8> {
-  let mut enc = Enc::with_capacity(40);
+/// Value of the `inscribed` table: count, first txid, first height, first
+/// transaction's index in its block.
+pub(crate) fn encode_inscribed(
+  count: u32,
+  first_txid: &Txid,
+  first_height: u32,
+  first_tx_index: u32,
+) -> Vec<u8> {
+  let mut enc = Enc::with_capacity(44);
   enc.varint(count.into());
   enc.txid(first_txid);
   enc.varint(first_height.into());
+  enc.varint(first_tx_index.into());
   enc.buf
 }
 
-pub(crate) fn decode_inscribed(bytes: &[u8]) -> anyhow::Result<(u32, Txid, u32)> {
+pub(crate) fn decode_inscribed(bytes: &[u8]) -> anyhow::Result<(u32, Txid, u32, u32)> {
   let mut dec = Dec::new(bytes);
   let count = dec.u32()?;
   let txid = dec.txid()?;
   let height = dec.u32()?;
+  let tx_index = dec.u32()?;
   dec.finish()?;
-  Ok((count, txid, height))
+  Ok((count, txid, height, tx_index))
 }

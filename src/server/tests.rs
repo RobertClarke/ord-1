@@ -501,6 +501,7 @@ fn scenario() -> Scenario {
         sat: COIN,
         txid: txid(10),
         vin: 0,
+        tx_index: 1,
       }],
     },
     MarketDelta {
@@ -528,11 +529,13 @@ fn scenario() -> Scenario {
           sat: COIN,
           txid: txid(11),
           vin: 0,
+          tx_index: 1,
         },
         InscriptionEvent {
           sat: 7,
           txid: txid(11),
           vin: 1,
+          tx_index: 1,
         },
       ],
     },
@@ -1812,11 +1815,13 @@ fn sale_sats_are_the_special_sats_of_the_sold_pieces() {
 
   // Selling A: block 0's range piece; its special sats are its 50 alphas
   // (the first also uncommon), sat 7 (inscribed) is not one.
+  // The sale is block 3's third transaction, after the one (index 1) that
+  // inscribed sat 7.
   let sale_of = |seller: TrackedUtxo| crate::store::StoredSale {
     height: 3,
     sale: Sale {
       txid: txid(99),
-      tx_index: 1,
+      tx_index: 2,
       vin: 0,
       kind: SaleKind::Unknown,
       marketplace: "unknown".into(),
@@ -1843,7 +1848,14 @@ fn sale_sats_are_the_special_sats_of_the_sold_pieces() {
       .iter()
       .all(|sat| sat.height == 0 && !sat.inscribed)
   );
-  assert!(sale.inscribed, "sat 7 was inscribed by block 3");
+  assert!(sale.inscribed, "sat 7 was inscribed earlier in block 3");
+  // An inscription later in the sale's block, or in the sale itself, was
+  // not there when it sold.
+  for tx_index in [0, 1] {
+    let mut stored = sale_of(reader.utxo(a).unwrap().unwrap());
+    stored.sale.tx_index = tx_index;
+    assert!(!render.sale(&stored).unwrap().inscribed, "{tx_index}");
+  }
   assert_eq!(sale.buyer, None);
   assert_eq!(sale.premium, 100 - i64::try_from(COIN - 1).unwrap());
   // Every sold sat is a block 0 sat: priced per block 0 sat, not as the

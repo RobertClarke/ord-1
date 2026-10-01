@@ -1081,7 +1081,8 @@ fn inscriptions_on_tracked_sats() {
     [InscriptionEvent {
       sat: rare,
       txid: reveal,
-      vin: 0
+      vin: 0,
+      tx_index: 1,
     }]
   );
 

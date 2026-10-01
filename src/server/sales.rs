@@ -120,18 +120,23 @@ impl Render<'_> {
     self.special_sats(start + half, len - half, out);
   }
 
-  /// The sats of `pieces` that carried an inscription at `height`.
+  /// The sats of `pieces` that carried an inscription before the
+  /// transaction at `(height, tx_index)` (an inscription later in the same
+  /// block, e.g. by the buyer, does not count).
   fn inscribed_at(
     &self,
     pieces: &[Piece],
     height: u32,
+    tx_index: u32,
   ) -> anyhow::Result<std::collections::BTreeSet<u64>> {
     Ok(
       self
         .reader
         .inscribed_in_pieces(pieces)?
         .into_iter()
-        .filter(|(_, inscribed)| inscribed.first_height <= height)
+        .filter(|(_, inscribed)| {
+          (inscribed.first_height, inscribed.first_tx_index) < (height, tx_index)
+        })
         .map(|(sat, _)| sat)
         .collect(),
     )
@@ -159,7 +164,7 @@ impl Render<'_> {
       .map(|row| self.row_name(row))
       .collect();
 
-    let inscribed = self.inscribed_at(pieces, stored.height)?;
+    let inscribed = self.inscribed_at(pieces, stored.height, sale.tx_index)?;
 
     let mut special = Vec::new();
     for piece in pieces {

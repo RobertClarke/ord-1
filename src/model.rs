@@ -758,6 +758,8 @@ pub struct InscriptionEvent {
   pub txid: Txid,
   /// The input that revealed the envelope.
   pub vin: u32,
+  /// The transaction's index in its block (orders it against sales).
+  pub tx_index: u32,
 }
 
 /// What one block did in the market: sales of tracked sats and inscriptions

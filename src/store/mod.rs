@@ -27,7 +27,7 @@
 //! | `sales` | (height `u32`, tx_index `u32`, vin `u32`) | a `Sale` (below), kept forever whatever the moves retention |
 //! | `sale_txs` | txid (32 bytes) | (height, tx_index) of the transaction's sales |
 //! | `sale_pieces` | (first sat of a sold piece `u64`, height, tx_index, vin) | the piece's length: finds the sales whose pieces cover a sat |
-//! | `inscribed` | sat `u64` | count (envelopes that landed on it), first txid, first height: tracked sats only |
+//! | `inscribed` | sat `u64` | count (envelopes that landed on it), first txid, first height, first transaction's index in its block: tracked sats only |
 //!
 //! Pieces are encoded as a count and `(offset gap, start, len)` triples, the
 //! gap being the distance from the previous piece's `offset_end()`.
@@ -108,8 +108,9 @@ use {
 };
 
 /// Bumped whenever a table layout or encoding changes (2: sales and
-/// inscriptions).
-pub const SCHEMA_VERSION: u32 = 2;
+/// inscriptions; 3: an inscription's first transaction index, so a sale and
+/// an inscription in one block are ordered).
+pub const SCHEMA_VERSION: u32 = 3;
 
 /// Undo records are kept for this many blocks below and including the tip.
 pub const UNDO_DEPTH: u32 = 144;
@@ -1012,6 +1013,8 @@ pub struct Inscribed {
   pub count: u32,
   pub first_txid: Txid,
   pub first_height: u32,
+  /// The first inscribing transaction's index in its block.
+  pub first_tx_index: u32,
 }
 
 /// Writes a block's sales and inscriptions; `max_len` tracks the longest
@@ -1058,8 +1061,10 @@ fn write_market(
         None => None,
       };
       let value = match previous {
-        Some((count, txid, first)) => encode_inscribed(count.saturating_add(1), &txid, first),
-        None => encode_inscribed(1, &event.txid, height),
+        Some((count, txid, first, first_tx_index)) => {
+          encode_inscribed(count.saturating_add(1), &txid, first, first_tx_index)
+        }
+        None => encode_inscribed(1, &event.txid, height, event.tx_index),
       };
       inscribed.insert(event.sat, value.as_slice())?;
     }
@@ -1102,14 +1107,14 @@ fn revert_market(tx: &WriteTransaction, height: u32, market: &MarketDelta) -> an
           event.sat
         );
       };
-      let (count, txid, first) = decode_inscribed(value.value())?;
+      let (count, txid, first, first_tx_index) = decode_inscribed(value.value())?;
       drop(value);
       if count <= 1 {
         inscribed.remove(event.sat)?;
       } else {
         inscribed.insert(
           event.sat,
-          encode_inscribed(count - 1, &txid, first).as_slice(),
+          encode_inscribed(count - 1, &txid, first, first_tx_index).as_slice(),
         )?;
       }
     }
@@ -1780,11 +1785,12 @@ impl Reader {
     let Some(value) = table.get(sat)? else {
       return Ok(None);
     };
-    let (count, first_txid, first_height) = decode_inscribed(value.value())?;
+    let (count, first_txid, first_height, first_tx_index) = decode_inscribed(value.value())?;
     Ok(Some(Inscribed {
       count,
       first_txid,
       first_height,
+      first_tx_index,
     }))
   }
 
@@ -1809,13 +1815,14 @@ impl Reader {
     for piece in pieces {
       for entry in table.range(piece.start..piece.end())? {
         let (key, value) = entry?;
-        let (count, first_txid, first_height) = decode_inscribed(value.value())?;
+        let (count, first_txid, first_height, first_tx_index) = decode_inscribed(value.value())?;
         inscribed.push((
           key.value(),
           Inscribed {
             count,
             first_txid,
             first_height,
+            first_tx_index,
           },
         ));
       }
@@ -1832,13 +1839,14 @@ impl Reader {
     let table = self.tx.open_table(INSCRIBED)?;
     Ok(table.range(from..)?.map(|entry| {
       let (key, value) = entry?;
-      let (count, first_txid, first_height) = decode_inscribed(value.value())?;
+      let (count, first_txid, first_height, first_tx_index) = decode_inscribed(value.value())?;
       Ok((
         key.value(),
         Inscribed {
           count,
           first_txid,
           first_height,
+          first_tx_index,
         },
       ))
     }))

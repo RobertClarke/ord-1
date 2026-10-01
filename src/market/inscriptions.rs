@@ -31,6 +31,7 @@ pub(super) fn detect(view: &TxView, out: &mut Vec<InscriptionEvent>) {
           sat,
           txid: view.tx.txid,
           vin: vin as u32,
+          tx_index: view.mv.tx_index,
         });
       }
     }

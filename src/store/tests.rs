@@ -479,12 +479,14 @@ pub(crate) fn market_for(delta: &BlockDelta) -> MarketDelta {
       sat: u64::from(delta.height) * SUBSIDY,
       txid: coinbase.txid,
       vin: 0,
+      tx_index: 0,
     });
     if delta.height >= 3 {
       market.inscriptions.push(InscriptionEvent {
         sat: u64::from(delta.height - 3) * SUBSIDY,
         txid: coinbase.txid,
         vin: 1,
+        tx_index: 0,
       });
     }
   }
@@ -1637,6 +1639,7 @@ impl ExpectedMarket {
             count: 1,
             first_txid: event.txid,
             first_height: delta.height,
+            first_tx_index: event.tx_index,
           });
       }
     }
@@ -1795,7 +1798,7 @@ fn sale_records_round_trip() {
     }
   }
   assert_eq!(
-    decode_inscribed(&encode_inscribed(3, &test_txid(1), 777)).unwrap(),
-    (3, test_txid(1), 777)
+    decode_inscribed(&encode_inscribed(3, &test_txid(1), 777, 12)).unwrap(),
+    (3, test_txid(1), 777, 12)
   );
 }

@@ -286,7 +286,8 @@ SINGLE|ANYONECANPAY, an accepted offer, a legacy Magic Eden trade, …).
   the block that mined it and whether it carried an inscription when sold.
 * `inscribed`: some sold tracked sat carried an inscription when sold (an
   outlier for rare-sat pricing; the fork tracks inscriptions only on tracked
-  sats).
+  sats). "When sold" means inscribed by an earlier transaction: one later
+  in the sale's own block (a buyer inscribing right away) does not count.
 
 ### `GET /sales?row=&from=&to=` (NDJSON)
 Sales oldest first (by height, transaction, input), heights `from..=to`
