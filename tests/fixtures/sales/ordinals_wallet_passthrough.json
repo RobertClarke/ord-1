@@ -1,0 +1,65 @@
+{
+  "name": "ordinals_wallet_passthrough",
+  "txid": "bcb36935d355b88239aad9c66288450560a557fb63e9fbc6049c9d9c0bc7e974",
+  "height": 968427,
+  "tx_index": 1855,
+  "pieces_from": "fork",
+  "tracked": [
+    {
+      "vin": 1,
+      "outpoint": "80149c34ab06653ceb0417deff6369a6be3307097b94f9ac7b48ec6cbbe9cc0b:0",
+      "value": 330,
+      "script_pubkey": "5120e66fddb5f53bf75b14fa26ee9e4c474c20d7e3611a85d83a5ae9d8bafd8354c2",
+      "height": 968427,
+      "pieces": [
+        {
+          "offset": 0,
+          "start": 45039660807,
+          "len": 1
+        }
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "outpoint": "82a99ebfd51bb00f7d308717ea8b2a3fa0eb7ad7589b8b12f827745cbe8c5e69:0",
+      "value": 189829,
+      "script_hash": 1510900968,
+      "sighash": 0
+    },
+    {
+      "outpoint": "80149c34ab06653ceb0417deff6369a6be3307097b94f9ac7b48ec6cbbe9cc0b:0",
+      "value": 330,
+      "script_hash": 3173336382,
+      "sighash": 0
+    },
+    {
+      "outpoint": "82a99ebfd51bb00f7d308717ea8b2a3fa0eb7ad7589b8b12f827745cbe8c5e69:1",
+      "value": 105636,
+      "script_hash": 1510900968,
+      "sighash": 0
+    }
+  ],
+  "outputs": [
+    {
+      "value": 330,
+      "script_pubkey": "5120811bd239ad2625bb0816977e9c24a42fdff9920b3c94ad0b485800d66aec17e0"
+    },
+    {
+      "value": 189499,
+      "script_pubkey": "5120e758f54c2e1dcb992c03aadacd8bf2044a5fb2a7565d28e4b349e1d5f707e0f3"
+    },
+    {
+      "value": 330,
+      "script_pubkey": "5120811bd239ad2625bb0816977e9c24a42fdff9920b3c94ad0b485800d66aec17e0"
+    },
+    {
+      "value": 5258,
+      "script_pubkey": "5120d11b52ebc5e8a1d3010b1d1494ea526494e651bfe81d7e9ba3b7779623f954ba"
+    },
+    {
+      "value": 99802,
+      "script_pubkey": "5120811bd239ad2625bb0816977e9c24a42fdff9920b3c94ad0b485800d66aec17e0"
+    }
+  ]
+}

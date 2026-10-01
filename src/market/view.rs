@@ -1,7 +1,7 @@
 //! A transaction that moved tracked sats, seen through its input and output
 //! offsets: which sat sits at an input offset, where an input's pieces went.
 
-use crate::model::{Move, MoveInput, ResolvedTx};
+use crate::model::{Move, MoveInput, Piece, ResolvedTx};
 
 pub(super) struct TxView<'a> {
   pub tx: &'a ResolvedTx,
@@ -48,6 +48,18 @@ impl<'a> TxView<'a> {
   /// Offset of input `vin`'s first sat.
   pub fn input_base(&self, vin: usize) -> u64 {
     self.input_base[vin]
+  }
+
+  /// Input `vin`'s sats, as offsets `[start, end)`.
+  pub fn input_range(&self, vin: usize) -> (u64, u64) {
+    let start = self.input_base[vin];
+    (start, start.saturating_add(self.tx.inputs[vin].value))
+  }
+
+  /// Output `vout`'s sats, as offsets `[start, end)`.
+  pub fn output_range(&self, vout: usize) -> (u64, u64) {
+    let end = self.output_end[vout];
+    (end - self.tx.outputs[vout].value.to_sat(), end)
   }
 
   /// The move's record of input `vin`, if it carried tracked sats.
@@ -98,6 +110,42 @@ impl<'a> TxView<'a> {
     }
     counts.sort_unstable();
     counts
+  }
+
+  /// `input`'s pieces (offsets in the input) cut to the sats that reached
+  /// outputs for which `keep` holds.
+  pub fn pieces_to(&self, input: &MoveInput, keep: impl Fn(u32) -> bool) -> Vec<Piece> {
+    let base = self.input_base[input.vin as usize];
+    let mut kept: Vec<Piece> = Vec::new();
+    for piece in &input.utxo.pieces {
+      let mut offset = base + piece.offset;
+      let end = offset + piece.len;
+      while offset < end {
+        let vout = self.output_end.partition_point(|&e| e <= offset);
+        let Some(&output_end) = self.output_end.get(vout) else {
+          break;
+        };
+        let next = end.min(output_end);
+        if keep(vout as u32) {
+          let local = offset - base;
+          match kept.last_mut() {
+            Some(last)
+              if last.offset_end() == local
+                && last.start + last.len == piece.start + (local - piece.offset) =>
+            {
+              last.len += next - offset
+            }
+            _ => kept.push(Piece {
+              offset: local,
+              start: piece.start + (local - piece.offset),
+              len: next - offset,
+            }),
+          }
+        }
+        offset = next;
+      }
+    }
+    kept
   }
 
   /// The output that received the most of `input`'s tracked sats (the lowest

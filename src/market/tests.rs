@@ -3,13 +3,16 @@
 use {
   super::*,
   crate::{
-    model::{Envelope, InscriptionEvent, ResolvedInput, ResolvedTx, Sale, SaleKind, TrackerConfig},
+    model::{
+      Envelope, InscriptionEvent, ResolvedInput, ResolvedTx, Sale, SaleKind, TrackerConfig,
+      script_hash,
+    },
     tracker::{
       Tracker,
       tests::{Chain, catalog_for, coinbase, op, out_to, script, tracker_at, txid},
     },
   },
-  bitcoin::{OutPoint, ScriptBuf, TxOut, Txid},
+  bitcoin::{Amount, OutPoint, ScriptBuf, TxOut, Txid, consensus},
 };
 
 /// Blocks from 840,000 have exactly two tracked sats: the first (uncommon,
@@ -20,33 +23,89 @@ const F: u64 = 1_968_750_000_000_000;
 
 const MAGISAT_FEE: u8 = 50;
 const MAGIC_EDEN_FEE: u8 = 51;
+const SATFLOW_FEE: u8 = 52;
+const PASSTHROUGH_FEE: u8 = 53;
+const LENDING_FEE: u8 = 54;
+const ANONYMOUS_FEE: u8 = 55;
+const TOOL_FEE: u8 = 56;
 const BUYER: u8 = 9;
 
-fn context() -> MarketContext {
+/// Satflow's OP_RETURN "SATFLOW".
+const MARKER: &str = "6a07534154464c4f57";
+
+fn marketplaces() -> Marketplaces {
   let fee = |n: u8| script(n).to_hex_string();
+  Marketplaces::from_json(&format!(
+    r#"{{ "marketplaces": [
+      {{ "id": "magisat", "price_rule": "magisat",
+         "fee_addresses": [{{ "script_pubkey": "{}" }}] }},
+      {{ "id": "magic_eden",
+         "fee_addresses": [{{ "script_pubkey": "{}", "to_height": 900000 }}] }},
+      {{ "id": "satflow", "flows": ["secure_purchase_two_tx"],
+         "fee_addresses": [{{ "script_pubkey": "{}" }}],
+         "markers": [{{ "op_return": "{MARKER}" }}] }},
+      {{ "id": "ord_net", "flows": ["passthrough_2of2"],
+         "fee_addresses": [{{ "script_pubkey": "{}" }}] }},
+      {{ "id": "liquidium", "role": "lending",
+         "fee_addresses": [{{ "script_pubkey": "{}" }}] }},
+      {{ "id": "unknown_venue", "anonymous": true,
+         "fee_addresses": [{{ "script_pubkey": "{}" }}] }},
+      {{ "id": "tx_dev", "role": "buying_tool",
+         "fee_addresses": [{{ "script_pubkey": "{}" }}] }},
+      {{ "id": "unisat" }} ] }}"#,
+    fee(MAGISAT_FEE),
+    fee(MAGIC_EDEN_FEE),
+    fee(SATFLOW_FEE),
+    fee(PASSTHROUGH_FEE),
+    fee(LENDING_FEE),
+    fee(ANONYMOUS_FEE),
+    fee(TOOL_FEE),
+  ))
+  .unwrap()
+}
+
+fn context() -> MarketContext {
   MarketContext::new(
     catalog_for(&TrackerConfig::default()),
-    Marketplaces::from_json(&format!(
-      r#"{{ "marketplaces": [
-        {{ "id": "magisat", "price_rule": "magisat",
-           "fee_addresses": [{{ "script_pubkey": "{}" }}] }},
-        {{ "id": "magic_eden", "fee_only_sales": true,
-           "fee_addresses": [{{ "script_pubkey": "{}", "to_height": 900000 }}] }} ] }}"#,
-      fee(MAGISAT_FEE),
-      fee(MAGIC_EDEN_FEE)
-    ))
-    .unwrap(),
+    marketplaces(),
     crate::settings::Chain::Mainnet,
   )
 }
 
+/// An input of an owner nobody else shares (its outpoint stands for its
+/// script); `Market::apply` gives tracked inputs their real script's hash.
 fn input(previous_output: OutPoint, value: u64, sighash: Option<u8>) -> ResolvedInput {
   ResolvedInput {
     previous_output,
     value,
-    script_hash: 0,
+    script_hash: script_hash(&ScriptBuf::from_bytes(consensus::serialize(
+      &previous_output,
+    ))),
     sighash,
     envelopes: Vec::new(),
+  }
+}
+
+/// `input` spent from `owner`'s script.
+fn owned(mut input: ResolvedInput, owner: u8) -> ResolvedInput {
+  input.script_hash = script_hash(&script(owner));
+  input
+}
+
+/// A 2-of-3 style escrow output (P2WSH) of `n`.
+fn escrow(value: u64, n: u8) -> TxOut {
+  let mut bytes = vec![0x00, 0x20];
+  bytes.extend([n; 32]);
+  TxOut {
+    value: Amount::from_sat(value),
+    script_pubkey: ScriptBuf::from_bytes(bytes),
+  }
+}
+
+fn marker() -> TxOut {
+  TxOut {
+    value: Amount::ZERO,
+    script_pubkey: ScriptBuf::from_hex(MARKER).unwrap(),
   }
 }
 
@@ -113,9 +172,29 @@ impl Market {
     (op(cb, 0), 546, F + u64::from(height - H) * S)
   }
 
+  /// Mines a block whose coinbase pays its whole subsidy, with its uncommon
+  /// first sat and black last sat, to `owner`: (that output, its value, the
+  /// two sats).
+  fn mine_whole(&mut self, owner: u8) -> (OutPoint, u64, [u64; 2]) {
+    let height = self.chain.next;
+    let cb = txid(800 + u64::from(height));
+    let block = self.chain.block(vec![coinbase(cb, vec![out_to(S, owner)])]);
+    self.tracker.apply_block(&block).unwrap();
+    let first = F + u64::from(height - H) * S;
+    (op(cb, 0), S, [first, first + S - 1])
+  }
+
   /// Applies a block with these transactions (and a coinbase claiming
   /// their fees) and analyzes it.
-  fn apply(&mut self, txs: Vec<ResolvedTx>) -> MarketDelta {
+  fn apply(&mut self, mut txs: Vec<ResolvedTx>) -> MarketDelta {
+    // Inputs spending tracked outputs carry their script's hash.
+    for tx in &mut txs {
+      for input in &mut tx.inputs {
+        if let Some(utxo) = self.tracker.utxo(&input.previous_output) {
+          input.script_hash = script_hash(&utxo.script_pubkey);
+        }
+      }
+    }
     let fees: u64 = txs
       .iter()
       .map(|tx| {
@@ -283,75 +362,667 @@ fn transfers_are_not_sales() {
   assert!(delta.sales.is_empty());
 }
 
-#[test]
-fn legacy_magic_eden_sale_by_fee_address() {
-  let mut market = Market::new();
+/// A Magic Eden accepted offer: the seller's UTXO (owner 1) signed
+/// `seller_sighash` to the buyer at vout 0, the payment at vout 1, the fee
+/// at vout 2, and change to the funder of the other input.
+fn me_offer(
+  market: &mut Market,
+  n: u64,
+  seller_sighash: Option<u8>,
+  (payment, fee): (TxOut, TxOut),
+  (funder, funding): (u8, u64),
+) -> MarketDelta {
   let (x, value, _) = market.mine_rare(1);
-  let sale_tx = txid(6);
-  // No SINGLE|ANYONECANPAY: the seller signed the whole trade. The fee
-  // output names it a Magic Eden sale; the output paying the seller's own
-  // script is the payment.
-  let delta = market.apply(vec![tx(
-    sale_tx,
-    vec![input(x, value, Some(0x01)), untracked(1, 50_000)],
+  let change = funding - payment.value.to_sat() - fee.value.to_sat() - 300;
+  market.apply(vec![tx(
+    txid(6_000 + n),
     vec![
-      out_to(546, BUYER),
-      out_to(40_000, 1),
-      out_to(1_000, MAGIC_EDEN_FEE),
-      out_to(50_000 - 40_000 - 1_000 - 300, BUYER),
+      input(x, value, seller_sighash),
+      owned(untracked(6_000 + n, funding), funder),
     ],
-  )]);
-  let [sale] = &delta.sales[..] else {
-    panic!("one sale expected: {:?}", delta.sales)
-  };
+    vec![out_to(value, BUYER), payment, fee, out_to(change, funder)],
+  )])
+}
+
+/// vin, kind, marketplace, payment vout, proceeds, fees, price, buyer vout.
+type Summary<'a> = (
+  u32,
+  SaleKind,
+  &'a str,
+  Option<u32>,
+  u64,
+  u64,
+  u64,
+  Option<u32>,
+);
+
+fn summary(sales: &[Sale]) -> Vec<Summary<'_>> {
+  sales
+    .iter()
+    .map(|sale| {
+      (
+        sale.vin,
+        sale.kind,
+        sale.marketplace.as_str(),
+        sale.payment_vout,
+        sale.seller_proceeds,
+        sale.fees,
+        sale.price,
+        sale.buyer_vout,
+      )
+    })
+    .collect()
+}
+
+#[test]
+fn marketplace_offers() {
+  let mut market = Market::new();
+  // No SINGLE|ANYONECANPAY: the fee output names the marketplace, the
+  // payment is the largest output of another party's funds.
+  let delta = me_offer(
+    &mut market,
+    1,
+    Some(0x01),
+    (out_to(40_000, 1), out_to(1_000, MAGIC_EDEN_FEE)),
+    (BUYER, 50_000),
+  );
   assert_eq!(
-    (
-      sale.kind,
-      sale.marketplace.as_str(),
-      sale.payment_vout,
-      sale.seller_proceeds,
-      sale.fees,
-      sale.price,
-      sale.buyer_vout
-    ),
-    (
-      SaleKind::Unknown,
+    summary(&delta.sales),
+    [(
+      0,
+      SaleKind::Offer,
       "magic_eden",
       Some(1),
       40_000,
       1_000,
       41_000,
       Some(0)
-    )
+    )]
   );
 
-  // Without an output paying the seller, the seller cannot be told apart:
-  // nothing is recorded.
-  let (y, _, _) = market.mine_rare(2);
+  // An escrowed bid whose seller pays the miner fee from the address that
+  // receives the payment: the payment is net of that input.
+  let (x, value, _) = market.mine_rare(1);
   let delta = market.apply(vec![tx(
-    txid(7),
-    vec![input(y, value, Some(0x01)), untracked(2, 50_000)],
+    txid(6_010),
     vec![
-      out_to(546, BUYER),
-      out_to(40_000, 3),
-      out_to(1_000, MAGIC_EDEN_FEE),
+      input(x, value, Some(0x00)),
+      owned(untracked(2, 100_000), BUYER),
+      owned(untracked(3, 5_000), 2),
+    ],
+    vec![
+      out_to(value, BUYER),
+      out_to(65_000, 2),
+      out_to(1_500, MAGIC_EDEN_FEE),
+      out_to(100_000 + 5_000 - 65_000 - 1_500 - 400, BUYER),
     ],
   )]);
-  assert!(delta.sales.is_empty());
+  assert_eq!(
+    summary(&delta.sales),
+    [(
+      0,
+      SaleKind::Offer,
+      "magic_eden",
+      Some(1),
+      60_000,
+      1_500,
+      61_500,
+      Some(0)
+    )]
+  );
 
-  // Without the table entry the fee output means nothing.
-  market.ctx.marketplaces = Marketplaces::default();
-  let (z, _, _) = market.mine_rare(3);
+  // A passthrough sale paid at the item's index on a marketplace with that
+  // flow is a listing.
+  let (x, value, _) = market.mine_rare(1);
   let delta = market.apply(vec![tx(
-    txid(8),
-    vec![input(z, value, Some(0x01)), untracked(3, 50_000)],
+    txid(6_011),
     vec![
-      out_to(546, BUYER),
-      out_to(40_000, 3),
-      out_to(1_000, MAGIC_EDEN_FEE),
+      untracked(4, 639),
+      untracked(5, 1_000),
+      input(x, value, Some(0x00)),
+      owned(untracked(6, 300_000), BUYER),
+    ],
+    vec![
+      out_to(639, PASSTHROUGH_FEE),
+      out_to(1_000 + value, BUYER),
+      out_to(250_000, 3),
+      out_to(5_000, PASSTHROUGH_FEE),
+      out_to(300_000 - 250_000 - 5_000 - 1_000, BUYER),
     ],
   )]);
+  assert_eq!(
+    summary(&delta.sales),
+    [(
+      2,
+      SaleKind::Listing,
+      "ord_net",
+      Some(2),
+      250_000,
+      5_639,
+      255_639,
+      Some(1)
+    )]
+  );
+}
+
+#[test]
+fn offer_lookalikes_are_not_sales() {
+  let me = |payment: u64| (out_to(payment, 3), out_to(1_000, MAGIC_EDEN_FEE));
+  type Case = (&'static str, Option<u8>, (TxOut, TxOut), (u8, u64));
+  let cases: Vec<Case> = vec![
+    (
+      "the seller funds it too: a transfer",
+      Some(0x01),
+      me(40_000),
+      (1, 50_000),
+    ),
+    (
+      "no payment of 3,000 sats (a launchpad mint pays its creator ~547)",
+      Some(0x01),
+      me(547),
+      (BUYER, 50_000),
+    ),
+    (
+      "the payment returns to the funder: change",
+      Some(0x01),
+      (out_to(40_000, 7), out_to(1_000, MAGIC_EDEN_FEE)),
+      (7, 50_000),
+    ),
+    (
+      "fees above half the price",
+      Some(0x01),
+      (out_to(4_000, 3), out_to(5_000, MAGIC_EDEN_FEE)),
+      (BUYER, 50_000),
+    ),
+    (
+      "a fee address funds it: the marketplace's own wallet",
+      Some(0x01),
+      me(40_000),
+      (MAGISAT_FEE, 50_000),
+    ),
+    (
+      "Magisat's fee, not in its own offer shape (a taproot default signature)",
+      Some(0x00),
+      (out_to(40_000, 3), out_to(1_000, MAGISAT_FEE)),
+      (BUYER, 50_000),
+    ),
+    (
+      "a buying tool's fee outside a listing: a transfer",
+      Some(0x01),
+      (out_to(40_000, 3), out_to(10_000, TOOL_FEE)),
+      (BUYER, 60_000),
+    ),
+    (
+      "an output to an address not in the table is no fee",
+      Some(0x01),
+      (out_to(40_000, 3), out_to(1_000, 77)),
+      (BUYER, 50_000),
+    ),
+  ];
+  for (n, (case, sighash, outputs, funding)) in cases.into_iter().enumerate() {
+    let mut market = Market::new();
+    let delta = me_offer(&mut market, 20 + n as u64, sighash, outputs, funding);
+    assert!(delta.sales.is_empty(), "{case}: {:?}", delta.sales);
+  }
+  // Without the table entry the fee output means nothing.
+  let mut market = Market::new();
+  market.ctx.marketplaces = Marketplaces::default();
+  let delta = me_offer(&mut market, 40, Some(0x01), me(40_000), (BUYER, 50_000));
   assert!(delta.sales.is_empty());
+  // Nor after Magic Eden's last height.
+  let mut market = Market::after(900_001);
+  let delta = me_offer(&mut market, 41, Some(0x01), me(40_000), (BUYER, 50_000));
+  assert!(delta.sales.is_empty());
+  // The same with a valid height: a sale.
+  let mut market = Market::new();
+  let delta = me_offer(&mut market, 42, Some(0x01), me(40_000), (BUYER, 50_000));
+  assert_eq!(delta.sales.len(), 1);
+
+  // A transfer tool moving a wallet's UTXOs to a new address, the fees
+  // paid from another: the largest moved UTXO is no payment, it goes to the
+  // same new address as the sats.
+  let mut market = Market::new();
+  let (x, value, _) = market.mine_rare(1);
+  let delta = market.apply(vec![tx(
+    txid(6_050),
+    vec![
+      input(x, value, Some(0x01)),
+      owned(untracked(6_050, 5_000), 1),
+      owned(untracked(6_051, 20_000), 8),
+    ],
+    vec![
+      out_to(value, 4),
+      out_to(5_000, 4),
+      out_to(1_000, SATFLOW_FEE),
+      marker(),
+      out_to(20_000 - 1_000 - 400, 8),
+    ],
+  )]);
+  assert!(delta.sales.is_empty(), "{:?}", delta.sales);
+
+  // A buyer's funding holding a tracked sat, in a sale of untracked sats:
+  // its sats pay the seller and the fee and come back as change; it is no
+  // sale, even though one output (the change) is not the buyer's item.
+  let mut market = Market::new();
+  let (z, funding, _) = market.mine_whole(BUYER);
+  let delta = market.apply(vec![tx(
+    txid(6_051),
+    vec![
+      owned(untracked(6_052, 9_112), 1),
+      input(z, funding, Some(0x00)),
+    ],
+    vec![
+      out_to(9_112, BUYER),
+      out_to(funding - 100_000, 1),
+      out_to(27_300, PASSTHROUGH_FEE),
+      out_to(100_000 - 27_300 - 500, 7),
+    ],
+  )]);
+  assert!(delta.sales.is_empty(), "{:?}", delta.sales);
+
+  // The buyer's funding holds tracked sats too: they reach the seller's
+  // payment and the buyer's change, but the buyer sold nothing.
+  let mut market = Market::new();
+  let (x, value, _) = market.mine_rare(1);
+  let (z, funding, _) = market.mine_whole(BUYER);
+  let delta = market.apply(vec![tx(
+    txid(6_052),
+    vec![input(x, value, Some(0x01)), input(z, funding, Some(0x01))],
+    vec![
+      out_to(value, BUYER),
+      out_to(40_000, 1),
+      out_to(1_000, MAGIC_EDEN_FEE),
+      out_to(funding - 40_000 - 1_000 - 500, BUYER),
+    ],
+  )]);
+  assert_eq!(
+    summary(&delta.sales),
+    [(
+      0,
+      SaleKind::Offer,
+      "magic_eden",
+      Some(1),
+      40_000,
+      1_000,
+      41_000,
+      Some(0)
+    )]
+  );
+}
+
+#[test]
+fn split_sales_sell_only_what_leaves_the_seller() {
+  // The seller's UTXO holds an uncommon (first sat) and a black (last sat);
+  // one sat goes to the buyer, the rest back to the seller.
+  let mut market = Market::new();
+  let (x, value, [uncommon, _black]) = market.mine_whole(1);
+  let delta = market.apply(vec![tx(
+    txid(6_600),
+    vec![
+      input(x, value, Some(0x01)),
+      owned(untracked(80, 100_000), BUYER),
+    ],
+    vec![
+      out_to(1, BUYER),
+      out_to(value - 1, 1),
+      out_to(35_000, 3),
+      out_to(3_500, ANONYMOUS_FEE),
+      out_to(10_000, ANONYMOUS_FEE),
+      out_to(100_000 - 35_000 - 13_500 - 500, BUYER),
+    ],
+  )]);
+  assert_eq!(
+    summary(&delta.sales),
+    [(
+      0,
+      SaleKind::Offer,
+      UNKNOWN_MARKETPLACE,
+      Some(2),
+      35_000,
+      13_500,
+      48_500,
+      Some(0)
+    )]
+  );
+  assert_eq!(
+    sale_sats(&delta.sales[0], &market.ctx.catalog, 10),
+    [uncommon]
+  );
+  assert_eq!(delta.sales[0].seller.value, value);
+}
+
+#[test]
+fn loans_and_swaps_are_not_sales() {
+  // Collateral into a lender's vault, the principal to the borrower, a
+  // lending fee: shaped like an offer, not a sale.
+  let mut market = Market::new();
+  let (x, value, _) = market.mine_rare(1);
+  let loan = |market: &mut Market, n: u64, x: OutPoint, fee: Option<TxOut>| {
+    let mut outputs = vec![
+      escrow(value, 8),
+      out_to(500_000, 1),
+      out_to(5_000, LENDING_FEE),
+    ];
+    outputs.extend(fee);
+    market.apply(vec![tx(
+      txid(6_100 + n),
+      vec![
+        input(x, value, Some(0x01)),
+        owned(untracked(30 + n, 600_000), 8),
+      ],
+      outputs,
+    )])
+  };
+  assert!(loan(&mut market, 0, x, None).sales.is_empty());
+  // A purchase financed by a loan pays a marketplace too: a sale.
+  let (y, _, _) = market.mine_rare(1);
+  let delta = loan(&mut market, 1, y, Some(out_to(2_000, MAGIC_EDEN_FEE)));
+  assert_eq!(
+    summary(&delta.sales),
+    [(
+      0,
+      SaleKind::Offer,
+      "magic_eden",
+      Some(1),
+      500_000,
+      2_000,
+      502_000,
+      Some(0)
+    )]
+  );
+}
+
+#[test]
+fn anonymous_venues_count_fees_as_unknown() {
+  let mut market = Market::new();
+  let (x, value, _) = market.mine_rare(1);
+  let delta = market.apply(vec![tx(
+    txid(6_200),
+    vec![
+      untracked(40, 600),
+      input(x, value, Some(LISTING_SIGHASH)),
+      untracked(41, 10_000),
+    ],
+    vec![
+      out_to(600 + value, BUYER),
+      out_to(3_000, 1),
+      out_to(1_000, ANONYMOUS_FEE),
+      out_to(10_000 - 3_000 - 1_000 - 300, BUYER),
+    ],
+  )]);
+  assert_eq!(
+    summary(&delta.sales),
+    [(
+      1,
+      SaleKind::Listing,
+      UNKNOWN_MARKETPLACE,
+      Some(1),
+      3_000,
+      1_000,
+      4_000,
+      Some(0)
+    )]
+  );
+  // A buying tool's fill of a listing is the tool's sale.
+  let (y, value, _) = market.mine_rare(1);
+  let delta = market.apply(vec![tx(
+    txid(6_201),
+    vec![
+      untracked(42, 600),
+      untracked(43, 600),
+      input(y, value, Some(LISTING_SIGHASH)),
+      untracked(44, 100_000),
+    ],
+    vec![
+      out_to(1_200, BUYER),
+      out_to(value, BUYER),
+      out_to(67_093, 1),
+      out_to(100_000 - 67_093 - 10_000 - 500, BUYER),
+      out_to(10_000, TOOL_FEE),
+    ],
+  )]);
+  assert_eq!(
+    summary(&delta.sales),
+    [(
+      2,
+      SaleKind::Listing,
+      "tx_dev",
+      Some(2),
+      67_093,
+      10_000,
+      77_093,
+      Some(1)
+    )]
+  );
+}
+
+#[test]
+fn unisat_listings_by_their_dummies() {
+  // Two 300-sat dummies from the per-trade address, returned merged to it
+  // at output 0; the fee to the same address right after the payment.
+  const TRADE: u8 = 70;
+  let mut market = Market::new();
+  let unisat = |market: &mut Market, n: u64, fee: bool, dummy: u64| {
+    let (x, value, _) = market.mine_rare(1);
+    let mut outputs = vec![
+      out_to(2 * dummy, TRADE),
+      out_to(value, BUYER),
+      out_to(60_000, 1),
+    ];
+    if fee {
+      outputs.push(out_to(1_080, TRADE));
+    }
+    outputs.push(out_to(1_000, BUYER));
+    market.apply(vec![tx(
+      txid(6_300 + n),
+      vec![
+        owned(untracked(50 + 2 * n, dummy), TRADE),
+        owned(untracked(51 + 2 * n, dummy), TRADE),
+        input(x, value, Some(LISTING_SIGHASH)),
+        untracked(90 + n, 62_500),
+      ],
+      outputs,
+    )])
+  };
+  assert_eq!(
+    summary(&unisat(&mut market, 0, true, 300).sales),
+    [(
+      2,
+      SaleKind::Listing,
+      "unisat",
+      Some(2),
+      60_000,
+      1_080,
+      61_080,
+      Some(1)
+    )]
+  );
+  assert_eq!(
+    summary(&unisat(&mut market, 1, false, 300).sales),
+    [(
+      2,
+      SaleKind::Listing,
+      "unisat",
+      Some(2),
+      60_000,
+      0,
+      60_000,
+      Some(1)
+    )]
+  );
+  // 600-sat dummies: some other venue.
+  assert_eq!(
+    unisat(&mut market, 2, true, 600).sales[0].marketplace,
+    UNKNOWN_MARKETPLACE
+  );
+}
+
+#[test]
+fn satflow_secure_purchases() {
+  // A: the seller signs ALL|ANYONECANPAY over [item → escrow, payment →
+  // seller], the buyer funds exactly. B: the escrow pays the buyer, the
+  // fees and the marker. A is the sale, attributed by B in the same block;
+  // B is not a sale.
+  let mut market = Market::new();
+  let (x, value, _) = market.mine_rare(1);
+  let a_txid = txid(6_400);
+  let a = tx(
+    a_txid,
+    vec![
+      input(x, value, Some(PSBT_SIGHASH)),
+      untracked(60, 1_000_000 - value),
+    ],
+    vec![escrow(value, 8), out_to(990_000, 1)],
+  );
+  let mut leg = input(op(a_txid, 0), value, Some(0x01));
+  leg.script_hash = script_hash(&escrow(value, 8).script_pubkey);
+  let b = tx(
+    txid(6_401),
+    vec![leg, untracked(61, 30_000)],
+    vec![
+      out_to(value, BUYER),
+      out_to(15_000, SATFLOW_FEE),
+      out_to(10_000, 4),
+      marker(),
+      out_to(30_000 - 15_000 - 10_000 - 500, BUYER),
+    ],
+  );
+  let delta = market.apply(vec![a.clone(), b.clone()]);
+  assert_eq!(
+    summary(&delta.sales),
+    [(
+      0,
+      SaleKind::Listing,
+      "satflow",
+      Some(1),
+      990_000,
+      15_000,
+      1_005_000,
+      Some(0)
+    )]
+  );
+  assert_eq!(delta.sales[0].txid, a_txid);
+
+  // Settled in a later block: A is still a sale, of an unknown marketplace;
+  // B is not.
+  let mut market = Market::new();
+  let (x, _, _) = market.mine_rare(1);
+  let mut a = a.clone();
+  a.inputs[0].previous_output = x;
+  let a_txid = txid(6_402);
+  a.txid = a_txid;
+  let delta = market.apply(vec![a]);
+  assert_eq!(
+    summary(&delta.sales),
+    [(
+      0,
+      SaleKind::Listing,
+      UNKNOWN_MARKETPLACE,
+      Some(1),
+      990_000,
+      0,
+      990_000,
+      Some(0)
+    )]
+  );
+  let mut b = b;
+  b.inputs[0].previous_output = op(a_txid, 0);
+  let delta = market.apply(vec![b]);
+  assert!(delta.sales.is_empty(), "{:?}", delta.sales);
+
+  // The legacy form pays its 1,000-sat fee in A itself.
+  let mut market = Market::new();
+  let (x, value, _) = market.mine_rare(1);
+  let delta = market.apply(vec![tx(
+    txid(6_403),
+    vec![input(x, value, Some(PSBT_SIGHASH)), untracked(62, 20_000)],
+    vec![
+      out_to(value, BUYER),
+      out_to(15_546, 3),
+      out_to(1_000, SATFLOW_FEE),
+    ],
+  )]);
+  assert_eq!(
+    summary(&delta.sales),
+    [(
+      0,
+      SaleKind::Listing,
+      "satflow",
+      Some(1),
+      15_546,
+      1_000,
+      16_546,
+      Some(0)
+    )]
+  );
+}
+
+#[test]
+fn listings_that_sell_nothing_tracked() {
+  let mut market = Market::new();
+  // A rune listing: no dummies, so the seller's sats land past its payment
+  // in the buyer's change (or in the miner fee), not in the item output.
+  for (n, change) in [(0, 20_000), (1, 0)] {
+    let (x, value, _) = market.mine_rare(1);
+    let mut outputs = vec![
+      out_to(546, BUYER),
+      out_to(30_000, 1),
+      out_to(600, MAGIC_EDEN_FEE),
+    ];
+    if change > 0 {
+      outputs.push(out_to(change, BUYER));
+    }
+    // Change: the seller's sats are its last ones; none: past the outputs.
+    let funding = if change > 0 {
+      546 + 30_000 + 600 + change - value
+    } else {
+      546 + 30_000 + 600 + 400
+    };
+    let delta = market.apply(vec![tx(
+      txid(6_500 + n),
+      vec![
+        untracked(70 + n, funding),
+        input(x, value, Some(LISTING_SIGHASH)),
+      ],
+      outputs,
+    )]);
+    assert!(delta.sales.is_empty(), "{n}: {:?}", delta.sales);
+  }
+  // A SINGLE|ANYONECANPAY self-transfer: the sats stay with the seller.
+  let (x, value, _) = market.mine_rare(1);
+  let delta = market.apply(vec![tx(
+    txid(6_502),
+    vec![untracked(72, 600), input(x, value, Some(LISTING_SIGHASH))],
+    vec![out_to(600 + value, 1), out_to(0, 1)],
+  )]);
+  assert!(delta.sales.is_empty(), "{:?}", delta.sales);
+  // The buyer's tracked dummy in a listing purchase is not sold.
+  let (x, _, _) = market.mine_rare(BUYER);
+  let (y, value, _) = market.mine_rare(1);
+  let delta = market.apply(vec![tx(
+    txid(6_503),
+    vec![
+      input(x, 546, Some(0x01)),
+      untracked(73, 600),
+      input(y, value, Some(LISTING_SIGHASH)),
+      untracked(74, 50_000),
+    ],
+    vec![
+      out_to(1_146, 4),
+      out_to(value, 4),
+      out_to(40_000, 1),
+      out_to(1_000, MAGISAT_FEE),
+      out_to(50_000 - 40_000 - 1_000 - 300, 4),
+    ],
+  )]);
+  assert_eq!(
+    delta
+      .sales
+      .iter()
+      .map(|sale| (sale.vin, sale.marketplace.as_str()))
+      .collect::<Vec<_>>(),
+    [(2, "magisat")]
+  );
 }
 
 #[test]

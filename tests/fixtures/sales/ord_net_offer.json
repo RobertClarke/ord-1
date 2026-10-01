@@ -1,0 +1,59 @@
+{
+  "name": "ord_net_offer",
+  "txid": "c170b60002a3da0df8dd8d897dda9bed05488b4704736f0abdf60cececbcf777",
+  "height": 965612,
+  "tx_index": 1165,
+  "pieces_from": "fork",
+  "tracked": [
+    {
+      "vin": 0,
+      "outpoint": "f812cef24fc0da12f49f4e85b3756abc8c834e68eba75e0e6b2a8b621d502518:0",
+      "value": 999,
+      "script_pubkey": "5120824bd023bb0e8d036a26de781d343af0f32d7eaa578b8853a8d2d007c857ef88",
+      "height": 835000,
+      "pieces": [
+        {
+          "offset": 0,
+          "start": 45086525873,
+          "len": 1
+        }
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "outpoint": "f812cef24fc0da12f49f4e85b3756abc8c834e68eba75e0e6b2a8b621d502518:0",
+      "value": 999,
+      "script_hash": 746703816,
+      "sighash": 0
+    },
+    {
+      "outpoint": "ef9939a7adc0fa7958b2b37747bca6408b22adb1f4e8e8f1316f68b02e0e7dc9:0",
+      "value": 10184382,
+      "script_hash": 775564747,
+      "sighash": 0
+    }
+  ],
+  "outputs": [
+    {
+      "value": 999,
+      "script_pubkey": "512019e88e2840ad88388b36b1fd002f2b8cc4c09a7729e879bfa3076c5af7ff17a5"
+    },
+    {
+      "value": 4950999,
+      "script_pubkey": "5120824bd023bb0e8d036a26de781d343af0f32d7eaa578b8853a8d2d007c857ef88"
+    },
+    {
+      "value": 62500,
+      "script_pubkey": "512045928e9cef3c749a5831d958c276bb7baece9ded6ee871f924fac41280eb79c7"
+    },
+    {
+      "value": 50000,
+      "script_pubkey": "0014807436927472a0a86f27e4b5ebd5be6a5aa10c86"
+    },
+    {
+      "value": 5120554,
+      "script_pubkey": "512019e88e2840ad88388b36b1fd002f2b8cc4c09a7729e879bfa3076c5af7ff17a5"
+    }
+  ]
+}

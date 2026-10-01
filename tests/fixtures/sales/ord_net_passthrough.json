@@ -1,0 +1,83 @@
+{
+  "name": "ord_net_passthrough",
+  "txid": "43de4b0c81215cecd4e180f8d09617588b96414860549c899cf8a7ed738dc701",
+  "height": 965674,
+  "tx_index": 1406,
+  "pieces_from": "fork",
+  "tracked": [
+    {
+      "vin": 2,
+      "outpoint": "7842cc2f5604ff3db0fb7f446b9e5ab56cf4a9370e9e70002c8567cd42a85453:0",
+      "value": 333,
+      "script_pubkey": "5120389644ecc5494edd395ccffab705dc0ff02ea05f5e8d4635f290ca4e75d0643c",
+      "height": 965674,
+      "pieces": [
+        {
+          "offset": 0,
+          "start": 45508475463,
+          "len": 333
+        }
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "outpoint": "7842cc2f5604ff3db0fb7f446b9e5ab56cf4a9370e9e70002c8567cd42a85453:1",
+      "value": 309,
+      "script_hash": 1525857932,
+      "sighash": 1
+    },
+    {
+      "outpoint": "9b76769e1ba47531e29163759ac5688717abd99b3ca6e7198817f4168dd51e05:5",
+      "value": 330,
+      "script_hash": 1525857932,
+      "sighash": 1
+    },
+    {
+      "outpoint": "7842cc2f5604ff3db0fb7f446b9e5ab56cf4a9370e9e70002c8567cd42a85453:0",
+      "value": 333,
+      "script_hash": 1318590059,
+      "sighash": 0
+    },
+    {
+      "outpoint": "69cc728381a012a6573e50413cf4f506323727ee758844dbbbdee449589947bd:0",
+      "value": 200000,
+      "script_hash": 3784641928,
+      "sighash": 1
+    }
+  ],
+  "outputs": [
+    {
+      "value": 639,
+      "script_pubkey": "512045928e9cef3c749a5831d958c276bb7baece9ded6ee871f924fac41280eb79c7"
+    },
+    {
+      "value": 333,
+      "script_pubkey": "51209c0f9fe649bfbe989c514db919a9d33cdaa3aa2499afff7d5b88564da0d0aaf8"
+    },
+    {
+      "value": 156753,
+      "script_pubkey": "512087a2e9b1e5a1c3061bb3c4df84532678934b889510d648296827cbf59e19d425"
+    },
+    {
+      "value": 1710,
+      "script_pubkey": "512045928e9cef3c749a5831d958c276bb7baece9ded6ee871f924fac41280eb79c7"
+    },
+    {
+      "value": 1580,
+      "script_pubkey": "a914aeb5f7570d3e900eb17c8cb264e08e42a8ca373387"
+    },
+    {
+      "value": 330,
+      "script_pubkey": "00147dcfbe4b76e6624625cd451b7031180ef70cbe8f"
+    },
+    {
+      "value": 330,
+      "script_pubkey": "00147dcfbe4b76e6624625cd451b7031180ef70cbe8f"
+    },
+    {
+      "value": 37879,
+      "script_pubkey": "a91437264c37f024919c455ade5f25897d65c5348c5687"
+    }
+  ]
+}

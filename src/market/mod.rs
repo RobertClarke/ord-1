@@ -13,8 +13,9 @@
 //! * inscriptions (`inscriptions.rs`): an envelope whose target sat (ord's
 //!   pointer rule) is one of the transaction's tracked sats;
 //! * sales (`sales.rs`): a tracked input sold by a SINGLE|ANYONECANPAY
-//!   listing, an accepted Magisat offer, a two-party ALL|ANYONECANPAY PSBT or
-//!   a fee-only marketplace shape, priced and attributed by the fee outputs
+//!   listing, an accepted Magisat offer, a two-party ALL|ANYONECANPAY sale
+//!   (Satflow's secure purchase) or a marketplace's offer or passthrough
+//!   sale, priced and attributed by the fee outputs and markers
 //!   (`marketplaces.rs`, `data/marketplaces.json`). Real transactions of
 //!   each shape, and lookalikes that are not sales, are fixtures
 //!   (`fixtures.rs`, `tests/fixtures/sales`).
@@ -31,20 +32,22 @@ mod fixtures;
 mod tests;
 
 pub use {
-  marketplaces::{Marketplace, Marketplaces, PriceRule},
+  marketplaces::{Marketplace, Marketplaces, PriceRule, Role},
   sales::{
-    LISTING_SIGHASH, MAGISAT_MAKER_FEE_HEIGHT, OFFER_SIGHASH, PSBT_SIGHASH, UNKNOWN_MARKETPLACE,
+    LISTING_SIGHASH, MAGISAT_MAKER_FEE_HEIGHT, MIN_OFFER_PAYMENT, OFFER_SIGHASH, PSBT_SIGHASH,
+    UNKNOWN_MARKETPLACE,
   },
   units::{sale_sats, sale_unit},
 };
 
 use {
   crate::{
-    model::{BlockDelta, MarketDelta, ResolvedBlock},
+    model::{BlockDelta, MarketDelta, ResolvedBlock, ResolvedTx},
     sats::SatCatalog,
     settings::Chain,
   },
-  std::sync::Arc,
+  bitcoin::OutPoint,
+  std::{collections::HashMap, sync::Arc, sync::OnceLock},
   view::TxView,
 };
 
@@ -76,9 +79,40 @@ pub fn first_inscription_height(chain: Chain) -> u32 {
   }
 }
 
+/// The block a transaction is analyzed in: which transaction spends an
+/// output, for sales settled by a second transaction (indexed on first use).
+pub(crate) struct BlockView<'a> {
+  block: &'a ResolvedBlock,
+  spends: OnceLock<HashMap<OutPoint, usize>>,
+}
+
+impl<'a> BlockView<'a> {
+  pub(crate) fn new(block: &'a ResolvedBlock) -> Self {
+    Self {
+      block,
+      spends: OnceLock::new(),
+    }
+  }
+
+  /// The transaction of this block that spends `outpoint`.
+  pub(crate) fn spender(&self, outpoint: OutPoint) -> Option<&'a ResolvedTx> {
+    let spends = self.spends.get_or_init(|| {
+      let mut spends = HashMap::new();
+      for (index, tx) in self.block.txs.iter().enumerate() {
+        for input in &tx.inputs {
+          spends.insert(input.previous_output, index);
+        }
+      }
+      spends
+    });
+    spends.get(&outpoint).map(|&index| &self.block.txs[index])
+  }
+}
+
 /// Sales and inscriptions in `block`, whose tracker delta is `delta`.
 pub fn analyze(block: &ResolvedBlock, delta: &BlockDelta, ctx: &MarketContext) -> MarketDelta {
   let mut market = MarketDelta::default();
+  let block_view = BlockView::new(block);
   for m in &delta.moves {
     if m.coinbase || m.inputs.is_empty() {
       continue;
@@ -94,7 +128,7 @@ pub fn analyze(block: &ResolvedBlock, delta: &BlockDelta, ctx: &MarketContext) -
     if block.height >= ctx.first_inscription_height {
       inscriptions::detect(&view, &mut market.inscriptions);
     }
-    sales::detect(&view, &ctx.marketplaces, &mut market.sales);
+    sales::detect(&view, &block_view, &ctx.marketplaces, &mut market.sales);
   }
   market
 }

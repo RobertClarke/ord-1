@@ -1,0 +1,67 @@
+{
+  "name": "me_offer_2023",
+  "txid": "3b404b83eef9796704539fb934b0f253e05d40bfb2bfe80ef2b482dae14de76f",
+  "height": 815120,
+  "tx_index": 2322,
+  "pieces_from": "fork_output",
+  "tracked": [
+    {
+      "vin": 0,
+      "outpoint": "9e0f040f19740d99b00ac657dcd8db8088b57cce2dfc6cfdbe805e1f8039c410:0",
+      "value": 546,
+      "script_pubkey": "5120efe4abdc71a54b2738f8c437342212a9b304ee56b90750696a775c3a8c032c18",
+      "height": 807530,
+      "pieces": [
+        {
+          "offset": 0,
+          "start": 1100045000000000,
+          "len": 1
+        }
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "outpoint": "9e0f040f19740d99b00ac657dcd8db8088b57cce2dfc6cfdbe805e1f8039c410:0",
+      "value": 546,
+      "script_hash": 3921402489,
+      "sighash": 1
+    },
+    {
+      "outpoint": "7917b791710a36a1a2e5d787cf8a0b0de365dec71afe4a12084e05feda6546ce:0",
+      "value": 920000,
+      "script_hash": 1751382654,
+      "sighash": 1
+    },
+    {
+      "outpoint": "5e6972bffaccbba0db7f7613af9aca1759ec06ecfafe13d207a02a3ac1b6792e:0",
+      "value": 440000,
+      "script_hash": 1751382654,
+      "sighash": 1
+    },
+    {
+      "outpoint": "d5bc4640f7a0cccd9ca087280436a8329ec5dd1d57e128511a4fac73639672f8:0",
+      "value": 290000,
+      "script_hash": 1751382654,
+      "sighash": 1
+    }
+  ],
+  "outputs": [
+    {
+      "value": 546,
+      "script_pubkey": "5120a6037799705fcdfde0ce7a45d8958c2b80a03413fd09401af83dc28126ceab25"
+    },
+    {
+      "value": 1568546,
+      "script_pubkey": "a914e08218faa784e61733c23e7af68e7ae72aa0856087"
+    },
+    {
+      "value": 40000,
+      "script_pubkey": "0014c015c65276d5f38d599d445c4cb03aa7aa0dc365"
+    },
+    {
+      "value": 33774,
+      "script_pubkey": "a91439709527d4baa70007e6621c8c690026209335d187"
+    }
+  ]
+}

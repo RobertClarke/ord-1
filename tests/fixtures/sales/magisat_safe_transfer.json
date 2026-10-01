@@ -38,16 +38,19 @@
     {
       "outpoint": "98efb148a1c6a3180f3f945e24ca8071bec7afc80d16f4806bf01df8b3fafa28:1",
       "value": 330,
+      "script_hash": 26050409,
       "sighash": 0
     },
     {
       "outpoint": "a8242ec8f0dd3d657aa96b4fc47e058512cfcba5f513c84a13806ceb20f90d9e:1",
       "value": 330,
+      "script_hash": 26050409,
       "sighash": 0
     },
     {
       "outpoint": "52d44a6381779a54723c2af43ce44feb7b768254f9ae6443b2fa615791d30167:6",
       "value": 13813,
+      "script_hash": 26050409,
       "sighash": 0
     }
   ],

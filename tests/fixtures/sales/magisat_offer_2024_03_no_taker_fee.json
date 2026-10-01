@@ -24,31 +24,37 @@
     {
       "outpoint": "cc8048d1d61156e06b66d8a1514a970d1506f268aede948d6f88ef2beca9357a:3",
       "value": 330,
+      "script_hash": 1912912117,
       "sighash": 1
     },
     {
       "outpoint": "7e3cf3d78c85038e3ad1eae2a58f5a9e7fc2c58f2e352f0c85fb0495fc9c1ee0:6",
       "value": 2074585,
+      "script_hash": 1348633832,
       "sighash": 1
     },
     {
       "outpoint": "7e3cf3d78c85038e3ad1eae2a58f5a9e7fc2c58f2e352f0c85fb0495fc9c1ee0:0",
       "value": 1200,
+      "script_hash": 1348633832,
       "sighash": 1
     },
     {
       "outpoint": "33395f9fb87d732a2db6056f3bb174a56eaba3bb6e84a2c014bd53a6409419ec:6",
       "value": 134599,
+      "script_hash": 1348633832,
       "sighash": 1
     },
     {
       "outpoint": "33395f9fb87d732a2db6056f3bb174a56eaba3bb6e84a2c014bd53a6409419ec:0",
       "value": 1200,
+      "script_hash": 1348633832,
       "sighash": 1
     },
     {
       "outpoint": "269d229492dbf6ca07050420e8f3fe5ede912899c111da0ec49fed6f852c8d74:1",
       "value": 374349,
+      "script_hash": 1348633832,
       "sighash": 1
     }
   ],

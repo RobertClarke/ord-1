@@ -1,25 +1,30 @@
-//! Real transactions as test fixtures (`tests/fixtures/sales/*.json`, the
-//! txids of docs/SALES-SHAPES.md), the ignored builder that makes them, and
-//! the ignored measurement of the detector over the fork's moves window.
-//! Both ignored tests run on a box with bitcoind and the live fork:
+//! Real transactions as test fixtures (`tests/fixtures/sales/*.json`), the
+//! ignored builder that makes them, and the ignored measurement of the
+//! detector over the fork's moves window. Both ignored tests run on a box
+//! with bitcoind and the live fork:
 //!
 //! ```sh
 //! set -a; source ~/.config/ord-sats/bitcoind.env; set +a  # ORD_BITCOIN_RPC_*
 //! FORK_URL=http://127.0.0.1:8090 MAGISAT_SALES=~/work/magisat/sales.jsonl \
 //!   cargo test --release --lib market::fixtures::build -- --ignored --nocapture
-//!   # builds the missing fixtures; FIXTURES_REBUILD=1 rebuilds every one
+//!   # builds the missing fixtures; FIXTURES_REBUILD=1 refreshes every one's
+//!   # transactions, keeping its tracked inputs
 //! FORK_URL=http://127.0.0.1:8090 MEASURE_OUT=market.jsonl \
 //!   cargo test --release --lib market::fixtures::measure -- --ignored --nocapture
 //! ```
 //!
 //! A fixture is one transaction as the live source resolves it (`getblock
-//! 3`: sighash flags and envelopes as production decodes them) plus its
-//! tracked inputs: the fork's recorded move when the block is within its
-//! moves window (`pieces_from: "fork"`), otherwise the main sat of each sale
-//! in Magisat's records at its offset in the sold UTXO (`"magisat"`: the
-//! sale's shape is real, the piece stands for the sats). The tracker's
-//! outputs are recomputed by FIFO; the builder checks them against the
-//! fork's move.
+//! 3`: sighash flags, script hashes and envelopes as production decodes
+//! them), plus, for two-transaction sales, the transaction of the same block
+//! that spends its escrow output, and its tracked inputs, from:
+//! * `fork`: the fork's recorded move (blocks in its moves window);
+//! * `magisat`: Magisat's sale records, the main sat at its offset in the
+//!   sold UTXO (the sale's shape is real, the piece stands for the sats);
+//! * `fork_output`: the tracked sats the buyer's output still holds today
+//!   (the fork's `/output`), mapped back to the seller's input by FIFO.
+//!
+//! The tracker's outputs are recomputed by FIFO; the builder checks them
+//! against the fork's move.
 
 use {
   super::{MarketContext, Marketplaces, PSBT_SIGHASH, UNKNOWN_MARKETPLACE, analyze, sale_unit},
@@ -53,12 +58,25 @@ struct Fixture {
   tracked: Vec<FixtureTracked>,
   inputs: Vec<FixtureInput>,
   outputs: Vec<FixtureOutput>,
+  /// The transaction of the same block spending the escrow output (output
+  /// 0) of a two-transaction sale.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  spender: Option<FixtureTx>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct FixtureTx {
+  txid: Txid,
+  inputs: Vec<FixtureInput>,
+  outputs: Vec<FixtureOutput>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct FixtureInput {
   outpoint: OutPoint,
   value: u64,
+  #[serde(default)]
+  script_hash: u32,
   sighash: Option<u8>,
   /// (pointer, unrecognized_even_field) of each envelope.
   #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -112,23 +130,91 @@ fn delta(height: u32, hash: BlockHash, moves: Vec<Move>) -> BlockDelta {
   }
 }
 
+fn resolved(txid: Txid, inputs: &[FixtureInput], outputs: &[FixtureOutput]) -> ResolvedTx {
+  ResolvedTx {
+    txid,
+    inputs: inputs
+      .iter()
+      .map(|input| ResolvedInput {
+        previous_output: input.outpoint,
+        value: input.value,
+        script_hash: input.script_hash,
+        sighash: input.sighash,
+        envelopes: input
+          .envelopes
+          .iter()
+          .map(|&(pointer, unrecognized_even_field)| Envelope {
+            pointer,
+            unrecognized_even_field,
+          })
+          .collect(),
+      })
+      .collect(),
+    outputs: outputs
+      .iter()
+      .map(|output| TxOut {
+        value: Amount::from_sat(output.value),
+        script_pubkey: output.script_pubkey.clone(),
+      })
+      .collect(),
+  }
+}
+
+fn fixture_tx(tx: &ResolvedTx) -> FixtureTx {
+  FixtureTx {
+    txid: tx.txid,
+    inputs: tx
+      .inputs
+      .iter()
+      .map(|input| FixtureInput {
+        outpoint: input.previous_output,
+        value: input.value,
+        script_hash: input.script_hash,
+        sighash: input.sighash,
+        envelopes: input
+          .envelopes
+          .iter()
+          .map(|envelope| (envelope.pointer, envelope.unrecognized_even_field))
+          .collect(),
+      })
+      .collect(),
+    outputs: tx
+      .outputs
+      .iter()
+      .map(|output| FixtureOutput {
+        value: output.value.to_sat(),
+        script_pubkey: output.script_pubkey.clone(),
+      })
+      .collect(),
+  }
+}
+
+/// Offsets of each input's first sat, and of each output's.
+fn offsets(tx: &ResolvedTx) -> (Vec<u64>, Vec<u64>, u64) {
+  let mut inputs = Vec::with_capacity(tx.inputs.len());
+  let mut total = 0;
+  for input in &tx.inputs {
+    inputs.push(total);
+    total += input.value;
+  }
+  let mut outputs = Vec::with_capacity(tx.outputs.len());
+  let mut end = 0;
+  for output in &tx.outputs {
+    outputs.push(end);
+    end += output.value.to_sat();
+  }
+  (inputs, outputs, end)
+}
+
 /// Where `inputs`' pieces land by FIFO: tracked outputs, sorted by vout,
 /// their pieces sorted by offset and merged.
 fn fifo(tx: &ResolvedTx, inputs: &[MoveInput]) -> Vec<MoveOutput> {
-  let mut base = Vec::with_capacity(tx.inputs.len());
-  let mut total = 0;
-  for input in &tx.inputs {
-    base.push(total);
-    total += input.value;
-  }
-  let mut ends = Vec::with_capacity(tx.outputs.len());
-  let mut starts = Vec::with_capacity(tx.outputs.len());
-  let mut end = 0;
-  for output in &tx.outputs {
-    starts.push(end);
-    end += output.value.to_sat();
-    ends.push(end);
-  }
+  let (base, starts, _) = offsets(tx);
+  let ends: Vec<u64> = starts
+    .iter()
+    .zip(&tx.outputs)
+    .map(|(start, output)| start + output.value.to_sat())
+    .collect();
   let mut pieces: BTreeMap<u32, Vec<Piece>> = BTreeMap::new();
   for input in inputs {
     for piece in &input.utxo.pieces {
@@ -179,6 +265,21 @@ fn merged(mut pieces: Vec<Piece>) -> Vec<Piece> {
   out
 }
 
+fn move_of(tx: &ResolvedTx, tx_index: u32, inputs: Vec<MoveInput>) -> Move {
+  Move {
+    txid: tx.txid,
+    tx_index,
+    coinbase: false,
+    input_value: tx.inputs.iter().map(|input| input.value).sum(),
+    output_value: tx.outputs.iter().map(|output| output.value.to_sat()).sum(),
+    outputs: fifo(tx, &inputs),
+    inputs,
+    fee: Vec::new(),
+    mined: Vec::new(),
+    lost: Vec::new(),
+  }
+}
+
 impl Fixture {
   fn load(name: &str) -> Self {
     let path = dir().join(format!("{name}.json"));
@@ -187,42 +288,10 @@ impl Fixture {
     serde_json::from_str(&json).unwrap_or_else(|err| panic!("{}: {err}", path.display()))
   }
 
-  fn tx(&self) -> ResolvedTx {
-    ResolvedTx {
-      txid: self.txid,
-      inputs: self
-        .inputs
-        .iter()
-        .map(|input| ResolvedInput {
-          previous_output: input.outpoint,
-          value: input.value,
-          script_hash: 0,
-          sighash: input.sighash,
-          envelopes: input
-            .envelopes
-            .iter()
-            .map(|&(pointer, unrecognized_even_field)| Envelope {
-              pointer,
-              unrecognized_even_field,
-            })
-            .collect(),
-        })
-        .collect(),
-      outputs: self
-        .outputs
-        .iter()
-        .map(|output| TxOut {
-          value: Amount::from_sat(output.value),
-          script_pubkey: output.script_pubkey.clone(),
-        })
-        .collect(),
-    }
-  }
-
-  /// The transaction at its height, after a placeholder coinbase, and the
-  /// tracker's delta for it.
+  /// The transaction (and its spender) at its height, after a placeholder
+  /// coinbase, and the tracker's delta for them.
   fn block_and_delta(&self) -> (ResolvedBlock, BlockDelta) {
-    let tx = self.tx();
+    let tx = resolved(self.txid, &self.inputs, &self.outputs);
     let inputs: Vec<MoveInput> = self
       .tracked
       .iter()
@@ -238,30 +307,47 @@ impl Fixture {
         },
       })
       .collect();
-    let m = Move {
-      txid: self.txid,
-      tx_index: 1,
-      coinbase: false,
-      input_value: tx.inputs.iter().map(|input| input.value).sum(),
-      output_value: tx.outputs.iter().map(|output| output.value.to_sat()).sum(),
-      outputs: fifo(&tx, &inputs),
-      inputs,
-      fee: Vec::new(),
-      mined: Vec::new(),
-      lost: Vec::new(),
-    };
+    let mut moves = vec![move_of(&tx, 1, inputs)];
     let coinbase = ResolvedTx {
       txid: Txid::all_zeros(),
       inputs: Vec::new(),
       outputs: Vec::new(),
     };
+    let mut txs = vec![coinbase, tx];
+    if let Some(spender) = &self.spender {
+      let spender = resolved(spender.txid, &spender.inputs, &spender.outputs);
+      let inputs: Vec<MoveInput> = spender
+        .inputs
+        .iter()
+        .enumerate()
+        .filter_map(|(vin, input)| {
+          let output = moves[0]
+            .outputs
+            .iter()
+            .find(|output| input.previous_output == OutPoint::new(self.txid, output.vout))?;
+          Some(MoveInput {
+            vin: vin as u32,
+            outpoint: input.previous_output,
+            utxo: TrackedUtxo {
+              value: output.value,
+              script_pubkey: output.script_pubkey.clone(),
+              height: self.height,
+              kind: UtxoKind::Spendable,
+              pieces: output.pieces.clone(),
+            },
+          })
+        })
+        .collect();
+      moves.push(move_of(&spender, 2, inputs));
+      txs.push(spender);
+    }
     let block = ResolvedBlock {
       height: self.height,
       hash: BlockHash::all_zeros(),
       header: header(),
-      txs: vec![coinbase, tx],
+      txs,
     };
-    (block, delta(self.height, BlockHash::all_zeros(), vec![m]))
+    (block, delta(self.height, BlockHash::all_zeros(), moves))
   }
 }
 
@@ -273,9 +359,9 @@ fn context() -> MarketContext {
   )
 }
 
-/// The fixtures, by name, and their transactions (docs/SALES-SHAPES.md).
+/// The fixtures, by name, and their transactions.
 const FIXTURES: &[(&str, &str)] = &[
-  // Magisat listing purchases (§3, §7).
+  // Magisat listing purchases, from its sales records.
   (
     "magisat_single_2023",
     "3854c0ba0ea36ac5993be75f366395a21bc77c5621887f0a9e59a77d07e5c500",
@@ -316,7 +402,7 @@ const FIXTURES: &[(&str, &str)] = &[
     "magisat_buys_with_f1",
     "53f61c21954cb7ca60a1f58af512b38725bd3b72fba2bf11244d5a1160d867c0",
   ),
-  // Accepted offers (§4).
+  // Magisat's accepted offers.
   (
     "magisat_offer_2025",
     "19df449751a6bc87d75195f282a3886d14f256541e052d4239d7e3ca590097dc",
@@ -337,7 +423,28 @@ const FIXTURES: &[(&str, &str)] = &[
     "magisat_offer_not_in_api",
     "82d5b938c1d5019a73f33d39f9f0bcede7e8be24de1f7cf2ee3eae4bed935c20",
   ),
-  // Other venues and lookalikes in the fork's moves window (§6).
+  // Magic Eden (closed 2026-03), sats still where the buyer received them.
+  (
+    "me_listing_2023",
+    "73261d7da965e33a12724d6414b430c25c86de3295454a22310ae44201c31c96",
+  ),
+  (
+    "me_offer_2023",
+    "3b404b83eef9796704539fb934b0f253e05d40bfb2bfe80ef2b482dae14de76f",
+  ),
+  (
+    "me_bid_in_listing_layout",
+    "95292641ce3a2b2254fc00c4f348491720e7c5fd39512fc5d0056fdcaa531876",
+  ),
+  (
+    "me_transfer_tool",
+    "0517a568cb79a3010f307ed98295a6f27260e2fe46698b66fddb6af27f0c64f2",
+  ),
+  (
+    "me_launchpad_mint",
+    "a37a2f59d14cd5a3025376ede36cb47d3a1df2a3ecb1ea106aa2e55e58184544",
+  ),
+  // Other venues, from the fork's moves window.
   (
     "psbt_0x81_sale",
     "0c47e0acc1b4f2de35cab4a8deaf278fe47f0d9a707135dd8e2488a228a8ec86",
@@ -351,9 +458,42 @@ const FIXTURES: &[(&str, &str)] = &[
     "acd7eeb412db74682b8526e11480602ef650d62e08e6a8bce82b63d020185928",
   ),
   (
-    "custodial_withdrawal_0x81",
-    "671ec9c1a370151fe299e64f73f7392355029e9765fe332901815324373f29a5",
+    "satflow_bid_acceptance",
+    "1844d9d5ad89822dc72b90bf675bd00da45d57c5d4d713c1c880508ad682aa2f",
   ),
+  (
+    "ord_net_passthrough",
+    "43de4b0c81215cecd4e180f8d09617588b96414860549c899cf8a7ed738dc701",
+  ),
+  (
+    "ord_net_offer",
+    "c170b60002a3da0df8dd8d897dda9bed05488b4704736f0abdf60cececbcf777",
+  ),
+  (
+    "ordinals_wallet_passthrough",
+    "bcb36935d355b88239aad9c66288450560a557fb63e9fbc6049c9d9c0bc7e974",
+  ),
+  (
+    "unisat_listing",
+    "b569cb2e5a816a3d666aae88a4616de7b237871f7f053c584da705b45a667802",
+  ),
+  (
+    "listing_fee_33htobl",
+    "4496989b62716ff0df954a29b43fe9ac96a153658801392f5ff25fe2d705aa21",
+  ),
+  (
+    "unknown_33hto_split_sale",
+    "32dcc1958f11e119898ff74ae29c02559fb3984d0777de433ebf66aa79b0a5c2",
+  ),
+  (
+    "listing_tx_dev_fill",
+    "f1c500f81c331d31415902755278e2a599311d8121ac9582bc63ad981efa48fb",
+  ),
+  (
+    "otc_swap_0x83",
+    "ce4dc92baaba478327bbd6b7e182576366f79334c72b40e46f5c54551df7c0cb",
+  ),
+  // Not sales.
   (
     "exchange_batch_0x81",
     "cf061ead6b1288ecaab6512ea1b074504844fbe63506d9d410a3a8ad1463e935",
@@ -361,6 +501,10 @@ const FIXTURES: &[(&str, &str)] = &[
   (
     "consolidation_0x81",
     "06d243eb5e28a746c93d81fe1d365fb80d9d98b46e4d483702a5cf9664e93104",
+  ),
+  (
+    "custodial_withdrawal_0x81",
+    "671ec9c1a370151fe299e64f73f7392355029e9765fe332901815324373f29a5",
   ),
   (
     "sweep_0x82",
@@ -379,55 +523,57 @@ const FIXTURES: &[(&str, &str)] = &[
     "8c4d350491d327282f2b212d01f2202c89ba03d86021d5268bb5900fc219f39b",
   ),
   (
-    "listing_fee_33htobl",
-    "4496989b62716ff0df954a29b43fe9ac96a153658801392f5ff25fe2d705aa21",
-  ),
-  (
-    "listing_tx_dev_fill",
-    "f1c500f81c331d31415902755278e2a599311d8121ac9582bc63ad981efa48fb",
-  ),
-  (
-    "otc_swap_0x83",
-    "ce4dc92baaba478327bbd6b7e182576366f79334c72b40e46f5c54551df7c0cb",
+    "liquidium_loan",
+    "56711f668e018fa8ad81293400fe9b38db86f101239895eecdebe5a41ca0b1a5",
   ),
 ];
 
+/// Fixtures whose escrow output is spent by a settlement in the same block
+/// (`Fixture::spender`).
+const SETTLED: &[&str] = &["psbt_0x81_sale", "psbt_0x81_separate_payment"];
+
 /// A sale as the fixture tests compare it: vin, kind, marketplace, payment
 /// vout, buyer vout, price, proceeds, fees.
-type Seen = (u32, SaleKind, &'static str, u32, u32, u64, u64, u64);
+type Seen = (u32, SaleKind, String, u32, u32, u64, u64, u64);
 
 fn sales_of(name: &str) -> Vec<Seen> {
   let fixture = Fixture::load(name);
   let (block, delta) = fixture.block_and_delta();
   let market = analyze(&block, &delta, &context());
-  assert!(market.inscriptions.is_empty(), "{name}");
   market
     .sales
     .iter()
     .map(|sale| {
-      assert_eq!(sale.txid, fixture.txid);
+      assert_eq!(
+        sale.txid, fixture.txid,
+        "{name}: only the fixture's own sales"
+      );
       let tracked = fixture
         .tracked
         .iter()
         .find(|tracked| tracked.vin == sale.vin)
         .unwrap();
       assert_eq!(sale.seller_outpoint, tracked.outpoint);
-      assert_eq!(sale.seller.pieces, tracked.pieces);
+      // The sold pieces: the input's, or the part of them that left the
+      // seller.
+      for piece in &sale.seller.pieces {
+        assert!(
+          tracked.pieces.iter().any(|t| t.offset <= piece.offset
+            && piece.offset_end() <= t.offset_end()
+            && piece.start - t.start == piece.offset - t.offset),
+          "{name}: {piece:?}"
+        );
+      }
       assert_eq!(
         sale.buyer_script.as_ref(),
         sale
           .buyer_vout
           .map(|vout| &fixture.outputs[vout as usize].script_pubkey)
       );
-      let marketplace = match sale.marketplace.as_str() {
-        "magisat" => "magisat",
-        UNKNOWN_MARKETPLACE => UNKNOWN_MARKETPLACE,
-        other => panic!("{name}: marketplace {other}"),
-      };
       (
         sale.vin,
         sale.kind,
-        marketplace,
+        sale.marketplace.clone(),
         sale.payment_vout.unwrap(),
         sale.buyer_vout.unwrap(),
         sale.price,
@@ -438,15 +584,34 @@ fn sales_of(name: &str) -> Vec<Seen> {
     .collect()
 }
 
-/// The fixture's transaction pays a Magisat fee address valid at its
+fn sold(
+  vin: u32,
+  kind: SaleKind,
+  marketplace: &str,
+  (payment, buyer): (u32, u32),
+  (price, proceeds, fees): (u64, u64, u64),
+) -> Seen {
+  (
+    vin,
+    kind,
+    marketplace.into(),
+    payment,
+    buyer,
+    price,
+    proceeds,
+    fees,
+  )
+}
+
+/// The fixture's transaction pays a fee address of `id` valid at its
 /// height.
-fn pays_magisat(name: &str) -> bool {
+fn pays(name: &str, id: &str) -> bool {
   let fixture = Fixture::load(name);
   let marketplaces = Marketplaces::embedded();
   fixture.outputs.iter().any(|output| {
     marketplaces
       .fee_output(&output.script_pubkey, fixture.height)
-      .is_some_and(|marketplace| marketplace.id == "magisat")
+      .is_some_and(|marketplace| marketplace.id == id)
   })
 }
 
@@ -456,57 +621,75 @@ fn magisat_listings() {
   // the 875-sat fee output is the buyer's taker fee, not part of the price.
   assert_eq!(
     sales_of("magisat_single_2023"),
-    [(2, Listing, "magisat", 2, 1, 35_000, 35_000, 0)]
+    [sold(2, Listing, "magisat", (2, 1), (35_000, 35_000, 0))]
   );
   // 2023-09: 2.5 % of 15,000 is below dust, so no fee output.
-  assert!(!pays_magisat("magisat_no_fee_output_2023"));
+  assert!(!pays("magisat_no_fee_output_2023", "magisat"));
   assert_eq!(
     sales_of("magisat_no_fee_output_2023"),
-    [(2, Listing, UNKNOWN_MARKETPLACE, 2, 1, 15_000, 15_000, 0)]
+    [sold(
+      2,
+      Listing,
+      UNKNOWN_MARKETPLACE,
+      (2, 1),
+      (15_000, 15_000, 0)
+    )]
   );
   // 2024-03, the F2-only period.
   assert_eq!(
     sales_of("magisat_f2_period_2024"),
-    [(2, Listing, "magisat", 2, 1, 30_000, 30_000, 0)]
+    [sold(2, Listing, "magisat", (2, 1), (30_000, 30_000, 0))]
   );
   // The 2024 variant layout: one padding input, sellers at vin 1..=5, every
   // sold sat lands in output 0.
   assert_eq!(
     sales_of("magisat_bulk_variant_2024"),
     (1..=5)
-      .map(|vin| (vin, Listing, "magisat", vin, 0, 122_000, 122_000, 0))
+      .map(|vin| sold(vin, Listing, "magisat", (vin, 0), (122_000, 122_000, 0)))
       .collect::<Vec<Seen>>()
   );
   // Block 861,287 has the first maker fees: ⌊89,550 / 199⌋ = 450.
   assert_eq!(
     sales_of("magisat_first_maker_fee"),
     [
-      (3, Listing, "magisat", 3, 1, 90_000, 89_550, 450),
-      (4, Listing, "magisat", 4, 2, 90_000, 89_550, 450),
+      sold(3, Listing, "magisat", (3, 1), (90_000, 89_550, 450)),
+      sold(4, Listing, "magisat", (4, 2), (90_000, 89_550, 450)),
     ]
   );
   // 2024-10, F2 12,950 = 2,450 maker + 10,500 taker.
   assert_eq!(
     sales_of("magisat_maker_fee_f2"),
-    [(2, Listing, "magisat", 2, 1, 490_000, 487_550, 2_450)]
+    [sold(
+      2,
+      Listing,
+      "magisat",
+      (2, 1),
+      (490_000, 487_550, 2_450)
+    )]
   );
   // 2025, F1 2,957 = 157 maker + 2,800 taker.
   assert_eq!(
     sales_of("magisat_f1_2025"),
-    [(2, Listing, "magisat", 2, 1, 31_500, 31_343, 157)]
+    [sold(2, Listing, "magisat", (2, 1), (31_500, 31_343, 157))]
   );
   // A 0.1 BTC rare sat: F2 150,007 = 50,002 maker + 100,005 taker.
   assert_eq!(
     sales_of("magisat_0_1_btc"),
-    [(2, Listing, "magisat", 2, 1, 10_000_546, 9_950_544, 50_002)]
+    [sold(
+      2,
+      Listing,
+      "magisat",
+      (2, 1),
+      (10_000_546, 9_950_544, 50_002)
+    )]
   );
   // Two alpha uncommons in one buy, as the fork recorded the move: one fee
   // output of 3,254 = 2 × 227 maker + 2,800 taker.
   assert_eq!(
     sales_of("magisat_bulk_2"),
     [
-      (3, Listing, "magisat", 3, 1, 45_546, 45_319, 227),
-      (4, Listing, "magisat", 4, 2, 45_546, 45_319, 227),
+      sold(3, Listing, "magisat", (3, 1), (45_546, 45_319, 227)),
+      sold(4, Listing, "magisat", (4, 2), (45_546, 45_319, 227)),
     ]
   );
 }
@@ -514,15 +697,15 @@ fn magisat_listings() {
 #[test]
 fn magisat_buying_with_its_own_wallet() {
   // F1 buys 50 block 9 sats from one seller. Its 103 outputs (the bought
-  // sats, padding, change) receive tracked sats, so they are not fees; the
-  // fee goes to F2 at vout 101 (2k + 1). Prices as Magisat's records: 30 ×
-  // 1,146, 13 × 930 and 7 × 1,046.
+  // sats, padding, change) receive tracked sats or return its funds, so they
+  // are not fees; the fee goes to F2 at vout 101 (2k + 1). Prices as
+  // Magisat's records: 30 × 1,146, 13 × 930 and 7 × 1,046.
   let sales = sales_of("magisat_buys_with_f1");
   assert_eq!(sales.len(), 50);
   let mut prices = BTreeMap::new();
   for (vin, kind, marketplace, payment, buyer, price, proceeds, fees) in sales {
     assert_eq!(
-      (kind, marketplace, payment, buyer),
+      (kind, marketplace.as_str(), payment, buyer),
       (Listing, "magisat", vin, vin - 50)
     );
     assert_eq!((price, fees), (proceeds + proceeds / 199, proceeds / 199));
@@ -536,103 +719,234 @@ fn magisat_offers() {
   // 2025, 1 % + 1 %: 3,960,000 to the seller, 80,000 fee.
   assert_eq!(
     sales_of("magisat_offer_2025"),
-    [(0, Offer, "magisat", 1, 0, 4_000_000, 3_960_000, 40_000)]
+    [sold(
+      0,
+      Offer,
+      "magisat",
+      (1, 0),
+      (4_000_000, 3_960_000, 40_000)
+    )]
   );
   // 2024, 15,000 minimums on each side.
   assert_eq!(
     sales_of("magisat_offer_2024_minimums"),
-    [(0, Offer, "magisat", 1, 0, 1_000_000, 985_000, 15_000)]
+    [sold(
+      0,
+      Offer,
+      "magisat",
+      (1, 0),
+      (1_000_000, 985_000, 15_000)
+    )]
   );
   // In none of Magisat's feeds (a collection offer?), from the fork's move.
   assert_eq!(
     sales_of("magisat_offer_not_in_api"),
-    [(0, Offer, "magisat", 1, 0, 5_200_000, 5_148_000, 52_000)]
+    [sold(
+      0,
+      Offer,
+      "magisat",
+      (1, 0),
+      (5_200_000, 5_148_000, 52_000)
+    )]
   );
   // Known deviation: in 2024-03 offers paid a 2.5 % maker fee and no taker
   // fee, so Magisat's price is 2,500,000; half the fee output is added.
   assert_eq!(
     sales_of("magisat_offer_2024_03_no_taker_fee"),
-    [(0, Offer, "magisat", 1, 0, 2_531_250, 2_500_000, 31_250)]
+    [sold(
+      0,
+      Offer,
+      "magisat",
+      (1, 0),
+      (2_531_250, 2_500_000, 31_250)
+    )]
   );
   // Known miss: zero-fee offers (since 2025-11) have no fee output and look
   // like a send with change to the sender.
-  assert!(!pays_magisat("magisat_offer_zero_fee"));
+  assert!(!pays("magisat_offer_zero_fee", "magisat"));
   assert_eq!(sales_of("magisat_offer_zero_fee"), []);
 }
 
 #[test]
-fn other_venues() {
-  // A two-party ALL|ANYONECANPAY sale: a 999-sat UTXO holding a 450x sat for
-  // 1,970,999 paid to the seller's own script.
-  let fixture = Fixture::load("psbt_0x81_sale");
+fn magic_eden_sales() {
+  // 2023: the msigner layout, the item padded to 10,000 sats at vout 1; the
+  // seller's payment at vout 2 and the 2.5 % fee at vout 3.
+  let [(vin, kind, marketplace, payment, buyer, price, proceeds, fees)] =
+    &sales_of("me_listing_2023")[..]
+  else {
+    panic!()
+  };
   assert_eq!(
-    fixture
-      .inputs
+    (*vin, *kind, marketplace.as_str(), *payment, *buyer),
+    (2, Listing, "magic_eden", 2, 1)
+  );
+  assert_eq!(*price, proceeds + fees);
+  assert!(*fees > 0);
+  // An accepted offer: 1,568,546 to the seller (98 % of 1,600,000 plus the
+  // UTXO's 546), a 40,000 fee.
+  assert_eq!(
+    sales_of("me_offer_2023"),
+    [sold(
+      0,
+      Offer,
+      "magic_eden",
+      (1, 0),
+      (1_608_546, 1_568_546, 40_000)
+    )]
+  );
+  // A bid accepted inside the listing layout: the seller at vin 2 signing
+  // the default sighash, paid at vout 2.
+  let sales = sales_of("me_bid_in_listing_layout");
+  assert_eq!(
+    sales
       .iter()
-      .map(|input| input.sighash)
+      .map(|sale| (sale.0, sale.1, sale.2.as_str(), sale.3))
       .collect::<Vec<_>>(),
-    [Some(PSBT_SIGHASH), Some(0x00)]
+    [(2, Offer, "magic_eden", 2)]
   );
+  // The transfer tool (every input the seller's) and a launchpad mint (the
+  // creator paid ~547): not sales.
+  assert!(pays("me_transfer_tool", "magic_eden"));
+  assert_eq!(sales_of("me_transfer_tool"), []);
+  assert!(pays("me_launchpad_mint", "magic_eden"));
+  assert_eq!(sales_of("me_launchpad_mint"), []);
+}
+
+#[test]
+fn passthrough_and_bid_sales() {
+  // ord.net: the item spent from the seller's 2-of-2 passthrough at vin 2,
+  // paid at vout 2: a listing; its offers pay at vout 1.
+  let check = |name: &str, kind: SaleKind, marketplace: &str, (vin, payment): (u32, u32)| {
+    let sales = sales_of(name);
+    assert_eq!(
+      sales
+        .iter()
+        .map(|sale| (sale.0, sale.1, sale.2.as_str(), sale.3))
+        .collect::<Vec<_>>(),
+      [(vin, kind, marketplace, payment)],
+      "{name}"
+    );
+    let (.., price, proceeds, fees) = &sales[0];
+    assert!(*fees > 0 && *price == proceeds + fees, "{name}");
+  };
+  check("ord_net_passthrough", Listing, "ord_net", (2, 2));
+  check("ord_net_offer", Offer, "ord_net", (0, 1));
+  // Ordinals Wallet: the escrow at vin 1, paid at vout 1.
+  check(
+    "ordinals_wallet_passthrough",
+    Listing,
+    "ordinals_wallet",
+    (1, 1),
+  );
+  // Satflow bid acceptance: 488,046 to the seller, 7,500 to its fee address.
   assert_eq!(
-    sales_of("psbt_0x81_sale"),
-    [(
-      0,
-      Listing,
-      UNKNOWN_MARKETPLACE,
-      1,
-      0,
-      1_970_999,
-      1_970_999,
-      0
-    )]
+    sales_of("satflow_bid_acceptance"),
+    [sold(0, Offer, "satflow", (1, 0), (495_546, 488_046, 7_500))]
   );
-  let (block, delta) = fixture.block_and_delta();
-  let ctx = context();
-  let sale = &analyze(&block, &delta, &ctx).sales[0];
-  let (row, count, unit) = sale_unit(sale, &ctx.catalog).unwrap();
-  assert_eq!(ctx.catalog.rows()[usize::from(row)].id, "450x");
-  assert_eq!((count, unit), (1, 1_970_000));
-  // Most such sellers are paid at a separate address: the output after the
-  // sats (60 of the window's 84).
+  // The unnamed rare-sat venue splitting one sat out of the seller's UTXO:
+  // 35,000 to the seller's payment address, 13,500 in fees.
+  let sales = sales_of("unknown_33hto_split_sale");
   assert_eq!(
-    sales_of("psbt_0x81_separate_payment"),
-    [(
-      0,
-      Listing,
-      UNKNOWN_MARKETPLACE,
-      1,
-      0,
-      1_973_999,
-      1_973_999,
-      0
-    )]
+    sales
+      .iter()
+      .map(|sale| (sale.0, sale.1, sale.2.as_str(), sale.3, sale.6, sale.7))
+      .collect::<Vec<_>>(),
+    [(0, Offer, UNKNOWN_MARKETPLACE, 2, 35_000, 13_500)]
   );
-  // With a 1,000-sat fee to a service whose address is not in the table.
+}
+
+#[test]
+fn satflow_secure_purchases() {
+  // Transaction A pays the seller and puts the item in a 2-of-3 escrow; B,
+  // in the same block, pays the buyer, the fees and the marker. A is the
+  // sale, attributed by B; B is no sale.
+  for (name, payment) in [
+    ("psbt_0x81_sale", 1_970_999),
+    ("psbt_0x81_separate_payment", 1_973_999),
+  ] {
+    let fixture = Fixture::load(name);
+    assert_eq!(
+      fixture
+        .inputs
+        .iter()
+        .map(|input| input.sighash.is_some_and(|flag| flag & 0x80 == 0))
+        .collect::<Vec<_>>(),
+      [false, true],
+      "{name}: a seller signing ALL|ANYONECANPAY, a buyer signing ALL"
+    );
+    assert_eq!(fixture.inputs[0].sighash, Some(PSBT_SIGHASH));
+    assert!(fixture.spender.is_some(), "{name}");
+    let sales = sales_of(name);
+    let [(vin, kind, marketplace, vout, buyer, sale_price, proceeds, fees)] = &sales[..] else {
+      panic!("{name}: {sales:?}")
+    };
+    assert_eq!(
+      (*vin, *kind, marketplace.as_str(), *vout, *buyer, *proceeds),
+      (0, Listing, "satflow", 1, 0, payment),
+      "{name}"
+    );
+    assert!(*fees > 0 && *sale_price == proceeds + fees, "{name}");
+  }
+  // The legacy form pays a 1,000-sat fee to ordinals.market's address in A.
   assert_eq!(
     sales_of("psbt_0x81_service_fee"),
-    [(0, Listing, UNKNOWN_MARKETPLACE, 1, 0, 7_217, 7_217, 0)]
+    [sold(0, Listing, "satflow", (1, 0), (8_217, 7_217, 1_000))]
   );
-  // SINGLE|ANYONECANPAY listings on other venues: their fee addresses are not
-  // in the table, so the price is the payment.
+  // A without its settlement in the block: a sale of an unknown venue.
+  let mut fixture = Fixture::load("psbt_0x81_sale");
+  fixture.spender = None;
+  let (block, delta) = fixture.block_and_delta();
+  let market = analyze(&block, &delta, &context());
+  assert_eq!(
+    market
+      .sales
+      .iter()
+      .map(|sale| (sale.marketplace.as_str(), sale.price))
+      .collect::<Vec<_>>(),
+    [(UNKNOWN_MARKETPLACE, 1_970_999)]
+  );
+  // Its unit: a 999-sat UTXO holding a 450x sat.
+  let ctx = context();
+  let (row, count, unit) = sale_unit(&market.sales[0], &ctx.catalog).unwrap();
+  assert_eq!(ctx.catalog.rows()[usize::from(row)].id, "450x");
+  assert_eq!((count, unit), (1, 1_970_000));
+}
+
+#[test]
+fn other_venues() {
+  // UniSat: two 300-sat dummies from one script, returned merged to it.
+  assert_eq!(
+    sales_of("unisat_listing")
+      .iter()
+      .map(|sale| (sale.0, sale.1, sale.2.as_str(), sale.3, sale.4))
+      .collect::<Vec<_>>(),
+    [(2, Listing, "unisat", 2, 1)]
+  );
+  // The unnamed venue's listing: its 1,000-sat fee counted, its name not.
   assert_eq!(
     sales_of("listing_fee_33htobl"),
-    [(1, Listing, UNKNOWN_MARKETPLACE, 1, 0, 3_000, 3_000, 0)]
-  );
-  assert_eq!(
-    sales_of("listing_tx_dev_fill"),
-    [(2, Listing, UNKNOWN_MARKETPLACE, 2, 1, 67_093, 67_093, 0)]
-  );
-  assert_eq!(
-    sales_of("otc_swap_0x83"),
-    [(
+    [sold(
       1,
       Listing,
       UNKNOWN_MARKETPLACE,
+      (1, 0),
+      (4_000, 3_000, 1_000)
+    )]
+  );
+  // A buying tool filling a listing without the platform's fee.
+  assert_eq!(
+    sales_of("listing_tx_dev_fill"),
+    [sold(2, Listing, "tx_dev", (2, 1), (77_093, 67_093, 10_000))]
+  );
+  // No fee output at all.
+  assert_eq!(
+    sales_of("otc_swap_0x83"),
+    [sold(
       1,
-      0,
-      5_980_000,
-      5_980_000,
-      0
+      Listing,
+      UNKNOWN_MARKETPLACE,
+      (1, 0),
+      (5_980_000, 5_980_000, 0)
     )]
   );
 }
@@ -667,9 +981,12 @@ fn lookalikes_are_not_sales() {
   assert_eq!(sales_of("sweep_0x82"), []);
   // Magisat's tools pay its fee addresses without selling anything.
   for name in ["magisat_safe_transfer", "magisat_isolation", "magisat_send"] {
-    assert!(pays_magisat(name), "{name}");
+    assert!(pays(name, "magisat"), "{name}");
     assert_eq!(sales_of(name), [], "{name}");
   }
+  // A loan: collateral to the lender's vault, the principal to the borrower.
+  assert!(pays("liquidium_loan", "liquidium"));
+  assert_eq!(sales_of("liquidium_loan"), []);
 }
 
 #[test]
@@ -690,6 +1007,7 @@ fn every_fixture_is_listed() {
     assert_eq!(fixture.name, *name);
     assert_eq!(fixture.txid.to_string(), *txid);
     assert!(!fixture.tracked.is_empty(), "{name}");
+    assert_eq!(fixture.spender.is_some(), SETTLED.contains(name), "{name}");
   }
 }
 
@@ -738,8 +1056,11 @@ fn build() {
   std::fs::create_dir_all(dir()).unwrap();
   let rebuild = std::env::var_os("FIXTURES_REBUILD").is_some();
   for &(name, txid) in FIXTURES {
-    // The moves window moves on: keep fixtures built from it.
-    if !rebuild && dir().join(format!("{name}.json")).exists() {
+    let existing = dir()
+      .join(format!("{name}.json"))
+      .exists()
+      .then(|| Fixture::load(name));
+    if existing.is_some() && !rebuild {
       continue;
     }
     let raw: Value = rpc
@@ -758,15 +1079,29 @@ fn build() {
       .enumerate()
       .find(|(_, tx)| tx.txid == txid)
       .unwrap();
-    let recorded = (height >= moves_from).then(|| {
+    let tracked_input = |vin: usize, pieces: Vec<Piece>| {
+      let prevout = &raw["vin"][vin]["prevout"];
+      FixtureTracked {
+        vin: vin as u32,
+        outpoint: tx.inputs[vin].previous_output,
+        value: tx.inputs[vin].value,
+        script_pubkey: ScriptBuf::from_hex(prevout["scriptPubKey"]["hex"].as_str().unwrap())
+          .unwrap(),
+        height: prevout["height"].as_u64().unwrap() as u32,
+        pieces,
+      }
+    };
+    let recorded = (existing.is_none() && height >= moves_from).then(|| {
       fork
         .moves(height)
         .into_iter()
         .find(|m| m.txid == txid)
         .unwrap_or_else(|| panic!("{name}: the fork has no move for {txid}"))
     });
-    let tracked: Vec<FixtureTracked> = match &recorded {
-      Some(m) => m
+    let (tracked, pieces_from): (Vec<FixtureTracked>, String) = if let Some(existing) = &existing {
+      (existing.tracked.clone(), existing.pieces_from.clone())
+    } else if let Some(m) = &recorded {
+      let tracked = m
         .inputs
         .iter()
         .map(|input| FixtureTracked {
@@ -777,74 +1112,86 @@ fn build() {
           height: input.utxo.height,
           pieces: input.utxo.pieces.clone(),
         })
-        .collect(),
-      None => {
-        let mut tracked: Vec<FixtureTracked> = magisat
-          .get(&txid.to_string())
-          .unwrap_or_else(|| panic!("{name}: no Magisat record"))
-          .iter()
-          .map(|&(outpoint, start, count, offset)| {
-            let vin = tx
-              .inputs
-              .iter()
-              .position(|input| input.previous_output == outpoint)
-              .unwrap();
-            let prevout = &raw["vin"][vin]["prevout"];
-            FixtureTracked {
-              vin: vin as u32,
-              outpoint,
-              value: tx.inputs[vin].value,
-              script_pubkey: ScriptBuf::from_hex(prevout["scriptPubKey"]["hex"].as_str().unwrap())
-                .unwrap(),
-              height: prevout["height"].as_u64().unwrap() as u32,
-              pieces: vec![Piece {
-                offset,
-                start,
-                len: count.min(tx.inputs[vin].value - offset),
-              }],
-            }
-          })
-          .collect();
-        tracked.sort_by_key(|tracked| tracked.vin);
-        tracked
+        .collect();
+      (tracked, "fork".into())
+    } else if let Some(records) = magisat.get(&txid.to_string()) {
+      let mut tracked: Vec<FixtureTracked> = records
+        .iter()
+        .map(|&(outpoint, start, count, offset)| {
+          let vin = tx
+            .inputs
+            .iter()
+            .position(|input| input.previous_output == outpoint)
+            .unwrap();
+          tracked_input(
+            vin,
+            vec![Piece {
+              offset,
+              start,
+              len: count.min(tx.inputs[vin].value - offset),
+            }],
+          )
+        })
+        .collect();
+      tracked.sort_by_key(|tracked| tracked.vin);
+      (tracked, "magisat".into())
+    } else {
+      // The sats the outputs still hold, mapped back to the inputs.
+      let (base, starts, _) = offsets(tx);
+      let mut by_vin: BTreeMap<usize, Vec<Piece>> = BTreeMap::new();
+      for (vout, &output_start) in starts.iter().enumerate() {
+        let Some(json) = fork.try_get(&format!("/output/{txid}:{vout}")) else {
+          continue;
+        };
+        for piece in json["pieces"].as_array().unwrap() {
+          let offset = output_start + piece["offset"].as_u64().unwrap();
+          let vin = base.partition_point(|&b| b <= offset) - 1;
+          let len = piece["len"]
+            .as_u64()
+            .unwrap()
+            .min(base[vin] + tx.inputs[vin].value - offset);
+          by_vin.entry(vin).or_default().push(Piece {
+            offset: offset - base[vin],
+            start: piece["start"].as_u64().unwrap(),
+            len,
+          });
+        }
       }
+      let tracked: Vec<FixtureTracked> = by_vin
+        .into_iter()
+        .map(|(vin, pieces)| tracked_input(vin, merged(pieces)))
+        .collect();
+      assert!(!tracked.is_empty(), "{name}: no tracked sats in place");
+      (tracked, "fork_output".into())
     };
+    let spender = SETTLED.contains(&name).then(|| {
+      let escrow = OutPoint::new(txid, 0);
+      let spender = block
+        .txs
+        .iter()
+        .find(|tx| {
+          tx.inputs
+            .iter()
+            .any(|input| input.previous_output == escrow)
+        })
+        .unwrap_or_else(|| panic!("{name}: output 0 is not spent in the same block"));
+      fixture_tx(spender)
+    });
+    let FixtureTx {
+      inputs, outputs, ..
+    } = fixture_tx(tx);
     let fixture = Fixture {
       name: name.into(),
       txid,
       height,
       tx_index: tx_index as u32,
-      pieces_from: if recorded.is_some() {
-        "fork"
-      } else {
-        "magisat"
-      }
-      .into(),
+      pieces_from,
       tracked,
-      inputs: tx
-        .inputs
-        .iter()
-        .map(|input| FixtureInput {
-          outpoint: input.previous_output,
-          value: input.value,
-          sighash: input.sighash,
-          envelopes: input
-            .envelopes
-            .iter()
-            .map(|envelope| (envelope.pointer, envelope.unrecognized_even_field))
-            .collect(),
-        })
-        .collect(),
-      outputs: tx
-        .outputs
-        .iter()
-        .map(|output| FixtureOutput {
-          value: output.value.to_sat(),
-          script_pubkey: output.script_pubkey.clone(),
-        })
-        .collect(),
+      inputs,
+      outputs,
+      spender,
     };
-    let (_, built) = fixture.block_and_delta();
+    let (block, built) = fixture.block_and_delta();
     if let Some(m) = &recorded {
       let outputs = |outputs: &[MoveOutput]| -> Vec<(u32, Vec<Piece>)> {
         outputs
@@ -863,13 +1210,9 @@ fn build() {
       serde_json::to_string_pretty(&fixture).unwrap() + "\n",
     )
     .unwrap();
-    let market = analyze(
-      &block,
-      &delta(height, hash, recorded.into_iter().collect()),
-      &context(),
-    );
+    let market = analyze(&block, &built, &context());
     eprintln!(
-      "{name}: height {height}, {} in, {} out, tracked vins {:?} ({}), sales in the block {:?}",
+      "{name}: height {height}, {} in, {} out, tracked vins {:?} ({}), sales {:?}",
       fixture.inputs.len(),
       fixture.outputs.len(),
       fixture
@@ -878,7 +1221,20 @@ fn build() {
         .map(|tracked| tracked.vin)
         .collect::<Vec<_>>(),
       fixture.pieces_from,
-      market.sales
+      market
+        .sales
+        .iter()
+        .map(|sale| (
+          sale.vin,
+          sale.kind,
+          &sale.marketplace,
+          sale.payment_vout,
+          sale.buyer_vout,
+          sale.price,
+          sale.seller_proceeds,
+          sale.fees
+        ))
+        .collect::<Vec<_>>()
     );
   }
 }
@@ -916,17 +1272,27 @@ impl Fork {
   }
 
   fn get(&self, path: &str) -> Value {
+    self
+      .try_get(path)
+      .unwrap_or_else(|| panic!("{path}: not found"))
+  }
+
+  /// `None` on 404.
+  fn try_get(&self, path: &str) -> Option<Value> {
     let response = self
       .client
       .get(format!("{}{path}", self.url))
       .send()
       .unwrap();
+    if response.status() == reqwest::StatusCode::NOT_FOUND {
+      return None;
+    }
     assert!(
       response.status().is_success(),
       "{path}: {}",
       response.status()
     );
-    response.json().unwrap()
+    Some(response.json().unwrap())
   }
 
   /// `/block/{height}/moves` as the tracker's moves.
@@ -996,7 +1362,8 @@ impl Fork {
 
 /// Runs the detector over the fork's moves window (ignored: needs bitcoind
 /// and the fork). Writes one line per transaction that spent tracked sats
-/// to `MEASURE_OUT` and prints the tallies.
+/// to `MEASURE_OUT` (its inputs' flags, the table entries its outputs pay,
+/// its sales) and prints the tallies.
 #[test]
 #[ignore]
 fn measure() {
@@ -1020,6 +1387,7 @@ fn measure() {
   let mut count = |key: String| *tally.entry(key).or_default() += 1;
   let started = std::time::Instant::now();
   let mut analyze_time = std::time::Duration::ZERO;
+  let mut blocks = 0u32;
   for block in live.blocks(from, to, threads) {
     let block = block.unwrap();
     let moves = fork.moves(block.height);
@@ -1027,7 +1395,7 @@ fn measure() {
     let start = std::time::Instant::now();
     let market = analyze(&block, &delta, &ctx);
     analyze_time += start.elapsed();
-    count("blocks".into());
+    blocks += 1;
     for sale in &market.sales {
       count(format!("sales {:?} {}", sale.kind, sale.marketplace));
     }
@@ -1041,24 +1409,20 @@ fn measure() {
       let tx = &block.txs[m.tx_index as usize];
       assert_eq!(tx.txid, m.txid);
       let flags: Vec<Option<u8>> = tx.inputs.iter().map(|input| input.sighash).collect();
-      let tracked: Vec<Option<u8>> = m
-        .inputs
+      let mut paid: Vec<String> = tx
+        .outputs
         .iter()
-        .map(|input| flags[input.vin as usize])
+        .filter_map(|output| {
+          let script = &output.script_pubkey;
+          ctx
+            .marketplaces
+            .fee_output(script, block.height)
+            .or_else(|| ctx.marketplaces.marker(script, block.height))
+            .map(|marketplace| marketplace.id.clone())
+        })
         .collect();
-      let class = if tracked.contains(&Some(0x83)) {
-        "0x83"
-      } else if tracked.contains(&Some(0x81)) {
-        if flags.iter().all(|flag| *flag == Some(0x81)) {
-          "0x81 every input"
-        } else {
-          "0x81 mixed"
-        }
-      } else if tracked.contains(&Some(0x82)) {
-        "0x82"
-      } else {
-        "other"
-      };
+      paid.sort();
+      paid.dedup();
       let sales: Vec<Value> = market
         .sales
         .iter()
@@ -1080,18 +1444,14 @@ fn measure() {
           })
         })
         .collect();
-      count(format!(
-        "txs {class}: {}",
-        if sales.is_empty() { "no sale" } else { "sale" }
-      ));
       serde_json::to_writer(
         &mut out,
         &serde_json::json!({
           "height": block.height,
           "txid": m.txid,
-          "class": class,
           "flags": flags,
           "tracked_vins": m.inputs.iter().map(|input| input.vin).collect::<Vec<_>>(),
+          "paid": paid,
           "sales": sales,
         }),
       )
@@ -1101,9 +1461,10 @@ fn measure() {
   }
   out.flush().unwrap();
   eprintln!(
-    "blocks {from}..={to} in {:.0?}, analyze {:.1?} in total",
+    "blocks {from}..={to} ({blocks}) in {:.0?}; analyze {:.1?} in total, {:.1} us per block",
     started.elapsed(),
-    analyze_time
+    analyze_time,
+    analyze_time.as_secs_f64() * 1e6 / f64::from(blocks.max(1)),
   );
   for (key, n) in tally {
     eprintln!("{key}: {n}");

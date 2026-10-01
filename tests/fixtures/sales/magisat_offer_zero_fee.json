@@ -24,36 +24,43 @@
     {
       "outpoint": "fa5eabd938edce38b446f4ade720de4d78e278314572bab64e84ad191b6efc14:1",
       "value": 330,
+      "script_hash": 1178077337,
       "sighash": 1
     },
     {
       "outpoint": "9fbcf68abc66062773313a8df839eb7700528fd28d466fd54d65a6b7dc6b94d7:0",
       "value": 3000,
+      "script_hash": 2520440351,
       "sighash": 1
     },
     {
       "outpoint": "6b7a86fcd726392a55550fed7d554eca36091d129319c9ed056495409cc7e0de:0",
       "value": 1200,
+      "script_hash": 2520440351,
       "sighash": 1
     },
     {
       "outpoint": "dc8b9176de111ac06775e160d762bfc2e99d5e8f1ee66f08ddf174e73ad6f543:0",
       "value": 1200,
+      "script_hash": 2520440351,
       "sighash": 1
     },
     {
       "outpoint": "d2303d97ed32f34d3bd1189170c960d621e1ef91f1086ea6e8e8d22d7263fb9e:29",
       "value": 6516,
+      "script_hash": 1664893993,
       "sighash": 1
     },
     {
       "outpoint": "d2303d97ed32f34d3bd1189170c960d621e1ef91f1086ea6e8e8d22d7263fb9e:28",
       "value": 6516,
+      "script_hash": 1664893993,
       "sighash": 1
     },
     {
       "outpoint": "d2303d97ed32f34d3bd1189170c960d621e1ef91f1086ea6e8e8d22d7263fb9e:27",
       "value": 6516,
+      "script_hash": 1664893993,
       "sighash": 1
     }
   ],

@@ -1,0 +1,65 @@
+{
+  "name": "satflow_bid_acceptance",
+  "txid": "1844d9d5ad89822dc72b90bf675bd00da45d57c5d4d713c1c880508ad682aa2f",
+  "height": 965711,
+  "tx_index": 684,
+  "pieces_from": "fork",
+  "tracked": [
+    {
+      "vin": 0,
+      "outpoint": "b13649a1752602ff911787dfc87019651a7e65ae392ce1fb30a15996721eb8fd:0",
+      "value": 546,
+      "script_pubkey": "51202fda5205d74bfb6f056c38539451b1f17043239ce9e039d19ef78480ef4d0457",
+      "height": 965269,
+      "pieces": [
+        {
+          "offset": 0,
+          "start": 45025002459,
+          "len": 1
+        }
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "outpoint": "b13649a1752602ff911787dfc87019651a7e65ae392ce1fb30a15996721eb8fd:0",
+      "value": 546,
+      "script_hash": 612005746,
+      "sighash": 1
+    },
+    {
+      "outpoint": "5a0f67bebfd67a99e1f259796b7e5cccdea2bdfd81218f88ece2ce65f10616d3:4",
+      "value": 381721,
+      "script_hash": 3462529995,
+      "sighash": 1
+    },
+    {
+      "outpoint": "6c5e234a7b00fd892e8c06b0331420a0119f79dba2042b615dc70ea53049978b:24",
+      "value": 353971,
+      "script_hash": 3462529995,
+      "sighash": 1
+    }
+  ],
+  "outputs": [
+    {
+      "value": 546,
+      "script_pubkey": "5120ff8a0204849a7e1d2499acdfc2fca8103eef8324abfa3f494d9336d10c25bcfc"
+    },
+    {
+      "value": 488046,
+      "script_pubkey": "51202fda5205d74bfb6f056c38539451b1f17043239ce9e039d19ef78480ef4d0457"
+    },
+    {
+      "value": 7500,
+      "script_pubkey": "00145d5fc742ddb6dd560b2a296d73567a5e7b536350"
+    },
+    {
+      "value": 5000,
+      "script_pubkey": "00149ae81224f4e9726148f86216be493caaca381c09"
+    },
+    {
+      "value": 234762,
+      "script_pubkey": "00143c16bbcdaac8ea781f24e44fe0c517365015c6dc"
+    }
+  ]
+}

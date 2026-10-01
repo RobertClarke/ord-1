@@ -24,11 +24,13 @@
     {
       "outpoint": "b5de1cbd382e53a52a04adebc15886ac3109edf21bab55fe79abcf13f88b2318:0",
       "value": 999,
+      "script_hash": 692955117,
       "sighash": 129
     },
     {
       "outpoint": "e6cf3b355289e3034b472dbfe40df3ff84d8657ba4ddc3b9044e42c370008539:0",
       "value": 1971420,
+      "script_hash": 539934609,
       "sighash": 0
     }
   ],
@@ -41,5 +43,40 @@
       "value": 1970999,
       "script_pubkey": "00147c6b1a05f2c509bd75b06732f5fbdfa83558093a"
     }
-  ]
+  ],
+  "spender": {
+    "txid": "32479f3d46650e7404fa9c7ffec6275679ba96817b46c0a3c6f39b5308da800b",
+    "inputs": [
+      {
+        "outpoint": "0c47e0acc1b4f2de35cab4a8deaf278fe47f0d9a707135dd8e2488a228a8ec86:0",
+        "value": 999,
+        "script_hash": 3210093514,
+        "sighash": 1
+      },
+      {
+        "outpoint": "e6cf3b355289e3034b472dbfe40df3ff84d8657ba4ddc3b9044e42c370008539:1",
+        "value": 49843,
+        "script_hash": 539934609,
+        "sighash": 1
+      }
+    ],
+    "outputs": [
+      {
+        "value": 999,
+        "script_pubkey": "51202dacd3260fbed2cfadd83f9b66ffbfe145c06679ed5c8824dceb3908d689c27f"
+      },
+      {
+        "value": 29550,
+        "script_pubkey": "00145d5fc742ddb6dd560b2a296d73567a5e7b536350"
+      },
+      {
+        "value": 19700,
+        "script_pubkey": "0014139d22e7f345f94a21fc77247fcb95144820fa70"
+      },
+      {
+        "value": 0,
+        "script_pubkey": "6a07534154464c4f57"
+      }
+    ]
+  }
 }

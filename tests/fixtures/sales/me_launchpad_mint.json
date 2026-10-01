@@ -1,0 +1,55 @@
+{
+  "name": "me_launchpad_mint",
+  "txid": "a37a2f59d14cd5a3025376ede36cb47d3a1df2a3ecb1ea106aa2e55e58184544",
+  "height": 832040,
+  "tx_index": 1108,
+  "pieces_from": "fork_output",
+  "tracked": [
+    {
+      "vin": 0,
+      "outpoint": "5707551469d24b4076282a69ac8c2f49f19013a1e37cad0875f30330df082354:96",
+      "value": 546,
+      "script_pubkey": "51201a0c200a6a1b4d9d5a158d96b882a0bbe0ef898adbfcc6f2abf5775a4145fc85",
+      "height": 823976,
+      "pieces": [
+        {
+          "offset": 0,
+          "start": 45585334750,
+          "len": 1
+        }
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "outpoint": "5707551469d24b4076282a69ac8c2f49f19013a1e37cad0875f30330df082354:96",
+      "value": 546,
+      "script_hash": 3597184711,
+      "sighash": 1
+    },
+    {
+      "outpoint": "fe3ced2bc7e16a5b88d39b4e591cda40f1d895764933ab75896e604f40e873fe:3",
+      "value": 195464,
+      "script_hash": 2396376913,
+      "sighash": 1
+    }
+  ],
+  "outputs": [
+    {
+      "value": 546,
+      "script_pubkey": "512023de32fc63d9d0d9859fdc1f91132550e2cf8cb4218c67ceac11504067c615a7"
+    },
+    {
+      "value": 547,
+      "script_pubkey": "51205fcd0bd56e7da891b531e5f007c857a6e48640a818814e18dc137bd935ce02ab"
+    },
+    {
+      "value": 579,
+      "script_pubkey": "a914ea6b832a05c6ca578baa3836f3f25553d41068a587"
+    },
+    {
+      "value": 190928,
+      "script_pubkey": "a914672dd227adc434208bea2773f68c375e65224fdb87"
+    }
+  ]
+}

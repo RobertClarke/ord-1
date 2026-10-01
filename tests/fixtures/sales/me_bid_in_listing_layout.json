@@ -1,0 +1,79 @@
+{
+  "name": "me_bid_in_listing_layout",
+  "txid": "95292641ce3a2b2254fc00c4f348491720e7c5fd39512fc5d0056fdcaa531876",
+  "height": 819780,
+  "tx_index": 7,
+  "pieces_from": "fork_output",
+  "tracked": [
+    {
+      "vin": 2,
+      "outpoint": "ca11d4d334c1926e9758b0189bca5d81a9c269591bfc3506bc52374417b41a19:0",
+      "value": 661,
+      "script_pubkey": "5120dea538d4f9ea2af8ae87c48fd87babcf2066a0e858026fb1461adfdfcaf2d28e",
+      "height": 818897,
+      "pieces": [
+        {
+          "offset": 0,
+          "start": 45026248014,
+          "len": 1
+        }
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "outpoint": "f4e05df8be8d3b8d6d0747acda3cbcd4c53763ba150c62348797cc51162439ee:4",
+      "value": 600,
+      "script_hash": 2555417741,
+      "sighash": 1
+    },
+    {
+      "outpoint": "4c6bff908e20f3761d5aa39abd12066e2ad79166302ca5cfb8f884fa2b1610d8:5",
+      "value": 600,
+      "script_hash": 2555417741,
+      "sighash": 1
+    },
+    {
+      "outpoint": "ca11d4d334c1926e9758b0189bca5d81a9c269591bfc3506bc52374417b41a19:0",
+      "value": 661,
+      "script_hash": 2572431560,
+      "sighash": 0
+    },
+    {
+      "outpoint": "83ae441d9f4a97b2b54028e090df03a8a4fb15925ccc5320e61c55569dcf761f:30",
+      "value": 1277700,
+      "script_hash": 2555417741,
+      "sighash": 1
+    }
+  ],
+  "outputs": [
+    {
+      "value": 1200,
+      "script_pubkey": "a91415a6f91c999ac56497dadafddfd2b6735d94054787"
+    },
+    {
+      "value": 661,
+      "script_pubkey": "512001ffe1870e87e6191da994091cd9a1ddace769c8aab52e64024b087195109c8e"
+    },
+    {
+      "value": 350661,
+      "script_pubkey": "51206e833395b6bb10484aaa01c40b5d273c3cbaefacd7dafb645bdc9db92dec1b9a"
+    },
+    {
+      "value": 579,
+      "script_pubkey": "0014c015c65276d5f38d599d445c4cb03aa7aa0dc365"
+    },
+    {
+      "value": 600,
+      "script_pubkey": "a91415a6f91c999ac56497dadafddfd2b6735d94054787"
+    },
+    {
+      "value": 600,
+      "script_pubkey": "a91415a6f91c999ac56497dadafddfd2b6735d94054787"
+    },
+    {
+      "value": 828992,
+      "script_pubkey": "a91415a6f91c999ac56497dadafddfd2b6735d94054787"
+    }
+  ]
+}

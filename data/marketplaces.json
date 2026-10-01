@@ -1,23 +1,1135 @@
 {
-  "comment": "Marketplace fee addresses by height range; schema in src/market/marketplaces.rs, sources in docs/MARKETPLACES.md. Magisat (docs/SALES-SHAPES.md section 5, rst/sales-research): F1 alone through block 831,279, F2 alone from 831,297 to 852,668, both from 852,779 (F2 for fees of 10,000 sats to 1 BTC). The unobserved blocks between those periods accept both addresses.",
+  "comment": "Marketplaces that sold tracked sats on chain: fee addresses and markers by height range (inclusive), layouts, and evidence transactions; schema in src/market/marketplaces.rs, sources in docs/MARKETPLACES.md. Heights and counts were measured on chain up to block 969,444 (every block 770,000-969,444 for fee addresses).",
   "marketplaces": [
     {
       "id": "magisat",
       "name": "Magisat",
+      "role": "marketplace",
+      "status": "active",
       "price_rule": "magisat",
+      "flows": [
+        "listing_0x83_msigner",
+        "offer_sighash_all"
+      ],
+      "notes": "Rare-sat marketplace. Listings: msigner layout (600-sat dummies), sellers signing 0x83 at vin k+1..2k, payments at the same indices, one fee output after the payments. Accepted offers (OFFER_PURCHASED): the seller at vin 0 and the buyer both sign ALL (taproot: explicit 0x01); [item -> buyer vout 0, payment vout 1, fee vout 2, change]. Price: the payment P plus floor(P/199) from block 861,287 (Magisat's price excludes the buyer's taker fee); offers: output 1 plus half of output 2. Its listings are also filled by other tools without its fee.",
+      "sources": [
+        "Magisat's public API (api.magisat.io): sales by tag and owner (buyerTxId), /info/platform-fee-percentage",
+        "mrv777/omb-gallery ONCHAIN_TAGGING.md"
+      ],
       "fee_addresses": [
         {
           "address": "bc1pan37k3yyvpnazh4zsz284hsyvsrucxzjgs5td8h22regpfzhgu9sg4xlc6",
-          "from_height": 804000,
-          "to_height": 831296
+          "from_height": 793428,
+          "to_height": 831296,
+          "fee": "seller payment = price - 0.5% maker fee (from block 861,287); one fee output = maker + taker fees of every listing in the transaction, omitted when below dust",
+          "note": "Not paid as a fee from 831,297 to 852,668 (F2 only, per Magisat's sales records). Also Magisat's trading wallet: outputs to it that receive the transaction's tracked sats or that fund it are purchases, not fees.",
+          "first_seen": {
+            "height": 793428,
+            "date": "2023-06-08"
+          },
+          "last_seen": {
+            "height": 969352,
+            "date": "2026-09-30"
+          },
+          "txs_paying": 17520,
+          "txs_paying_with_0x83_input": 10445,
+          "first_0x83_sale": {
+            "height": 793428,
+            "txid": "d49fef76f6aa85b95c7ead93a8d0c544cd24c2c3670e963c55df68e1f16025b9"
+          },
+          "evidence": [
+            "3854c0ba0ea36ac5993be75f366395a21bc77c5621887f0a9e59a77d07e5c500"
+          ]
         },
         {
           "address": "bc1pan37k3yyvpnazh4zsz284hsyvsrucxzjgs5td8h22regpfzhgu9sg4xlc6",
-          "from_height": 852669
+          "from_height": 852669,
+          "to_height": null,
+          "fee": "seller payment = price - 0.5% maker fee (from block 861,287); one fee output = maker + taker fees of every listing in the transaction, omitted when below dust",
+          "note": "From 852,779 F2 takes fees of 10,000 sats to 1 BTC and F1 the others.",
+          "first_seen": {
+            "height": 793428,
+            "date": "2023-06-08"
+          },
+          "last_seen": {
+            "height": 969352,
+            "date": "2026-09-30"
+          },
+          "txs_paying": 17520,
+          "txs_paying_with_0x83_input": 10445,
+          "last_0x83_sale": {
+            "height": 969352,
+            "txid": "1e06386d5d958b9fe5d5fa3b878cd7d36f82a3e545794d4a0a98c8fbacf25cee"
+          },
+          "evidence": [
+            "d52437e0272fe3fcb91b8bae542c93836aa3e9b7cfed170363996690a6c5508c"
+          ]
         },
         {
           "address": "3Ke21osfhEbEryUeqdwAuAY8VKxm5B9uB2",
-          "from_height": 831280
+          "from_height": 831280,
+          "to_height": null,
+          "fee": "seller payment = price - 0.5% maker fee (from block 861,287); one fee output = maker + taker fees of every listing in the transaction, omitted when below dust",
+          "note": "Also labelled an exchange deposit address by public trackers: a deposit that receives the transaction's tracked sats is not a fee.",
+          "first_seen": {
+            "height": 831281,
+            "date": "2024-02-20"
+          },
+          "last_seen": {
+            "height": 969176,
+            "date": "2026-09-29"
+          },
+          "txs_paying": 27319,
+          "txs_paying_with_0x83_input": 12647,
+          "first_0x83_sale": {
+            "height": 831297,
+            "txid": "f95987634f36f6ce6faa8ecac12d24fb1cad31bfa29d96a494f66648a54c3c1d"
+          },
+          "last_0x83_sale": {
+            "height": 967176,
+            "txid": "809c7f0eae750028b3991f6a942291250c7ed896ac5a835ca96f686fc2c27411"
+          },
+          "evidence": [
+            "82d5b938c1d5019a73f33d39f9f0bcede7e8be24de1f7cf2ee3eae4bed935c20",
+            "72cb8faa3f6806fad40fff7e2bfadfc701d1d320796d5b67932d7adb67c1b954",
+            "a67fb7f7a12730a47d43902e9388856c928c4e791167cb193931db61963d95b5"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "magic_eden",
+      "name": "Magic Eden",
+      "role": "marketplace",
+      "status": "closed: announced 2026-02-27, Bitcoin marketplace off 2026-03-09, Bitcoin API off 2026-03-27",
+      "flows": [
+        "listing_0x83_msigner",
+        "listing_0x83_dummyless_runes",
+        "offer_sighash_all"
+      ],
+      "notes": "Listings: msigner layout (two 600-sat dummies, seller 0x83 at vin 2, payment vout 2, fee vout 3; N items use N+1 dummies and one fee output after the last payment); rare sats were whole-UTXO listings on the same flow. Rune listings use no dummies, so the seller's sats reach the buyer's change or the miner, not the item output. Accepted offers and bids: the seller signs ALL (often an explicit 0x01) or DEFAULT at acceptance, [item vin 0] -> [item vout 0, payment vout 1, fee vout 2, change], sometimes with the bid escrowed in a P2WSH input. Not sales: 1,000-sat transfer-tool fees, launchpad mints, inscription commits, fee-wallet sweeps.",
+      "sources": [
+        "magiceden-oss/msigner (listing PSBT layout)",
+        "mrv777/omb-gallery ONCHAIN_TAGGING.md",
+        "Magic Eden help centre (2% taker + 0.5% maker) and the February 2026 closure announcement"
+      ],
+      "fee_addresses": [
+        {
+          "address": "bc1qcq2uv5nk6hec6kvag3wyevp6574qmsm9scjxc2",
+          "from_height": 781237,
+          "to_height": 940150,
+          "fee": "2.5% of price (2% taker + 0.5% maker; the seller pays 2% on accepted offers); runes 1%, 1.5% from mid-2025; observed floor 579-580 sats",
+          "note": "Primary. Last listing sale 940,057 and last sale-like fee 940,150; afterwards only 1,000-sat transfer-tool fees (to 943,171) and stray deposits; swept into 3P4W... in September 2026 (f4910fd54ab06105ee757a436aae84ece4de0bdae6aca46c943b312a9c62f9dd).",
+          "first_seen": {
+            "height": 781237,
+            "date": "2023-03-17"
+          },
+          "last_seen": {
+            "height": 949986,
+            "date": "2026-05-18"
+          },
+          "txs_paying": 1501240,
+          "txs_paying_with_0x83_input": 1110103,
+          "first_0x83_sale": {
+            "height": 781237,
+            "txid": "31836491152608d5f06031e1d40f773b740711e221c06fa6722e6a49ddccf732"
+          },
+          "last_0x83_sale": {
+            "height": 940057,
+            "txid": "b20bd66eec117f31f055c1ca700be4f39fcacb819f0625c783d90bb50d5db8c9"
+          },
+          "evidence": [
+            "34ad7d4fdd0452f7edf41df1504d6951441187f34830417380170ecaa3f515c2",
+            "3b404b83eef9796704539fb934b0f253e05d40bfb2bfe80ef2b482dae14de76f",
+            "b20bd66eec117f31f055c1ca700be4f39fcacb819f0625c783d90bb50d5db8c9"
+          ]
+        },
+        {
+          "address": "3P4WqXDbSLRhzo2H6MT6YFbvBKBDPLbVtQ",
+          "from_height": 820193,
+          "to_height": 843661,
+          "fee": "2.5% of price; 580 + about 1,500 on inscribe commits",
+          "note": "December 2023 to May 2024. Also labelled an exchange deposit address by public trackers: later payments are sweeps and deposits, not fees.",
+          "first_seen": {
+            "height": 820193,
+            "date": "2023-12-08"
+          },
+          "last_seen": {
+            "height": 966440,
+            "date": "2026-09-11"
+          },
+          "txs_paying": 1084630,
+          "txs_paying_with_0x83_input": 832274,
+          "first_0x83_sale": {
+            "height": 821062,
+            "txid": "61db3167f2a6ad50bcd1ec35e0a9a959689ce833d9e3a3d24f494efb6f659152"
+          },
+          "last_0x83_sale": {
+            "height": 843661,
+            "txid": "20a9bfac2817b0ecf6c9f9f709c836815d39940734923ed4bfc7220585df9a82"
+          },
+          "evidence": [
+            "093e6fd1fb500e05e0718fc8eac25d8d03c0fc3ce4e41b7d7466a3db6b9a2d00",
+            "1092de0b4699c40ce568c33fdc2a3d6fa9a53d1bab89a69a0fe1f3e21247820c",
+            "61db3167f2a6ad50bcd1ec35e0a9a959689ce833d9e3a3d24f494efb6f659152",
+            "20a9bfac2817b0ecf6c9f9f709c836815d39940734923ed4bfc7220585df9a82"
+          ]
+        },
+        {
+          "address": "bc1qp8j9sx6609h7llqufurxjgrwsqwt020tqzn0gs",
+          "from_height": 855139,
+          "to_height": 940150,
+          "fee": "2.5% (rare sats, accepted offers incl. P2WSH-escrowed collection bids); runes 1-1.5%; floor 580",
+          "note": "From August 2024, next to bc1qcq2...; last listing sale 940,020.",
+          "first_seen": {
+            "height": 855139,
+            "date": "2024-08-03"
+          },
+          "last_seen": {
+            "height": 967618,
+            "date": "2026-09-18"
+          },
+          "txs_paying": 1024838,
+          "txs_paying_with_0x83_input": 411729,
+          "first_0x83_sale": {
+            "height": 855139,
+            "txid": "97442315d8346269a74ce8132014e1b7934f296bcf7d193da9873ed24e0fd241"
+          },
+          "last_0x83_sale": {
+            "height": 940020,
+            "txid": "a1c94626aac7bac879c4f1a45d2ea198e1bb7dbb53ae8729ec9e9666cbc935af"
+          },
+          "evidence": [
+            "03894cc486b41c7d08d69e3419a102407413e7015ff2c8f6edc282c7d6ff2116",
+            "64da6dd7bc2d1d3617491f104a94e7decd458fa5dadceb8e256ae51b8ee2d165",
+            "a1c94626aac7bac879c4f1a45d2ea198e1bb7dbb53ae8729ec9e9666cbc935af"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "satflow",
+      "name": "Satflow (formerly ordinals.market)",
+      "role": "marketplace",
+      "status": "active",
+      "flows": [
+        "secure_purchase_two_tx",
+        "offer_sighash_all",
+        "listing_0x83_msigner"
+      ],
+      "escrow_pubkeys": [
+        "02fc2d7c42692ad1967ace8751d59a8fb2db6d4859db3ba7447a791e64844e14b4",
+        "03d91309fffed9730450f2ad0ac7ddc8b86e30bda5d77679da85fe89d5dff28c83"
+      ],
+      "notes": "Secure purchase (2026): transaction A = [seller item signed 0x81 at vin 0, buyer's exact funding] -> [item -> 2-of-3 P2WSH leg vout 0, payment -> seller vout 1] is the sale; transaction B spends the leg (whose witness script holds the escrow keys above), normally in the same block, and pays the fees and the OP_RETURN marker: settlement, not a second sale. 2-of-3 transfers with the marker and no fee are recovery transfers. The legacy form pays a 1,000-sat fee to the ordinals.market address in A itself. Bid acceptances: the seller signs ALL, with the marker and the fee in the same transaction.",
+      "sources": [
+        "on chain: the OP_RETURN \"SATFLOW\" marker and the ...satfl0w vanity fee addresses"
+      ],
+      "fee_addresses": [
+        {
+          "address": "bc1qt40uwskakmw4vze299khx4n6tea4xc6satfl0w",
+          "from_height": 942701,
+          "to_height": null,
+          "fee": "1.5% of price",
+          "note": "Paid by the settlement transaction (B) of secure purchases and by bid acceptances.",
+          "first_seen": {
+            "height": 942701,
+            "date": "2026-03-28"
+          },
+          "last_seen": {
+            "height": 969444,
+            "date": "2026-10-01"
+          },
+          "txs_paying": 29245,
+          "txs_paying_with_0x83_input": 0,
+          "evidence": [
+            "32479f3d46650e7404fa9c7ffec6275679ba96817b46c0a3c6f39b5308da800b",
+            "1844d9d5ad89822dc72b90bf675bd00da45d57c5d4d713c1c880508ad682aa2f"
+          ]
+        },
+        {
+          "address": "bc1qzwwj9elnghu55g0uwuj8lju4z3yzp7nsatfl0w",
+          "from_height": 958599,
+          "to_height": null,
+          "fee": "about 1% of price",
+          "note": "Second fee output of some settlements; others pay that 1% elsewhere.",
+          "first_seen": {
+            "height": 958599,
+            "date": "2026-07-18"
+          },
+          "last_seen": {
+            "height": 969409,
+            "date": "2026-10-01"
+          },
+          "txs_paying": 266,
+          "txs_paying_with_0x83_input": 0,
+          "evidence": [
+            "32479f3d46650e7404fa9c7ffec6275679ba96817b46c0a3c6f39b5308da800b"
+          ]
+        },
+        {
+          "address": "bc1p39tdzrddy5swrsf4ysu9k867283nhq754lnfhj23u543a72r60wsz8c74p",
+          "from_height": 787604,
+          "to_height": null,
+          "fee": "2.5% on ordinals.market listings; 1,000 sats flat on legacy secure purchases",
+          "note": "ordinals.market (Satflow's predecessor) fee address; Satflow's default until 2026-03-28.",
+          "first_seen": {
+            "height": 787604,
+            "date": "2023-04-30"
+          },
+          "last_seen": {
+            "height": 969190,
+            "date": "2026-09-29"
+          },
+          "txs_paying": 9367,
+          "txs_paying_with_0x83_input": 3737,
+          "first_0x83_sale": {
+            "height": 788554,
+            "txid": "daf854753e5a0b65e9f04c00602eb0d88d29be87a4b87e4324465a36b960b06c"
+          },
+          "last_0x83_sale": {
+            "height": 968221,
+            "txid": "68a2a85db95bd0c086317b479bd80ec3078240ed97bd59da787222ed396b0c65"
+          },
+          "evidence": [
+            "daf854753e5a0b65e9f04c00602eb0d88d29be87a4b87e4324465a36b960b06c",
+            "96f4755dcac22389e906dbc7d64525cf07c8acc57fd42e4fd154f875a303b076",
+            "68a2a85db95bd0c086317b479bd80ec3078240ed97bd59da787222ed396b0c65"
+          ]
+        },
+        {
+          "address": "1SnipedxxxxxxxxxxxxxxxxxxxxvonEah",
+          "from_height": 831515,
+          "to_height": 833649,
+          "note": "February-March 2024: 809 transactions, all 0x83 fills of other marketplaces' listings.",
+          "first_seen": {
+            "height": 831515,
+            "date": "2024-02-22"
+          },
+          "last_seen": {
+            "height": 833649,
+            "date": "2024-03-07"
+          },
+          "txs_paying": 809,
+          "txs_paying_with_0x83_input": 809,
+          "evidence": [
+            "e610532d5397c1ef123400ec9f41e06e9e188f3dc5bf0789c47e54dee50427a7",
+            "8a5278e6b9cf8ffa7c4766077b3a8fc0d51a1eb725c26e4cd9bc42aa0217d253",
+            "67b80e42ccac2f376d210ad07cb650b79515c8d9b597c54700b39f08a492486d"
+          ]
+        }
+      ],
+      "markers": [
+        {
+          "op_return": "6a07534154464c4f57",
+          "text": "SATFLOW",
+          "from_height": 855890,
+          "to_height": null,
+          "txs": 42520,
+          "evidence": [
+            "32479f3d46650e7404fa9c7ffec6275679ba96817b46c0a3c6f39b5308da800b"
+          ],
+          "note": "On settlements (B), bid acceptances and recovery transfers."
+        }
+      ]
+    },
+    {
+      "id": "ordinals_wallet",
+      "name": "Ordinals Wallet",
+      "role": "marketplace",
+      "status": "active",
+      "flows": [
+        "listing_0x83",
+        "passthrough_2of2"
+      ],
+      "notes": "2023 listings: [buyer funding, seller 0x83 vin 1, buyer] -> [600 -> buyer, payment vout 1, item vout 2, fee vout 3, change]; 2026: msigner 2-dummy layout, fee vout 3. Passthrough: the item sits in a 2-of-2 tapscript with Ordinals Wallet and is spent by script path, the payment at the same index as the escrow input.",
+      "sources": [
+        "ordinals-wallet/ow-cli (packages/core/src/passthrough.ts, offers-verify.ts)"
+      ],
+      "fee_addresses": [
+        {
+          "address": "bc1p6yd49679azsaxqgtr52ff6jjvj2wv5dlaqwhaxarkamevgle2jaqs8vlnr",
+          "from_height": 778744,
+          "to_height": null,
+          "fee": "about 2.8% of the seller payment",
+          "first_seen": {
+            "height": 778744,
+            "date": "2023-03-01"
+          },
+          "last_seen": {
+            "height": 969444,
+            "date": "2026-10-01"
+          },
+          "txs_paying": 220738,
+          "txs_paying_with_0x83_input": 217497,
+          "first_0x83_sale": {
+            "height": 778744,
+            "txid": "20a6c8c7d94d253e0ec70ef81fc0e6c0ce9e16c30334ce4094a70205b260b707"
+          },
+          "last_0x83_sale": {
+            "height": 969444,
+            "txid": "2a63e56bdc9b013b71e8fba81349249f80ec60c231e4ed8a16055722c8b20490"
+          },
+          "evidence": [
+            "20a6c8c7d94d253e0ec70ef81fc0e6c0ce9e16c30334ce4094a70205b260b707",
+            "9da6e9dd925bc241725d36a0bd17ada080e8437c880fb17625c3f1cba0e93af0",
+            "8f50445d02b00a06680e007bcd940a63a19dc1a2eeeaef1cafee51e639bc4aeb",
+            "bcb36935d355b88239aad9c66288450560a557fb63e9fbc6049c9d9c0bc7e974"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ord_net",
+      "name": "ord.net",
+      "role": "marketplace",
+      "status": "active",
+      "anchor_address": "bc1q0h8mujmkue3yvfwdg5dhqvgcpmmse050anch0r",
+      "flows": [
+        "passthrough_2of2",
+        "offer_tapscript"
+      ],
+      "notes": "Listings settle through the seller's 2-of-2 passthrough tapscript: item at vin 2 (script path), payment vout 2, fee vout 3, a 639-sat marker output to the fee address at vout 0, 330-sat anchors from the anchor address. Offer fills since block 963,363 may carry no fee output (only the spent offer tapscript identifies them).",
+      "sources": [
+        "mrv777/omb-gallery ONCHAIN_TAGGING.md"
+      ],
+      "fee_addresses": [
+        {
+          "address": "bc1pgkfga880836f5kp3m9vvya4m0whva80ddm58r7fyltzp9q8t08rs0rdnet",
+          "from_height": 946807,
+          "to_height": null,
+          "fee": "about 1.2-2.5%, plus a 639-sat marker output to the same address (vout 0)",
+          "first_seen": {
+            "height": 946807,
+            "date": "2026-04-27"
+          },
+          "last_seen": {
+            "height": 969444,
+            "date": "2026-10-01"
+          },
+          "txs_paying": 6401,
+          "txs_paying_with_0x83_input": 0,
+          "evidence": [
+            "c05d4a15ecfe04bccc6e2e33b1ed5550223d0544b2d76f1acf57999029a70870",
+            "57c7be7396ff96ae506c8d6bdbed57bf4312fa363655aa1d2b6b862a2c8a8a9a"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "gamma",
+      "name": "Gamma",
+      "role": "marketplace",
+      "status": "active",
+      "flows": [
+        "listing_0x83_msigner"
+      ],
+      "notes": "msigner-like: 2 dummies, seller 0x83 at vin 2, payment vout 2, fee vout 3; 2023 sales pad the item output to 10,000 sats.",
+      "fee_addresses": [
+        {
+          "address": "bc1qyylrgsxjrmaearjqqradhy8ferh4u0ydw4yuze",
+          "from_height": 781573,
+          "to_height": null,
+          "fee": "about 2% (varies)",
+          "first_seen": {
+            "height": 781573,
+            "date": "2023-03-19"
+          },
+          "last_seen": {
+            "height": 968927,
+            "date": "2026-09-28"
+          },
+          "txs_paying": 8878,
+          "txs_paying_with_0x83_input": 8878,
+          "first_0x83_sale": {
+            "height": 781573,
+            "txid": "437f34d6276e899df9e3598c8a8a642933d74d60910afd066580ccfe3ec784e2"
+          },
+          "last_0x83_sale": {
+            "height": 968927,
+            "txid": "dea6490d638fb048da22078c6428e333fe66c1c1959dee6676080374111ae106"
+          },
+          "evidence": [
+            "693b4930e3a8aadb4d17dd4070ce99e0e0e8f7f6f53ddca1fca75453f2b718fa",
+            "87ff8d4f297853b030737a0d8b3c539f7a4da683df2d7ffe4f6864f01587163a",
+            "01c5e632e14cd54f203d42480bf349be5988851da2aecb5bbadaccbe355c225c"
+          ]
+        },
+        {
+          "address": "19sf3ks2pMmEQT3Gy5iFt3AagcoqKF3mmx",
+          "from_height": 785439,
+          "to_height": 786619,
+          "note": "April 2023 only (13 transactions).",
+          "first_seen": {
+            "height": 785439,
+            "date": "2023-04-15"
+          },
+          "last_seen": {
+            "height": 786619,
+            "date": "2023-04-23"
+          },
+          "txs_paying": 13,
+          "txs_paying_with_0x83_input": 12,
+          "evidence": [
+            "50939fd7af4ba92a9818c8fd78516d3a3e1d9bca017045188ddf5583cff0e78a",
+            "052923574d1200d2a5c31394914e3b3a4728a7174af367716c5894044e690acb"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ordswap",
+      "name": "Ordswap",
+      "role": "marketplace",
+      "status": "inactive",
+      "notes": "2023 OpenOrdex-style listings (one dummy).",
+      "fee_addresses": [
+        {
+          "address": "bc1psypqqyvsc64dngq4mlc4grwf5776x9snhz4stfvzdrztlafl46pqneup8x",
+          "from_height": 776527,
+          "to_height": 807047,
+          "fee": "3%",
+          "note": "Last listing sale 807,047; later payments are not sales.",
+          "first_seen": {
+            "height": 776527,
+            "date": "2023-02-14"
+          },
+          "last_seen": {
+            "height": 886916,
+            "date": "2025-03-08"
+          },
+          "txs_paying": 17727,
+          "txs_paying_with_0x83_input": 17654,
+          "first_0x83_sale": {
+            "height": 776550,
+            "txid": "2e46f5b63deb421dee85cfea240a74b99d14b3286c195189f223f6260ea13943"
+          },
+          "last_0x83_sale": {
+            "height": 807047,
+            "txid": "536d5ec7e61d08b7f786b6ffaa9238afdf2d8fc5bb3cc61198f604407a0560f7"
+          },
+          "evidence": [
+            "2e46f5b63deb421dee85cfea240a74b99d14b3286c195189f223f6260ea13943",
+            "536d5ec7e61d08b7f786b6ffaa9238afdf2d8fc5bb3cc61198f604407a0560f7"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "goldmine",
+      "name": "goldmine.tools",
+      "role": "marketplace",
+      "status": "inactive",
+      "notes": "msigner layout, fee vout 3; spring and summer 2024.",
+      "fee_addresses": [
+        {
+          "address": "bc1pew6s05q67m9vryme0yjnh6xhafw2sldjq35zynxjer405lruz2gsnhapew",
+          "from_height": 836573,
+          "to_height": 852269,
+          "fee": "flat (330 / 10,000 / 15,000 seen)",
+          "first_seen": {
+            "height": 836573,
+            "date": "2024-03-27"
+          },
+          "last_seen": {
+            "height": 861812,
+            "date": "2024-09-18"
+          },
+          "txs_paying": 18049,
+          "txs_paying_with_0x83_input": 17931,
+          "first_0x83_sale": {
+            "height": 836573,
+            "txid": "0a598e5497f85deec5e15342089b3ea07ee613545a3e5fd51032484ea2d44264"
+          },
+          "last_0x83_sale": {
+            "height": 852269,
+            "txid": "2b398e5e4936aa089eac10c515a224747af24a48f7c4909fc72e743a206ee256"
+          },
+          "evidence": [
+            "c16c5a9f77bfd7fc3c6f16929b4dba4cc1db3521d4712a0541066085f1229a3c",
+            "229761bd45458a028aa28818fb56cec3e202170d859f6bec7af1d09e3281b515"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tx_dev",
+      "name": "tx.dev",
+      "role": "buying_tool",
+      "status": "active",
+      "notes": "A buying tool: fills other marketplaces' 0x83 listings (e.g. Magisat's) without the original platform fee and pays its own flat fee in the last output; also used for plain transfers. Its 0x83 fills are listing sales attributed to tx_dev.",
+      "fee_addresses": [
+        {
+          "address": "bc1qxma2dwmutht4vxyl6u395slew5ectfpn35ug9l",
+          "from_height": 848383,
+          "to_height": null,
+          "fee": "10,000 sats flat, last output",
+          "first_seen": {
+            "height": 848383,
+            "date": "2024-06-17"
+          },
+          "last_seen": {
+            "height": 969358,
+            "date": "2026-09-30"
+          },
+          "txs_paying": 21868,
+          "txs_paying_with_0x83_input": 18,
+          "first_0x83_sale": {
+            "height": 946625,
+            "txid": "1bc7494395368757d57bbe9c421fa3f23d5ec129a006c7cf56046f46bbd4b0ca"
+          },
+          "last_0x83_sale": {
+            "height": 969211,
+            "txid": "f1c500f81c331d31415902755278e2a599311d8121ac9582bc63ad981efa48fb"
+          },
+          "evidence": [
+            "f1c500f81c331d31415902755278e2a599311d8121ac9582bc63ad981efa48fb"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "unisat",
+      "name": "UniSat",
+      "role": "marketplace",
+      "status": "active",
+      "layout_rule": "inputs 0 and 1 are 300-sat dummies from one script; output 0 = 600 to that script; seller 0x83 at vin 2, payment vout 2; the fee (if any) is the next output, paid to the same per-trade script",
+      "examples": [
+        "4832305020c09e5baf74688cc91296595326ee62b691dfb3dbac14936c067711",
+        "3812a6734150146a85de68ed787d1d885da81c329b0d206c558781a30ebf594f"
+      ],
+      "notes": "No fixed fee address: the fee goes to the per-trade address that supplied the two 300-sat dummies. 1.8% in 2023; since 2024-02-04 0.5% and only on orders of 500,000 sats or more.",
+      "sources": [
+        "UniSat documentation (fee rates)"
+      ],
+      "fee_addresses": []
+    },
+    {
+      "id": "okx",
+      "name": "OKX",
+      "role": "marketplace",
+      "status": "active",
+      "layout_rule": "msigner layout without a fee output: N+1 600-sat dummies, N sellers 0x83 at vin N+1..2N, outputs [merged dummies, N items, N payments at the seller indices, N+1 new 600-sat dummies, change] = 3N+3 outputs",
+      "notes": "0% fee, so no fee output; OKX also fills listings it aggregates from Magisat. Not used to attribute sales: 452 of the 509 Magisat listing purchases without a fee output (fees below dust) have exactly this layout, so a fee-less msigner purchase is reported as unknown.",
+      "sources": [
+        "okx/js-wallet-sdk (psbtSign.ts)"
+      ],
+      "fee_addresses": []
+    },
+    {
+      "id": "unknown_33hto",
+      "name": "Unidentified rare-sat venue (33HTo...)",
+      "role": "marketplace",
+      "status": "active",
+      "anonymous": true,
+      "notes": "No public name. Listings [600 dummy, seller 0x83 vin 1, buyer] -> [930 merged -> buyer, payment vout 1, fee vout 2, change]; also SIGHASH_ALL sales that split a single sat out of the seller's UTXO. Its sales are found and its fees counted, but reported as marketplace \"unknown\" until it is named.",
+      "fee_addresses": [
+        {
+          "address": "33HToBLb5xGhkoHbYCR7KZP7hy57ZnrCJW",
+          "from_height": 799035,
+          "to_height": null,
+          "fee": "1,000 sats flat (sometimes a second 10,000)",
+          "first_seen": {
+            "height": 799035,
+            "date": "2023-07-17"
+          },
+          "last_seen": {
+            "height": 969444,
+            "date": "2026-10-01"
+          },
+          "txs_paying": 8798,
+          "txs_paying_with_0x83_input": 1411,
+          "first_0x83_sale": {
+            "height": 923182,
+            "txid": "c31065c219f8ecbf6320f22fc7944557c0759fcfc7730f64da5370b2463e831e"
+          },
+          "last_0x83_sale": {
+            "height": 969376,
+            "txid": "72ce223c7cc7acc852095528b864c14b5c685f899fe4f2abddd63ef28cc34e78"
+          },
+          "evidence": [
+            "4496989b62716ff0df954a29b43fe9ac96a153658801392f5ff25fe2d705aa21",
+            "d16667f7263259afa4a9c0c0a71d571e431068dcbf4f518eba5203d1393c25ca",
+            "32dcc1958f11e119898ff74ae29c02559fb3984d0777de433ebf66aa79b0a5c2"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "liquidium",
+      "name": "Liquidium (lending)",
+      "role": "lending",
+      "status": "active",
+      "notes": "Not sales: loan originations move collateral (often block 9 / 450x inscriptions) into a P2WSH lender vault and pay the borrower; repayments and defaults spend the vault. Transactions paying these addresses are skipped unless they also pay a marketplace (a purchase financed by a loan).",
+      "sources": [
+        "mrv777/omb-gallery ONCHAIN_TAGGING.md"
+      ],
+      "fee_addresses": [
+        {
+          "address": "bc1qhwdela6q8kyg2l664663jdw92hgkejcxh8raxzdvl8pmtcwwk4vq4swknz",
+          "from_height": 841001,
+          "to_height": null,
+          "note": "loan fee",
+          "first_seen": {
+            "height": 841001,
+            "date": "2024-04-26"
+          },
+          "last_seen": {
+            "height": 969152,
+            "date": "2026-09-29"
+          },
+          "txs_paying": 43459,
+          "txs_paying_with_0x83_input": 0,
+          "evidence": [
+            "8adfe6db4969a501e62a2e361b1423df06570ef68fe0e7c8b48403b0ab2441e0",
+            "768081727a396f362299e77fcbdfe6a738e2520655185f3f2010651de5f51fdf",
+            "3dbc56fae045f4c6f8014b6b83979c0c7fa53bd889253f5ef007ac7f4d40dcf8"
+          ]
+        },
+        {
+          "address": "bc1papmpmu0xzfvw4x9qe4jstgxfnfy5q8zhh6xredjxd86ca74uph3s59se9u",
+          "from_height": 915403,
+          "to_height": null,
+          "note": "activation / buy-now-pay-later fee",
+          "first_seen": {
+            "height": 915403,
+            "date": "2025-09-19"
+          },
+          "last_seen": {
+            "height": 969443,
+            "date": "2026-10-01"
+          },
+          "txs_paying": 29688,
+          "txs_paying_with_0x83_input": 63,
+          "evidence": [
+            "06bc020738c6d24e7ccefa2f3137feeb4ce4c7155a9411f7921ca27e5f7ab5bd"
+          ]
+        },
+        {
+          "address": "bc1qr6hxm99v4ug7ju50nfzfjcl90rwwvmpl5km42v",
+          "from_height": 873314,
+          "to_height": null,
+          "note": "buy-now-pay-later fee",
+          "first_seen": {
+            "height": 873314,
+            "date": "2024-12-05"
+          },
+          "last_seen": {
+            "height": 968204,
+            "date": "2026-09-23"
+          },
+          "txs_paying": 406,
+          "txs_paying_with_0x83_input": 36,
+          "evidence": [
+            "7840455f9f4db7b983ed710c5ddedba0943215105559a62e60b8f4f2d59a1c54",
+            "957fe0eb702a0efd908eb71748876f780f708a6c242efe473cfbfae4e651c3f7",
+            "53ef9b8a53b7596fdd8f4dc9f79242b8b1ac9af3aebc6e090b57c5e17b584b8f"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "swap_art",
+      "name": "swap.art",
+      "role": "swap",
+      "status": "unknown",
+      "notes": "Swaps, not sales: transactions paying this address are skipped.",
+      "fee_addresses": [
+        {
+          "address": "bc1px06vxyj5xy6z3unfj20fhusr0j2yndup585v7zl302d0a9qqv39qf7fuck",
+          "from_height": 876511,
+          "to_height": null,
+          "first_seen": {
+            "height": 876511,
+            "date": "2024-12-26"
+          },
+          "last_seen": {
+            "height": 968089,
+            "date": "2026-09-22"
+          },
+          "txs_paying": 547,
+          "txs_paying_with_0x83_input": 0,
+          "evidence": [
+            "3f8b54c7ac6ea4427500daf495e4d886900507752a56376fbe0fffa849f70f1f",
+            "2815bf7e73978fc9cd9ce53ba9cec178c4ddc337182d16b8dc54fada95bbebef",
+            "dcb35439f2fd24271f43df6abcc28ebda84ea2b476235264acac400415906ed2"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "unidentified",
+      "name": "Unidentified fee-like clusters",
+      "role": "unidentified",
+      "status": "n/a",
+      "notes": "Recurring fee-position outputs of 0x83 transactions without a confirmed owner, mostly runes / BRC-20 venues: no tracked-sat sale in the 4,032 blocks to 969,444 and under 1% of the sampled historical ones. Not loaded: sales paying them are reported as unknown.",
+      "clusters": [
+        {
+          "address": "bc1pquz62anahzfwnqf9wagynvdp8hv7ehy2agxlgy72h0hxs058zqfqk8ksyq",
+          "first_seen": 832479,
+          "last_seen": 887690,
+          "txs_paying": 157027,
+          "txs_paying_with_0x83_input": 13122
+        },
+        {
+          "address": "bc1pndths0lnsvem2a0n2c6t49u462xam0n4krjl6kpfwn0nknc0cd7qmnxhf8",
+          "first_seen": 807351,
+          "last_seen": 962931,
+          "txs_paying": 153134,
+          "txs_paying_with_0x83_input": 59607
+        },
+        {
+          "address": "bc1p8ct7fy0nfpdu39atxa6cxru7tgz47pwmg4h4pxgafalmnzfpd06qxpkgah",
+          "first_seen": 819367,
+          "last_seen": 919340,
+          "txs_paying": 101391,
+          "txs_paying_with_0x83_input": 101336
+        },
+        {
+          "address": "bc1qe6g7m504uvgtjqnm6p427fz8w5tyq6mzwcfafh",
+          "first_seen": 820826,
+          "last_seen": 858616,
+          "txs_paying": 91940,
+          "txs_paying_with_0x83_input": 9289
+        },
+        {
+          "address": "bc1pfeukclw0l2zjkldsdkyp2024jr4w6ddngjvq3jp4nmprlh49v4ssda39f9",
+          "first_seen": 815103,
+          "last_seen": 881609,
+          "txs_paying": 88756,
+          "txs_paying_with_0x83_input": 12463
+        },
+        {
+          "address": "bc1qtr2m8tr797v2z6tptuqlveh0egper6m6m0vtls",
+          "first_seen": 893441,
+          "last_seen": 913678,
+          "txs_paying": 61122,
+          "txs_paying_with_0x83_input": 61064
+        },
+        {
+          "address": "bc1ppq8dyvkj4le0v0v4v4mdkw20ga7l0u9fhd8wtd67cdh36x6rchtsudyat9",
+          "first_seen": 821271,
+          "last_seen": 862602,
+          "txs_paying": 57663,
+          "txs_paying_with_0x83_input": 18665,
+          "note": "SatsX (public ordinalnovus repo)"
+        },
+        {
+          "address": "bc1qm8fqpt33cp22x4w0er7sen4wstwnmlmc6y0ccz",
+          "first_seen": 798440,
+          "last_seen": 893823,
+          "txs_paying": 45348,
+          "txs_paying_with_0x83_input": 2163
+        },
+        {
+          "address": "bc1q26zzapfealjapr8k0efklh4cnahunsqt6ayx0x",
+          "first_seen": 823414,
+          "last_seen": 863685,
+          "txs_paying": 43096,
+          "txs_paying_with_0x83_input": 24766
+        },
+        {
+          "address": "bc1qcy84362yuen0xu5fshs24yf05y6yalk02tmn8uv32ucfnsk3kp8qpfwv0n",
+          "first_seen": 896368,
+          "last_seen": 942643,
+          "txs_paying": 40956,
+          "txs_paying_with_0x83_input": 4751
+        },
+        {
+          "address": "bc1pu2cq2rj30wdepvec6vpajas5taljh0j402hwqhmug8scqtkywqwqd7w0np",
+          "first_seen": 800535,
+          "last_seen": 835480,
+          "txs_paying": 30651,
+          "txs_paying_with_0x83_input": 30000
+        },
+        {
+          "address": "bc1qc2ge4f8r6fhmtr27c300lm4ap72g86jwunjkj2",
+          "first_seen": 819749,
+          "last_seen": 834216,
+          "txs_paying": 24751,
+          "txs_paying_with_0x83_input": 24751
+        },
+        {
+          "address": "bc1qq06sls3jdp7kchkncr6uc9n2hwxkg3j4rldyvu",
+          "first_seen": 845313,
+          "last_seen": 945380,
+          "txs_paying": 24505,
+          "txs_paying_with_0x83_input": 23386
+        },
+        {
+          "address": "bc1quh9jm6p06nqnvgvvv733pl0g0y6ycxl0aas2t4",
+          "first_seen": 831060,
+          "last_seen": 947037,
+          "txs_paying": 23569,
+          "txs_paying_with_0x83_input": 9575
+        },
+        {
+          "address": "bc1qvdyqz4uyjf40vq9h5jr5uyv9vrs8gcxne6u7pf",
+          "first_seen": 896391,
+          "last_seen": 913676,
+          "txs_paying": 14160,
+          "txs_paying_with_0x83_input": 14150
+        },
+        {
+          "address": "bc1pxxqmqh86yrprnvnyhnuc6dypgjwe8fkzc4ysl6kgfyf59dv6rarqkumrmt",
+          "first_seen": 795276,
+          "last_seen": 855424,
+          "txs_paying": 14031,
+          "txs_paying_with_0x83_input": 14029
+        },
+        {
+          "address": "bc1qkt6akcywyvuesu8nc0pjsuuv8z8jfs55gy6jvu",
+          "first_seen": 913679,
+          "last_seen": 967961,
+          "txs_paying": 13018,
+          "txs_paying_with_0x83_input": 13014
+        },
+        {
+          "address": "bc1qhtulgzueuz5gejzxl4pjtn2zzqudrdxsa9pqef",
+          "first_seen": 833602,
+          "last_seen": 848378,
+          "txs_paying": 11739,
+          "txs_paying_with_0x83_input": 1716
+        },
+        {
+          "address": "bc1pej9xqe5maqr6jah5t33fkwtvmld09fhewzm94wjaj866072e95lqj9u7fq",
+          "first_seen": 793150,
+          "last_seen": 865139,
+          "txs_paying": 11663,
+          "txs_paying_with_0x83_input": 3847
+        },
+        {
+          "address": "3HPeRYtM8wtu3P5bsVPfwfvubBxRii6YEY",
+          "first_seen": 817460,
+          "last_seen": 890467,
+          "txs_paying": 11551,
+          "txs_paying_with_0x83_input": 999
+        },
+        {
+          "address": "3QJhTYT4jvhe6qKtw6Xdu7DDrysdHVHaSu",
+          "first_seen": 834244,
+          "last_seen": 877983,
+          "txs_paying": 10753,
+          "txs_paying_with_0x83_input": 722
+        },
+        {
+          "address": "bc1qj33vexl9gujueg40efh7s27df32thnxnw9pdc2",
+          "first_seen": 891935,
+          "last_seen": 893507,
+          "txs_paying": 10357,
+          "txs_paying_with_0x83_input": 10354
+        },
+        {
+          "address": "bc1qz9fuxrcrta2ut0ad76zlse09e98x9wrr7su7u6",
+          "first_seen": 823179,
+          "last_seen": 870273,
+          "txs_paying": 10223,
+          "txs_paying_with_0x83_input": 10223,
+          "note": "OrdinalNovus (public ordinalnovus repo; runes template fee address)"
+        },
+        {
+          "address": "bc1pd7uxz9xxdv8dqlzn446t2f7lkpwxw4fylxphzdxnwh4lw7d7mpsqf3g8hh",
+          "first_seen": 940925,
+          "last_seen": 968883,
+          "txs_paying": 7762,
+          "txs_paying_with_0x83_input": 1297
+        },
+        {
+          "address": "34sKAfDRJRadNfapGnteDvBoU1eDvDBeFR",
+          "first_seen": 824836,
+          "last_seen": 837848,
+          "txs_paying": 7597,
+          "txs_paying_with_0x83_input": 612
+        },
+        {
+          "address": "bc1p3cmunt2mmspvuqyxz0tn6la8uxcpdpj62w4wjddze9tqvzf34zysjzvte2",
+          "first_seen": 819709,
+          "last_seen": 885147,
+          "txs_paying": 7568,
+          "txs_paying_with_0x83_input": 7537
+        },
+        {
+          "address": "bc1p3qgn4fcfhzcy95khtwf92l6ztd6rq55awuhkdmv7qnnssqn74vvqtcefmn",
+          "first_seen": 833998,
+          "last_seen": 947072,
+          "txs_paying": 7404,
+          "txs_paying_with_0x83_input": 7219
+        },
+        {
+          "address": "bc1qajynrm6gyrktep7m59kzwdg2uen7g5x4gfmqvd",
+          "first_seen": 830563,
+          "last_seen": 868432,
+          "txs_paying": 7278,
+          "txs_paying_with_0x83_input": 314
+        },
+        {
+          "address": "bc1q4lypg8xg2c2g9gmt7vjclyn0t5r3nqf96hquvxjjqskrhhh8y82qjhfq3g",
+          "first_seen": 837619,
+          "last_seen": 841281,
+          "txs_paying": 7019,
+          "txs_paying_with_0x83_input": 7019
+        },
+        {
+          "address": "bc1pq2g3k9fleqcvu382g674psux05wwa08w6gw6022mr7sqla8009ws3p5054",
+          "first_seen": 847608,
+          "last_seen": 874271,
+          "txs_paying": 6445,
+          "txs_paying_with_0x83_input": 3752
+        },
+        {
+          "address": "3CsM8JgXkoM8sN2J5YgzedB5owLmrBcCo6",
+          "first_seen": 832841,
+          "last_seen": 961073,
+          "txs_paying": 6058,
+          "txs_paying_with_0x83_input": 3047
+        },
+        {
+          "address": "3Cj139CWiyMEi1rsegXvB3DuVpqX6zkUyT",
+          "first_seen": 782114,
+          "last_seen": 906579,
+          "txs_paying": 6041,
+          "txs_paying_with_0x83_input": 872
+        },
+        {
+          "address": "3HhmzxFL79PW6UrgAfvHSWuDEQfjirVVwK",
+          "first_seen": 830761,
+          "last_seen": 848954,
+          "txs_paying": 5997,
+          "txs_paying_with_0x83_input": 847
+        },
+        {
+          "address": "bc1qjx7dpxq2c7kpdtrnzq24rcyaquthp7qxxpj2s2",
+          "first_seen": 899836,
+          "last_seen": 956116,
+          "txs_paying": 5304,
+          "txs_paying_with_0x83_input": 4260
+        },
+        {
+          "address": "bc1q5g5vmxz9q04k4fg0rlp8aa4eln8gq4k5mt9pjz",
+          "first_seen": 829477,
+          "last_seen": 875946,
+          "txs_paying": 5198,
+          "txs_paying_with_0x83_input": 3897
+        },
+        {
+          "address": "bc1q28snn3rvas2uy7se9hleh5y8kngkmzm5gk63y4",
+          "first_seen": 836772,
+          "last_seen": 901218,
+          "txs_paying": 5004,
+          "txs_paying_with_0x83_input": 4502
+        },
+        {
+          "address": "3287auduDmxrEEBLspUk7KBR41kE3CgiSi",
+          "first_seen": 820375,
+          "last_seen": 959194,
+          "txs_paying": 3840,
+          "txs_paying_with_0x83_input": 1411
+        },
+        {
+          "address": "3LKGVn1Hm3jWBrZUc1fHa9afchzgcfnVCu",
+          "first_seen": 831189,
+          "last_seen": 881329,
+          "txs_paying": 3681,
+          "txs_paying_with_0x83_input": 1672
+        },
+        {
+          "address": "32NZaUP8YnUfmQtM3a8shmX5E5s5dpgwvh",
+          "first_seen": 824761,
+          "last_seen": 957907,
+          "txs_paying": 3400,
+          "txs_paying_with_0x83_input": 945
+        },
+        {
+          "address": "38VRAz8e911sGXskbwh5UjWLiJn27CuqEr",
+          "first_seen": 808898,
+          "last_seen": 965511,
+          "txs_paying": 3192,
+          "txs_paying_with_0x83_input": 1803
+        },
+        {
+          "address": "bc1qjg9gzsqz6xparm3z8ku599gankmydhjwvd520y",
+          "first_seen": 935770,
+          "last_seen": 969349,
+          "txs_paying": 3165,
+          "txs_paying_with_0x83_input": 342
+        },
+        {
+          "address": "bc1pwdm870vha822ux4084dxsh899apan7ugwj6f4yu9ntzrk7sled7q06ck8a",
+          "first_seen": 859028,
+          "last_seen": 969327,
+          "txs_paying": 3161,
+          "txs_paying_with_0x83_input": 1299
+        },
+        {
+          "address": "bc1pz2t0kyen3wj0epnwsv0fjvy344jdt83j0jcde6rrxfdg8y7y99fsxkua3n",
+          "first_seen": 825473,
+          "last_seen": 851184,
+          "txs_paying": 3000,
+          "txs_paying_with_0x83_input": 2998
+        },
+        {
+          "address": "bc1q34z3x85zd4uuf7zzvzcc0j9zd3lvlhzwgucpjl",
+          "first_seen": 856850,
+          "last_seen": 899239,
+          "txs_paying": 2945,
+          "txs_paying_with_0x83_input": 2945
+        },
+        {
+          "address": "bc1p2v22jvkpr4r5shne4t7dczepsnf4tzeq7q743htlkjql9pj4q4hsmw3xte",
+          "first_seen": 879244,
+          "last_seen": 941815,
+          "txs_paying": 2486,
+          "txs_paying_with_0x83_input": 2468
+        },
+        {
+          "address": "bc1p90snk7z6qurpqwffkdhtc9z95z8k8zewz7p9n3lfrtl0w6ynxxds3v5wha",
+          "first_seen": 824886,
+          "last_seen": 887182,
+          "txs_paying": 2482,
+          "txs_paying_with_0x83_input": 353
+        },
+        {
+          "address": "3Nj4dqLhoFFdjmGcDnxHFb3keMaTQRbesB",
+          "first_seen": 826786,
+          "last_seen": 947827,
+          "txs_paying": 2391,
+          "txs_paying_with_0x83_input": 796
+        },
+        {
+          "address": "bc1pxcu3gflv4mal8vs9skle22qacf5n49cgvdnht626g8f042sw9lzqvdsm8w",
+          "first_seen": 841525,
+          "last_seen": 909715,
+          "txs_paying": 2380,
+          "txs_paying_with_0x83_input": 2380
+        },
+        {
+          "address": "3EC2XFEDecrn4Bkbe8T4GcnCr6hNUsKwiv",
+          "first_seen": 781505,
+          "last_seen": 962183,
+          "txs_paying": 2289,
+          "txs_paying_with_0x83_input": 1572
+        },
+        {
+          "address": "bc1qhg8828sk4yq6ac08rxd0rh7dzfjvgdch3vfsm4",
+          "first_seen": 784858,
+          "last_seen": 937335,
+          "txs_paying": 2289,
+          "txs_paying_with_0x83_input": 2254,
+          "note": "OrdinalNovus (public ordinalnovus repo)"
+        },
+        {
+          "address": "bc1puercjk8aw4dfes5ck2du5meyxluksl2c8xmczkk8yk5mwxmzgm8sdd6glx",
+          "first_seen": 836708,
+          "last_seen": 895689,
+          "txs_paying": 2117,
+          "txs_paying_with_0x83_input": 0
+        },
+        {
+          "address": "bc1qw6vhhejyupzc76f435sq06vmqxdfq6cv093mwf",
+          "first_seen": 885529,
+          "last_seen": 947375,
+          "txs_paying": 2018,
+          "txs_paying_with_0x83_input": 1963
         }
       ]
     }

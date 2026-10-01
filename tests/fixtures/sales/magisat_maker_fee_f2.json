@@ -24,21 +24,25 @@
     {
       "outpoint": "1258115d77adcdc796e3b95bbdbdc6ed27d20b7a8b3112d6fe6fc247ea9a1055:14",
       "value": 600,
+      "script_hash": 478451574,
       "sighash": 1
     },
     {
       "outpoint": "1258115d77adcdc796e3b95bbdbdc6ed27d20b7a8b3112d6fe6fc247ea9a1055:13",
       "value": 600,
+      "script_hash": 478451574,
       "sighash": 1
     },
     {
       "outpoint": "a81fb17f144fa13bd6eb47366772e51204b399ef9f05ad6751f3a783cadff9f5:993",
       "value": 546,
+      "script_hash": 2173355218,
       "sighash": 131
     },
     {
       "outpoint": "826adee708db6e05a321a112878a7ce674c2d46ea57e0508e7fcb904fbb27907:0",
       "value": 1660113,
+      "script_hash": 478451574,
       "sighash": 1
     }
   ],

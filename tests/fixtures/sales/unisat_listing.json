@@ -1,0 +1,81 @@
+{
+  "name": "unisat_listing",
+  "txid": "b569cb2e5a816a3d666aae88a4616de7b237871f7f053c584da705b45a667802",
+  "height": 818220,
+  "tx_index": 1960,
+  "pieces_from": "fork_output",
+  "tracked": [
+    {
+      "vin": 2,
+      "outpoint": "79ec084b9251687d7e2e855b177826c54d67f6915dcc017e9a66b06f2bcd8d8c:0",
+      "value": 546,
+      "script_pubkey": "0014546e026cdc4526fca704dbd3e34d19033faa8236",
+      "height": 818220,
+      "pieces": [
+        {
+          "offset": 0,
+          "start": 45015249792,
+          "len": 1
+        }
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "outpoint": "3c5e4406f67c2f132f7afb88ed6c979c819c550fc1c69640219254c039e6b6c4:5",
+      "value": 300,
+      "script_hash": 1507147911,
+      "sighash": 1
+    },
+    {
+      "outpoint": "3c5e4406f67c2f132f7afb88ed6c979c819c550fc1c69640219254c039e6b6c4:6",
+      "value": 300,
+      "script_hash": 1507147911,
+      "sighash": 1
+    },
+    {
+      "outpoint": "79ec084b9251687d7e2e855b177826c54d67f6915dcc017e9a66b06f2bcd8d8c:0",
+      "value": 546,
+      "script_hash": 1427450910,
+      "sighash": 131
+    },
+    {
+      "outpoint": "eb2714fe0ca35d47825825873574b78787efaad24e56a6a668ce3427a88117e4:1",
+      "value": 734674,
+      "script_hash": 564483974,
+      "sighash": 1
+    },
+    {
+      "outpoint": "3c5e4406f67c2f132f7afb88ed6c979c819c550fc1c69640219254c039e6b6c4:0",
+      "value": 600,
+      "script_hash": 1507147911,
+      "sighash": 1
+    }
+  ],
+  "outputs": [
+    {
+      "value": 600,
+      "script_pubkey": "0014d6edacfd35dc06086908c552604b5dd356235d09"
+    },
+    {
+      "value": 546,
+      "script_pubkey": "0014c05ee46a815093bb4ddac2671ede66292d63f936"
+    },
+    {
+      "value": 128800,
+      "script_pubkey": "0014546e026cdc4526fca704dbd3e34d19033faa8236"
+    },
+    {
+      "value": 577222,
+      "script_pubkey": "0014c05ee46a815093bb4ddac2671ede66292d63f936"
+    },
+    {
+      "value": 300,
+      "script_pubkey": "0014d6edacfd35dc06086908c552604b5dd356235d09"
+    },
+    {
+      "value": 300,
+      "script_pubkey": "0014d6edacfd35dc06086908c552604b5dd356235d09"
+    }
+  ]
+}

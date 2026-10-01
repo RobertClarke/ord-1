@@ -1,0 +1,55 @@
+{
+  "name": "liquidium_loan",
+  "txid": "56711f668e018fa8ad81293400fe9b38db86f101239895eecdebe5a41ca0b1a5",
+  "height": 965629,
+  "tx_index": 884,
+  "pieces_from": "fork",
+  "tracked": [
+    {
+      "vin": 0,
+      "outpoint": "d3e5050bfefc19b74d392b27e55abcdbb2e48b4c223b6f7ec99b691a24bdf007:0",
+      "value": 999,
+      "script_pubkey": "51204b2b3d2ddd55df26f0973e51e04683e6f0eb319e46548443022e1a594cf05bb9",
+      "height": 965597,
+      "pieces": [
+        {
+          "offset": 0,
+          "start": 45086526515,
+          "len": 1
+        }
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "outpoint": "d3e5050bfefc19b74d392b27e55abcdbb2e48b4c223b6f7ec99b691a24bdf007:0",
+      "value": 999,
+      "script_hash": 2254894580,
+      "sighash": 0
+    },
+    {
+      "outpoint": "7d5b2b18d671a7ea3b208abae8f6c7df2c04dbaee8bb88fd364a586ad11b514f:1",
+      "value": 4983249,
+      "script_hash": 2954664535,
+      "sighash": 1
+    }
+  ],
+  "outputs": [
+    {
+      "value": 999,
+      "script_pubkey": "51208b558ce6f210cfb265a9129d8701aded3a120d7f86b149cfdfa4e4aaf57bb65f"
+    },
+    {
+      "value": 12900,
+      "script_pubkey": "5120e8761df1e61258ea98a0cd6505a0c99a49401c57be8c3cb64669f58efabc0de3"
+    },
+    {
+      "value": 1706466,
+      "script_pubkey": "a914a0487d2a5dfc390e85753dd89116080fbad92e9a87"
+    },
+    {
+      "value": 3263249,
+      "script_pubkey": "00208124de16660705c0effa1e8223fc6716559e92eb3c44265249c188c562d744d3"
+    }
+  ]
+}

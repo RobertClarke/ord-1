@@ -1,31 +1,51 @@
-//! Marketplaces and their fee addresses (`data/marketplaces.json`).
+//! Marketplaces, their fee addresses and markers (`data/marketplaces.json`).
 //!
 //! ```json
 //! { "marketplaces": [{
 //!     "id": "magisat",
 //!     "name": "Magisat",
+//!     "role": "marketplace",
 //!     "price_rule": "magisat",
+//!     "flows": ["listing_0x83_msigner", "offer_sighash_all"],
 //!     "fee_addresses": [
-//!       { "address": "bc1p…", "from_height": 804000, "to_height": 831296 },
+//!       { "address": "bc1p…", "from_height": 793428, "to_height": 831296 },
 //!       { "script_pubkey": "0014…" }
-//!     ] }] }
+//!     ],
+//!     "markers": [{ "op_return": "6a07…", "from_height": 855890 }] }] }
 //! ```
 //!
-//! * `id`: the `Sale::marketplace` value (docs/API.md).
+//! A bare array of marketplaces is accepted too.
+//!
+//! * `id`: the `Sale::marketplace` value (docs/API.md), unless `anonymous`.
+//! * `role`: `marketplace` (the default) and `buying_tool` (fills other
+//!   marketplaces' listings) attribute sales; transactions paying a
+//!   `lending` or `swap` address are not sales (unless they also pay a
+//!   marketplace: a financed purchase); `unidentified` entries document
+//!   fee-like clusters and are never loaded.
 //! * `fee_addresses`: outputs paying one of these, between `from_height`
-//!   and `to_height` (inclusive, either open), are the marketplace's fees.
+//!   and `to_height` (inclusive, either open), are the entry's fees.
 //!   `address` is a mainnet address; `script_pubkey` (hex) also works on
 //!   any chain.
+//! * `markers`: `op_return` (the output script, hex) outputs that mark the
+//!   marketplace's transactions, between the same kind of heights.
 //! * `price_rule`: how a listing's price is derived (`PriceRule`):
 //!   `proceeds_plus_fees` (the default) or `magisat` (its maker-fee rule;
 //!   it also enables the Magisat offer shape).
-//! * `fee_only_sales`: a transaction paying the fee address is a sale of the
-//!   tracked sats it moves even without SINGLE|ANYONECANPAY listings (legacy
-//!   Magic Eden; needs a payment to the seller's own script).
+//! * `anonymous`: a venue known only by its fee address: its sales are found
+//!   and its fees counted, but they are reported as `"unknown"`.
+//! * `flows`: the transaction shapes the marketplace uses; two change the
+//!   detection: `secure_purchase_two_tx` (a seller's ALL|ANYONECANPAY sale
+//!   into an escrow output, settled by a second transaction carrying the
+//!   marketplace's marker or fee) and `passthrough_2of2` (the seller's item
+//!   is spent from an escrow shared with the marketplace and paid at the
+//!   same index: a listing, not an offer).
 //!
-//! Unknown fields are ignored, so the table can grow.
+//! Unknown fields (evidence, notes, statistics) are ignored, so the table
+//! can grow.
 
 use {
+  super::sales::UNKNOWN_MARKETPLACE,
+  crate::model::script_hash,
   anyhow::{Context, ensure},
   bitcoin::{Address, Network, Script, ScriptBuf},
   serde::Deserialize,
@@ -36,8 +56,46 @@ use {
 pub struct Marketplace {
   pub id: String,
   pub name: String,
+  pub role: Role,
   pub price_rule: PriceRule,
-  pub fee_only_sales: bool,
+  pub anonymous: bool,
+  pub flows: Vec<String>,
+}
+
+impl Marketplace {
+  /// The `Sale::marketplace` value of its sales.
+  pub fn reported_id(&self) -> &str {
+    if self.anonymous {
+      UNKNOWN_MARKETPLACE
+    } else {
+      &self.id
+    }
+  }
+
+  /// Whether a sale can be attributed to it.
+  pub fn sells(&self) -> bool {
+    matches!(self.role, Role::Marketplace | Role::BuyingTool)
+  }
+
+  pub fn has_flow(&self, flow: &str) -> bool {
+    self.flows.iter().any(|f| f == flow)
+  }
+}
+
+/// What a table entry is.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Role {
+  #[default]
+  Marketplace,
+  /// Fills other marketplaces' listings, with its own fee.
+  BuyingTool,
+  /// Loans against sats: its transactions are not sales.
+  Lending,
+  /// Swaps: not sales.
+  Swap,
+  /// Fee-like clusters of no confirmed owner: documentation only.
+  Unidentified,
 }
 
 /// How a marketplace's listing sales are priced.
@@ -48,30 +106,43 @@ pub enum PriceRule {
   /// sales in proportion to their proceeds.
   #[default]
   ProceedsPlusFees,
-  /// Magisat (docs/SALES-SHAPES.md §3c): the paired payment `P`, plus the
-  /// 0.5 % maker fee `⌊P/199⌋` from block 861,287; the buyer's taker fee in
-  /// the fee output is not part of the price.
+  /// Magisat: the paired payment `P`, plus the 0.5 % maker fee `⌊P/199⌋`
+  /// from block 861,287; the buyer's taker fee in the fee output is not
+  /// part of the price.
   Magisat,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct FeeAddress {
+struct Range {
   marketplace: usize,
   from_height: u32,
   to_height: u32,
 }
 
-/// Marketplace fee addresses by height range.
+impl Range {
+  fn contains(&self, height: u32) -> bool {
+    self.from_height <= height && height <= self.to_height
+  }
+}
+
+/// Marketplace fee addresses and markers by height range.
 #[derive(Debug, Clone, Default)]
 pub struct Marketplaces {
   marketplaces: Vec<Marketplace>,
-  by_script: HashMap<ScriptBuf, Vec<FeeAddress>>,
+  fees: HashMap<ScriptBuf, Vec<Range>>,
+  /// `fees` by `script_hash`, to recognize inputs spending from them.
+  fee_hashes: HashMap<u32, Vec<Range>>,
+  markers: HashMap<ScriptBuf, Vec<Range>>,
 }
 
 #[derive(Deserialize)]
-struct FileJson {
-  #[serde(default)]
-  marketplaces: Vec<MarketplaceJson>,
+#[serde(untagged)]
+enum FileJson {
+  Object {
+    #[serde(default)]
+    marketplaces: Vec<MarketplaceJson>,
+  },
+  Array(Vec<MarketplaceJson>),
 }
 
 #[derive(Deserialize)]
@@ -80,11 +151,17 @@ struct MarketplaceJson {
   #[serde(default)]
   name: Option<String>,
   #[serde(default)]
+  role: Role,
+  #[serde(default)]
   price_rule: PriceRule,
   #[serde(default)]
-  fee_only_sales: bool,
+  anonymous: bool,
+  #[serde(default)]
+  flows: Vec<String>,
   #[serde(default)]
   fee_addresses: Vec<FeeAddressJson>,
+  #[serde(default)]
+  markers: Vec<MarkerJson>,
 }
 
 #[derive(Deserialize)]
@@ -99,8 +176,35 @@ struct FeeAddressJson {
   to_height: Option<u32>,
 }
 
+#[derive(Deserialize)]
+struct MarkerJson {
+  op_return: String,
+  #[serde(default)]
+  from_height: Option<u32>,
+  #[serde(default)]
+  to_height: Option<u32>,
+}
+
 /// `data/marketplaces.json`, when the build has one.
 const EMBEDDED: &str = include_str!("../../data/marketplaces.json");
+
+fn range(
+  id: &str,
+  marketplace: usize,
+  from_height: Option<u32>,
+  to_height: Option<u32>,
+) -> anyhow::Result<Range> {
+  let range = Range {
+    marketplace,
+    from_height: from_height.unwrap_or(0),
+    to_height: to_height.unwrap_or(u32::MAX),
+  };
+  ensure!(
+    range.from_height <= range.to_height,
+    "{id}: empty height range"
+  );
+  Ok(range)
+}
 
 impl Marketplaces {
   /// The table embedded at build time (`data/marketplaces.json`); empty if
@@ -111,59 +215,104 @@ impl Marketplaces {
 
   pub fn from_json(json: &str) -> anyhow::Result<Self> {
     let file: FileJson = serde_json::from_str(json).context("marketplaces.json")?;
+    let entries = match file {
+      FileJson::Object { marketplaces } | FileJson::Array(marketplaces) => marketplaces,
+    };
     let mut table = Self::default();
-    for marketplace in file.marketplaces {
-      ensure!(!marketplace.id.is_empty(), "marketplace without an id");
+    for marketplace in entries {
+      let id = marketplace.id;
+      ensure!(!id.is_empty(), "marketplace without an id");
       ensure!(
-        table.marketplaces.iter().all(|m| m.id != marketplace.id),
-        "duplicate marketplace `{}`",
-        marketplace.id
+        table.marketplaces.iter().all(|m| m.id != id),
+        "duplicate marketplace `{id}`"
       );
+      if marketplace.role == Role::Unidentified {
+        continue;
+      }
       let index = table.marketplaces.len();
       for fee in marketplace.fee_addresses {
         let script = match (&fee.address, &fee.script_pubkey) {
           (Some(address), None) => Address::from_str(address)
-            .with_context(|| format!("{}: fee address {address}", marketplace.id))?
+            .with_context(|| format!("{id}: fee address {address}"))?
             .require_network(Network::Bitcoin)
-            .with_context(|| format!("{}: fee address {address}", marketplace.id))?
+            .with_context(|| format!("{id}: fee address {address}"))?
             .script_pubkey(),
-          (None, Some(hex)) => ScriptBuf::from_hex(hex)
-            .with_context(|| format!("{}: fee script {hex}", marketplace.id))?,
+          (None, Some(hex)) => {
+            ScriptBuf::from_hex(hex).with_context(|| format!("{id}: fee script {hex}"))?
+          }
           _ => anyhow::bail!(
-            "{}: each fee address needs exactly one of `address` and `script_pubkey`",
-            marketplace.id
+            "{id}: each fee address needs exactly one of `address` and `script_pubkey`"
           ),
         };
-        let range = FeeAddress {
-          marketplace: index,
-          from_height: fee.from_height.unwrap_or(0),
-          to_height: fee.to_height.unwrap_or(u32::MAX),
-        };
+        let range = range(&id, index, fee.from_height, fee.to_height)?;
+        table
+          .fee_hashes
+          .entry(script_hash(&script))
+          .or_default()
+          .push(range);
+        table.fees.entry(script).or_default().push(range);
+      }
+      for marker in marketplace.markers {
+        let script = ScriptBuf::from_hex(&marker.op_return)
+          .with_context(|| format!("{id}: marker {}", marker.op_return))?;
         ensure!(
-          range.from_height <= range.to_height,
-          "{}: empty height range",
-          marketplace.id
+          script.is_op_return(),
+          "{id}: marker {} is not an OP_RETURN script",
+          marker.op_return
         );
-        table.by_script.entry(script).or_default().push(range);
+        let range = range(&id, index, marker.from_height, marker.to_height)?;
+        table.markers.entry(script).or_default().push(range);
       }
       table.marketplaces.push(Marketplace {
-        name: marketplace.name.unwrap_or_else(|| marketplace.id.clone()),
-        id: marketplace.id,
+        name: marketplace.name.unwrap_or_else(|| id.clone()),
+        id,
+        role: marketplace.role,
         price_rule: marketplace.price_rule,
-        fee_only_sales: marketplace.fee_only_sales,
+        anonymous: marketplace.anonymous,
+        flows: marketplace.flows,
       });
     }
     Ok(table)
   }
 
-  /// The marketplace whose fees an output paying `script` at `height` is.
-  pub fn fee_output(&self, script: &Script, height: u32) -> Option<&Marketplace> {
-    self
-      .by_script
+  fn find<'a>(
+    &'a self,
+    map: &'a HashMap<ScriptBuf, Vec<Range>>,
+    script: &Script,
+    height: u32,
+  ) -> Option<&'a Marketplace> {
+    map
       .get(script)?
       .iter()
-      .find(|fee| fee.from_height <= height && height <= fee.to_height)
-      .map(|fee| &self.marketplaces[fee.marketplace])
+      .find(|range| range.contains(height))
+      .map(|range| &self.marketplaces[range.marketplace])
+  }
+
+  /// The entry (of any role) whose fee address an output paying `script` at
+  /// `height` pays.
+  pub fn fee_output(&self, script: &Script, height: u32) -> Option<&Marketplace> {
+    self.find(&self.fees, script, height)
+  }
+
+  /// The marketplace an output with `script` at `height` marks.
+  pub fn marker(&self, script: &Script, height: u32) -> Option<&Marketplace> {
+    self.find(&self.markers, script, height)
+  }
+
+  /// The entry (of any role) one of whose fee addresses has `script_hash`
+  /// at `height`: an input with that script hash spends from it (hashes can
+  /// collide, so this is a hint, not proof).
+  pub fn fee_hash(&self, script_hash: u32, height: u32) -> Option<&Marketplace> {
+    self
+      .fee_hashes
+      .get(&script_hash)?
+      .iter()
+      .find(|range| range.contains(height))
+      .map(|range| &self.marketplaces[range.marketplace])
+  }
+
+  pub fn by_id(&self, id: &str) -> Option<&Marketplace> {
+    self.marketplaces.iter().find(|m| m.id == id)
   }
 
   pub fn marketplaces(&self) -> &[Marketplace] {
@@ -179,30 +328,97 @@ impl Marketplaces {
 mod tests {
   use super::*;
 
+  fn script(address: &str) -> ScriptBuf {
+    Address::from_str(address)
+      .unwrap()
+      .require_network(Network::Bitcoin)
+      .unwrap()
+      .script_pubkey()
+  }
+
   #[test]
   fn embedded_table_parses() {
     let table = Marketplaces::from_json(EMBEDDED).unwrap();
-    // Magisat's two fee addresses, by the heights they were used at.
-    let script = |address: &str| {
-      Address::from_str(address)
-        .unwrap()
-        .require_network(Network::Bitcoin)
-        .unwrap()
-        .script_pubkey()
+    let id = |address: &str, height| {
+      table
+        .fee_output(&script(address), height)
+        .map(|m| m.id.as_str())
     };
-    let f1 = script("bc1pan37k3yyvpnazh4zsz284hsyvsrucxzjgs5td8h22regpfzhgu9sg4xlc6");
-    let f2 = script("3Ke21osfhEbEryUeqdwAuAY8VKxm5B9uB2");
-    let id = |script: &ScriptBuf, height| table.fee_output(script, height).map(|m| m.id.as_str());
-    assert_eq!(id(&f1, 804_700), Some("magisat"));
-    assert_eq!(id(&f1, 831_279), Some("magisat"));
-    assert_eq!(id(&f1, 840_000), None);
-    assert_eq!(id(&f1, 852_779), Some("magisat"));
-    assert_eq!(id(&f2, 831_279), None);
-    assert_eq!(id(&f2, 831_297), Some("magisat"));
-    assert_eq!(id(&f2, 969_000), Some("magisat"));
+    // Magisat's two fee addresses, by the heights they were used at.
+    let f1 = "bc1pan37k3yyvpnazh4zsz284hsyvsrucxzjgs5td8h22regpfzhgu9sg4xlc6";
+    let f2 = "3Ke21osfhEbEryUeqdwAuAY8VKxm5B9uB2";
+    assert_eq!(id(f1, 793_427), None);
+    assert_eq!(id(f1, 804_700), Some("magisat"));
+    assert_eq!(id(f1, 831_279), Some("magisat"));
+    assert_eq!(id(f1, 840_000), None);
+    assert_eq!(id(f1, 852_779), Some("magisat"));
+    assert_eq!(id(f2, 831_279), None);
+    assert_eq!(id(f2, 831_297), Some("magisat"));
+    assert_eq!(id(f2, 969_000), Some("magisat"));
     assert_eq!(
-      table.fee_output(&f1, 900_000).unwrap().price_rule,
+      table.fee_output(&script(f1), 900_000).unwrap().price_rule,
       PriceRule::Magisat
+    );
+    // Magic Eden's three, closed in 2026; the second is an exchange deposit
+    // address after May 2024.
+    for (address, from, to) in [
+      (
+        "bc1qcq2uv5nk6hec6kvag3wyevp6574qmsm9scjxc2",
+        781_237,
+        940_150,
+      ),
+      ("3P4WqXDbSLRhzo2H6MT6YFbvBKBDPLbVtQ", 820_193, 843_661),
+      (
+        "bc1qp8j9sx6609h7llqufurxjgrwsqwt020tqzn0gs",
+        855_139,
+        940_150,
+      ),
+    ] {
+      assert_eq!(id(address, from - 1), None);
+      assert_eq!(id(address, from), Some("magic_eden"));
+      assert_eq!(id(address, to), Some("magic_eden"));
+      assert_eq!(id(address, to + 1), None);
+    }
+    // Every role, and the venue reported as unknown.
+    let entry = |address: &str| table.fee_output(&script(address), 969_000).unwrap();
+    assert_eq!(
+      entry("bc1qxma2dwmutht4vxyl6u395slew5ectfpn35ug9l").role,
+      Role::BuyingTool
+    );
+    assert_eq!(
+      entry("bc1qhwdela6q8kyg2l664663jdw92hgkejcxh8raxzdvl8pmtcwwk4vq4swknz").role,
+      Role::Lending
+    );
+    assert_eq!(
+      entry("bc1px06vxyj5xy6z3unfj20fhusr0j2yndup585v7zl302d0a9qqv39qf7fuck").role,
+      Role::Swap
+    );
+    let anonymous = entry("33HToBLb5xGhkoHbYCR7KZP7hy57ZnrCJW");
+    assert!(anonymous.anonymous && anonymous.sells());
+    assert_eq!(anonymous.reported_id(), UNKNOWN_MARKETPLACE);
+    // Unidentified clusters are not loaded.
+    assert_eq!(
+      table.fee_output(
+        &script("bc1pndths0lnsvem2a0n2c6t49u462xam0n4krjl6kpfwn0nknc0cd7qmnxhf8"),
+        900_000
+      ),
+      None
+    );
+    assert!(table.marketplaces().iter().all(|m| m.id != "unidentified"));
+    // Satflow's OP_RETURN marker.
+    let marker = ScriptBuf::from_hex("6a07534154464c4f57").unwrap();
+    assert_eq!(table.marker(&marker, 855_889), None);
+    let satflow = table.marker(&marker, 969_000).unwrap();
+    assert_eq!(satflow.id, "satflow");
+    assert!(satflow.has_flow("secure_purchase_two_tx"));
+    assert!(
+      table
+        .fee_output(
+          &script("bc1pgkfga880836f5kp3m9vvya4m0whva80ddm58r7fyltzp9q8t08rs0rdnet"),
+          969_000
+        )
+        .unwrap()
+        .has_flow("passthrough_2of2")
     );
   }
 
@@ -219,16 +435,18 @@ mod tests {
     let (address, me) = address(Network::Bitcoin);
     let table = Marketplaces::from_json(&format!(
       r#"{{ "marketplaces": [
-        {{ "id": "magic_eden", "name": "Magic Eden", "fee_only_sales": true,
+        {{ "id": "magic_eden", "name": "Magic Eden",
           "fee_addresses": [
             {{ "address": "{address}", "from_height": 100, "to_height": 200 }},
             {{ "script_pubkey": "51", "from_height": 300 }} ] }},
-        {{ "id": "magisat", "fee_addresses": [ {{ "script_pubkey": "52" }} ], "extra": 1 }} ] }}"#
+        {{ "id": "magisat", "fee_addresses": [ {{ "script_pubkey": "52" }} ], "extra": 1 }},
+        {{ "id": "loans", "role": "lending", "fee_addresses": [ {{ "script_pubkey": "53" }} ] }},
+        {{ "id": "clusters", "role": "unidentified",
+          "fee_addresses": [ {{ "script_pubkey": "54" }} ] }} ] }}"#
     ))
     .unwrap();
     assert_eq!(table.fee_output(&me, 99), None);
     assert_eq!(table.fee_output(&me, 100).unwrap().id, "magic_eden");
-    assert!(table.fee_output(&me, 100).unwrap().fee_only_sales);
     assert_eq!(table.fee_output(&me, 201), None);
     let op_true = ScriptBuf::from_bytes(vec![0x51]);
     assert_eq!(table.fee_output(&op_true, 299), None);
@@ -243,8 +461,38 @@ mod tests {
       (magisat.id.as_str(), magisat.name.as_str()),
       ("magisat", "magisat")
     );
-    assert!(!magisat.fee_only_sales);
-    assert_eq!(table.marketplaces().len(), 2);
+    assert_eq!(
+      (magisat.role, magisat.anonymous, magisat.sells()),
+      (Role::Marketplace, false, true)
+    );
+    let loans = table
+      .fee_output(&ScriptBuf::from_bytes(vec![0x53]), 0)
+      .unwrap();
+    assert!(!loans.sells());
+    assert_eq!(
+      table.fee_output(&ScriptBuf::from_bytes(vec![0x54]), 0),
+      None
+    );
+    assert_eq!(table.marketplaces().len(), 3);
+    assert_eq!(
+      table
+        .fee_hash(script_hash(&ScriptBuf::from_bytes(vec![0x53])), 7)
+        .unwrap()
+        .id,
+      "loans"
+    );
+    assert_eq!(table.fee_hash(script_hash(&me), 201), None);
+    assert_eq!(table.by_id("magisat").unwrap().id, "magisat");
+    assert_eq!(table.by_id("clusters"), None);
+
+    // A bare array, with a marker.
+    let table = Marketplaces::from_json(
+      r#"[{ "id": "m", "markers": [{ "op_return": "6a0101", "to_height": 10 }] }]"#,
+    )
+    .unwrap();
+    let marker = ScriptBuf::from_hex("6a0101").unwrap();
+    assert_eq!(table.marker(&marker, 10).unwrap().id, "m");
+    assert_eq!(table.marker(&marker, 11), None);
   }
 
   #[test]
@@ -257,10 +505,13 @@ mod tests {
       r#"{ "marketplaces": [{ "id": "a", "fee_addresses": [{ "script_pubkey": "zz" }] }] }"#.into(),
       format!(r#"{{ "marketplaces": [{{ "id": "a", "fee_addresses": [{{ "address": "{testnet}" }}] }}] }}"#),
       r#"{ "marketplaces": [{ "id": "a", "fee_addresses": [{ "script_pubkey": "51", "from_height": 5, "to_height": 4 }] }] }"#.into(),
+      r#"{ "marketplaces": [{ "id": "a", "markers": [{ "op_return": "51" }] }] }"#.into(),
+      r#"{ "marketplaces": [{ "id": "a", "role": "exchange" }] }"#.into(),
       "not json".into(),
     ] {
       assert!(Marketplaces::from_json(&json).is_err(), "{json}");
     }
     assert!(Marketplaces::from_json("{}").unwrap().is_empty());
+    assert!(Marketplaces::from_json("[]").unwrap().is_empty());
   }
 }

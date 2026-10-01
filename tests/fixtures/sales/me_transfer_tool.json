@@ -1,0 +1,51 @@
+{
+  "name": "me_transfer_tool",
+  "txid": "0517a568cb79a3010f307ed98295a6f27260e2fe46698b66fddb6af27f0c64f2",
+  "height": 799360,
+  "tx_index": 1337,
+  "pieces_from": "fork_output",
+  "tracked": [
+    {
+      "vin": 0,
+      "outpoint": "6466d49e11d49929d570478a9efe985a279fb5d718dee0461e1f84153b27c5fb:1",
+      "value": 10000,
+      "script_pubkey": "5120f7509f79379ac78eceb9259a77076b291e5cc64de80812532e1198dd0bdfe368",
+      "height": 799281,
+      "pieces": [
+        {
+          "offset": 0,
+          "start": 1741736250000000,
+          "len": 1
+        }
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "outpoint": "6466d49e11d49929d570478a9efe985a279fb5d718dee0461e1f84153b27c5fb:1",
+      "value": 10000,
+      "script_hash": 2514450199,
+      "sighash": 1
+    },
+    {
+      "outpoint": "578455ca1735e7458c010e5f9103dee839fae8f23f0d8e653a449f2abda50e46:6",
+      "value": 163679370,
+      "script_hash": 2514450199,
+      "sighash": 0
+    }
+  ],
+  "outputs": [
+    {
+      "value": 10000,
+      "script_pubkey": "5120f1d95219cf7f521af264e22b97cba1255c17ef747a51230fedbb12cecf83f275"
+    },
+    {
+      "value": 1000,
+      "script_pubkey": "0014c015c65276d5f38d599d445c4cb03aa7aa0dc365"
+    },
+    {
+      "value": 163676183,
+      "script_pubkey": "5120f7509f79379ac78eceb9259a77076b291e5cc64de80812532e1198dd0bdfe368"
+    }
+  ]
+}

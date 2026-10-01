@@ -159,11 +159,13 @@
     {
       "outpoint": "d1c80dc7b1eedc501d750b76de2243b7ea18cac7fbffd22668862c1b9f418e66:2",
       "value": 23000000000,
+      "script_hash": 2555343342,
       "sighash": 129
     },
     {
       "outpoint": "df958fd1b5a2007c51bda3697572d12baf8e35069591c2b620352053f448137a:0",
       "value": 2355,
+      "script_hash": 2431166801,
       "sighash": 1
     }
   ],
