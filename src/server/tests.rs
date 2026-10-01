@@ -1743,6 +1743,7 @@ fn sale_json(server: &TestServer) -> Value {
     ],
     "rows": { "uncommon": 1, "black": 1, "alpha": 1 },
     "unit": { "row": "uncommon", "count": 1, "price": 45_000 },
+    "pure_rows": [],
     "inscribed": true,
   })
 }
@@ -1845,9 +1846,28 @@ fn sale_sats_are_the_special_sats_of_the_sold_pieces() {
   assert!(sale.inscribed, "sat 7 was inscribed by block 3");
   assert_eq!(sale.buyer, None);
   assert_eq!(sale.premium, 100 - i64::try_from(COIN - 1).unwrap());
+  // Every sold sat is a block 0 sat: priced per block 0 sat, not as the
+  // uncommon among them.
+  assert_eq!(sale.pure_rows, ["block0"]);
   let unit = sale.unit.unwrap();
-  assert_eq!((unit.row.as_str(), unit.count), ("uncommon", 1));
-  assert_eq!(unit.price, sale.premium);
+  assert_eq!((unit.row.as_str(), unit.count), ("block0", COIN - 1));
+  assert_eq!(unit.price, sale.premium / i64::try_from(COIN - 1).unwrap());
+
+  // A single sat is pure for each of its rows, rarest first.
+  let single = TrackedUtxo {
+    value: 546,
+    script_pubkey: p2pk(),
+    height: 1,
+    kind: UtxoKind::Spendable,
+    pieces: vec![piece(0, COIN, 1)],
+  };
+  let sale = render.sale(&sale_of(single)).unwrap();
+  assert_eq!(sale.pure_rows, ["uncommon", "alpha"]);
+  let unit = sale.unit.unwrap();
+  assert_eq!(
+    (unit.row.as_str(), unit.count, unit.price),
+    ("uncommon", 1, 100 - 546)
+  );
 
   // Inscriptions made after the sale do not count.
   let earlier = crate::store::StoredSale {

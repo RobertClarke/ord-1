@@ -37,7 +37,7 @@ pub use {
     LISTING_SIGHASH, MAGISAT_MAKER_FEE_HEIGHT, MIN_OFFER_PAYMENT, OFFER_SIGHASH, PSBT_SIGHASH,
     UNKNOWN_MARKETPLACE,
   },
-  units::{sale_sats, sale_unit},
+  units::{pure_rows, sale_pure_rows, sale_sats, sale_unit, unit_row},
 };
 
 use {

@@ -1267,6 +1267,99 @@ fn sale_units_of_ranges_and_combinations() {
   );
   // Nothing tracked: no unit.
   assert_eq!(sale_unit(&sale(Vec::new(), 1, 1), catalog), None);
+  assert!(sale_pure_rows(&sale(Vec::new(), 1, 1), catalog).is_empty());
+}
+
+#[test]
+fn sale_units_by_pure_rows() {
+  let ctx = context();
+  let catalog = &ctx.catalog;
+  let sale = |pieces: Vec<crate::model::Piece>, value: u64, price: u64| Sale {
+    txid: txid(1),
+    tx_index: 1,
+    vin: 0,
+    kind: SaleKind::Listing,
+    marketplace: "magisat".into(),
+    seller_outpoint: op(txid(2), 0),
+    seller: crate::model::TrackedUtxo {
+      value,
+      script_pubkey: ScriptBuf::new(),
+      height: 1,
+      kind: crate::model::UtxoKind::Spendable,
+      pieces,
+    },
+    payment_vout: Some(0),
+    price,
+    seller_proceeds: price,
+    fees: 0,
+    buyer_vout: Some(1),
+    buyer_script: None,
+  };
+  let piece = |offset, start, len| crate::model::Piece { offset, start, len };
+  let ids = |rows: Vec<crate::model::RowId>| -> Vec<String> {
+    rows
+      .into_iter()
+      .map(|row| catalog.rows()[usize::from(row)].id.clone())
+      .collect()
+  };
+  let unit = |sale: &Sale| {
+    let (row, count, price) = sale_unit(sale, catalog).unwrap();
+    (catalog.rows()[usize::from(row)].id.clone(), count, price)
+  };
+
+  // A 1,000-sat 450x chunk holding the palindrome 45,050,005,054: priced
+  // per sat of its rarest pure row, not as its rarest row (the palindrome).
+  let chunk = sale(vec![piece(0, 45_050_005_000, 1_000)], 1_000, 2_001_000);
+  assert_eq!(
+    ids(sale_pure_rows(&chunk, catalog)),
+    ["450x", "block9_1st_tx", "block9"]
+  );
+  assert_eq!(unit(&chunk), ("450x".into(), 1_000, 2_000));
+  let palindrome = catalog.row_id("block9_palindrome").unwrap();
+  assert!(catalog.row_rank(palindrome) < catalog.row_rank(catalog.row_id("450x").unwrap()));
+  // Past the first BTC of block 9 (this chunk starts with an alpha), per sat
+  // of block 9's first transaction.
+  let later = sale(vec![piece(0, 45_200_000_000, 1_000)], 1_000, 1_001_000);
+  assert_eq!(
+    ids(sale_pure_rows(&later, catalog)),
+    ["block9_1st_tx", "block9"]
+  );
+  assert_eq!(unit(&later), ("block9_1st_tx".into(), 1_000, 1_000));
+
+  // A single 2009 alpha uncommon (block 500's first sat) is pure for every
+  // row it counts toward; the rarest prices it.
+  let first = 500 * 5_000_000_000;
+  let single = sale(vec![piece(0, first, 1)], 546, 50_546);
+  let pure = ids(sale_pure_rows(&single, catalog));
+  for row in [
+    "uncommon",
+    "alpha_uncommon",
+    "uncommon_2009",
+    "vintage_uncommon",
+  ] {
+    assert!(pure.iter().any(|id| id == row), "{row}: {pure:?}");
+  }
+  assert_eq!(unit(&single), (pure[0].clone(), 1, 50_000));
+  let ranks: Vec<usize> = sale_pure_rows(&single, catalog)
+    .into_iter()
+    .map(|row| catalog.row_rank(row))
+    .collect();
+  assert!(ranks.windows(2).all(|pair| pair[0] < pair[1]));
+
+  // A mixed bundle (block 500's uncommon and block 600's black): no row holds
+  // both, so the rarest row with sold sats prices it, as before.
+  let last = 601 * 5_000_000_000 - 1;
+  let bundle = sale(vec![piece(0, first, 1), piece(1, last, 1)], 1_000, 101_000);
+  assert!(sale_pure_rows(&bundle, catalog).is_empty());
+  let (row, count, price) = sale_unit(&bundle, catalog).unwrap();
+  let mut rows = Vec::new();
+  catalog.add_row_counts(first, 1, |row, _| rows.push(row));
+  catalog.add_row_counts(last, 1, |row, _| rows.push(row));
+  let rarest = rows
+    .into_iter()
+    .min_by_key(|&row| catalog.row_rank(row))
+    .unwrap();
+  assert_eq!((row, count, price), (rarest, 1, 100_000));
 }
 
 #[test]

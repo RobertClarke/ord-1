@@ -241,8 +241,9 @@ SINGLE|ANYONECANPAY, an accepted offer, a legacy Magic Eden trade, …).
   "premium": 45000,
   "pieces": [Piece],
   "sats": [{ "sat": 1150805000000000, "height": 250322, "time": 1375694270, "inscribed": false }],
-  "rows": { "uncommon": 1 },
-  "unit": { "row": "uncommon", "count": 1, "price": 45000 } | null,
+  "rows": { "uncommon": 1, "alpha": 1, "alpha_uncommon": 1 },
+  "unit": { "row": "alpha_uncommon", "count": 1, "price": 45000 } | null,
+  "pure_rows": ["alpha_uncommon", "uncommon", "alpha"],
   "inscribed": false
 }
 ```
@@ -264,10 +265,16 @@ SINGLE|ANYONECANPAY, an accepted offer, a legacy Magic Eden trade, …).
   seller's own sats that went into it). `premium` = `price` − `seller.value`
   (what was paid for the sats themselves; a signed number);
   `unit.price` = `premium` / `unit.count` (integer division) for the sale's
-  primary row: its rarest row, the one with the fewest sats that will ever
-  exist (`total` in `/rows`, ties to the first row), so a block 9 / 450x
-  chunk without rarer sats gets a per-sat price. `unit` is `null` only for a
-  sale whose sats count toward no row.
+  unit row: its rarest pure row (below), or, for a mixed bundle that no row
+  holds whole, its rarest row with sold sats (rarest: fewest sats that will
+  ever exist, `total` in `/rows`, ties to the first row). So a block 9 /
+  450x chunk gets a per-sat price even when it holds a palindrome or an
+  alpha. `unit` is `null` only for a sale whose sats count toward no row.
+* `pure_rows` (additive): the rows every sold sat belongs to, rarest first —
+  a block 9 chunk is pure for `block9` (and `block9_1st_tx` / `450x` when
+  inside them), a single 2009 alpha uncommon for `uncommon`, `alpha`,
+  `alpha_uncommon`, `uncommon_2009`, …; empty for a mixed bundle. The sale
+  can be charted under each of them, at `premium` / its `rows` count.
 * `pieces`: the sold UTXO's tracked pieces (offsets within that UTXO); for a
   sale that sells only part of a UTXO (a split sale), only the pieces that
   left the seller.

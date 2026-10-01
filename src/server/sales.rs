@@ -1,14 +1,15 @@
 //! Sale JSON (docs/API.md "Sales and inscriptions"): the stored `Sale` plus
 //! the fields computed for the dashboard.
 //!
-//! TEMPORARY until rst/market's `market::sale_unit` / `market::sale_sats`
-//! land: the primary row is the sale's rarest row by catalog total, and the
-//! individually special sats are found by bisecting the sold pieces with the
-//! catalog's row counts (range rows such as block 9 do not count).
+//! The pure rows and the unit row follow `market::units` (ranked by catalog
+//! total, ties to the lower id); the individually special sats are found by
+//! bisecting the sold pieces with the catalog's row counts (range rows such
+//! as block 9 do not count).
 
 use {
   super::json::{PieceJson, Render, RowMap},
   crate::{
+    market::{pure_rows, unit_row},
     model::{Piece, RowId, SaleKind},
     store::StoredSale,
   },
@@ -67,6 +68,8 @@ pub struct SaleJson {
   pub sats: Vec<SaleSatJson>,
   pub rows: RowMap,
   pub unit: Option<UnitJson>,
+  /// The rows every sold sat belongs to, rarest first.
+  pub pure_rows: Vec<String>,
   pub inscribed: bool,
 }
 
@@ -80,15 +83,10 @@ impl Render<'_> {
     }
   }
 
-  /// The sale's rarest row (fewest sats that will ever exist) among the rows
-  /// its pieces count toward; ties go to the lower id.
-  fn primary_row(&self, counts: &[u64]) -> Option<RowId> {
-    counts
-      .iter()
-      .enumerate()
-      .filter(|(_, count)| **count > 0)
-      .map(|(row, _)| row as RowId)
-      .min_by_key(|row| (self.catalog.row_total(*row), *row))
+  /// A row's rank from the rarest: fewest sats that will ever exist, ties to
+  /// the lower id.
+  fn rank(&self, row: RowId) -> (u64, RowId) {
+    (self.catalog.row_total(row), row)
   }
 
   /// Whether `[start, start + len)` holds a sat of a non-range row.
@@ -145,9 +143,10 @@ impl Render<'_> {
 
     let mut counts = Vec::new();
     self.count(&mut counts, pieces);
+    let sold = pieces.iter().map(|piece| piece.len).sum();
     let premium = i128::from(sale.price) - i128::from(sale.seller.value);
     let premium = i64::try_from(premium).unwrap_or(if premium < 0 { i64::MIN } else { i64::MAX });
-    let unit = self.primary_row(&counts).map(|row| {
+    let unit = unit_row(&counts, sold, |row| self.rank(row)).map(|row| {
       let count = counts[usize::from(row)];
       UnitJson {
         row: self.row_name(row),
@@ -155,6 +154,10 @@ impl Render<'_> {
         price: premium / i64::try_from(count).unwrap_or(i64::MAX),
       }
     });
+    let pure_rows = pure_rows(&counts, sold, |row| self.rank(row))
+      .into_iter()
+      .map(|row| self.row_name(row))
+      .collect();
 
     let inscribed = self.inscribed_at(pieces, stored.height)?;
 
@@ -208,6 +211,7 @@ impl Render<'_> {
       sats,
       rows: self.row_map(&counts),
       unit,
+      pure_rows,
       inscribed: !inscribed.is_empty(),
     })
   }
