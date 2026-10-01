@@ -196,6 +196,7 @@ impl Fixture {
         .map(|input| ResolvedInput {
           previous_output: input.outpoint,
           value: input.value,
+          script_hash: 0,
           sighash: input.sighash,
           envelopes: input
             .envelopes

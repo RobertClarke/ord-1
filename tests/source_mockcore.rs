@@ -8,7 +8,7 @@ use {
   },
   mockcore::Handle,
   ord::{
-    model::ResolvedBlock,
+    model::{ResolvedBlock, script_hash},
     source::{
       FastSource, FastSyncOptions, LiveSource, Rpc, RpcAuth, RpcConfig, RpcError, is_unspendable,
     },
@@ -278,6 +278,40 @@ fn fast_and_live_sources_agree() {
       .unwrap(),
     fast
   );
+
+  // Every input carries the script hash of the output it spends, whether
+  // that output came through the UTXO map, was spent in its own block, or
+  // was re-created by the duplicate coinbase.
+  let mut outputs = std::collections::HashMap::new();
+  let mut checked = 0;
+  for block in &fast {
+    for tx in &block.txs {
+      for input in &tx.inputs {
+        let spent: &ScriptBuf = outputs
+          .remove(&input.previous_output)
+          .expect("spends an earlier output");
+        assert_eq!(
+          input.script_hash,
+          script_hash(spent),
+          "{}",
+          input.previous_output
+        );
+        checked += 1;
+      }
+      for (vout, output) in tx.outputs.iter().enumerate() {
+        outputs.insert(outpoint(tx.txid, vout as u32), &output.script_pubkey);
+      }
+    }
+  }
+  assert_eq!(checked, 14);
+  // Distinct scripts were spent, so the hashes are not all alike.
+  let hashes = fast
+    .iter()
+    .flat_map(|block| &block.txs)
+    .flat_map(|tx| &tx.inputs)
+    .map(|input| input.script_hash)
+    .collect::<std::collections::BTreeSet<u32>>();
+  assert!(hashes.len() >= 4, "{hashes:?}");
 }
 
 #[test]

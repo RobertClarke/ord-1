@@ -136,6 +136,7 @@ pub(crate) fn tx(txid: Txid, inputs: &[(OutPoint, u64)], outputs: Vec<TxOut>) ->
       .map(|&(previous_output, value)| ResolvedInput {
         previous_output,
         value,
+        script_hash: 0,
         sighash: None,
         envelopes: Vec::new(),
       })

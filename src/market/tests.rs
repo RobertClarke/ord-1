@@ -44,6 +44,7 @@ fn input(previous_output: OutPoint, value: u64, sighash: Option<u8>) -> Resolved
   ResolvedInput {
     previous_output,
     value,
+    script_hash: 0,
     sighash,
     envelopes: Vec::new(),
   }

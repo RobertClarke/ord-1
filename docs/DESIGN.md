@@ -270,12 +270,16 @@ bitcoind  │ getblockhash (batched) → N× getblock(h,0) → hex→Block→txi
 ```
 
 * **Fast source** (`src/source/fast.rs`): only from genesis; owns the full
-  UTXO *value* map (outpoint → sats; ~180–190 M entries, ~10 GB). Unspendable
-  outputs are never inserted. Stops at tip − 12, then the map is dropped.
+  UTXO *value* map (outpoint → sats and the script's 32-bit
+  `model::script_hash`; ~180–190 M entries, 12.25 GiB in 2^28 buckets of 49
+  bytes). Unspendable outputs are never inserted. Stops at tip − 12, then
+  the map is dropped.
 * **Live source** (`src/source/live.rs`): `getblock <hash> 3` gives every
-  input's prevout value; no UTXO map needed. Used after the fast sync, after
-  any restart, and for catch-up. Both sources produce identical
-  `ResolvedBlock`s (tested on real blocks).
+  input's prevout value and script; no UTXO map needed. Used after the fast
+  sync, after any restart, and for catch-up. Both sources produce identical
+  `ResolvedBlock`s (tested on real blocks): every input carries the spent
+  output's value and script hash, its signature's sighash flag and ord's
+  inscription envelopes (read from the scriptSig and witness).
 * **Tracker** (`src/tracker/`): pure, deterministic, no I/O. `apply_block`
   returns a `BlockDelta` (moves, net created/spent tracked UTXOs, lost/burned
   pieces, row deltas) and `undo_block` reverses one.
