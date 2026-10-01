@@ -829,9 +829,9 @@ fn mine_padded_sats(tracker: &mut Tracker, chain: &mut Chain, blocks: u64) -> Ve
 #[test]
 fn collector_consolidation_is_extracted() {
   // 200 rare sats at 330 sats of padding each, consolidated into 66,000
-  // sats (like a collector's address): within the
-  // 2,000,000-sat budget, so extracted, where the old per-row rule
-  // (value ≤ 10,000 or all sats of the row) said no.
+  // sats (as collectors do): within the 2,000,000-sat budget, so
+  // extracted, where the old per-row rule (value ≤ 10,000 or all sats of
+  // the row) said no.
   let (mut tracker, mut chain) = at_halving();
   let inputs = mine_padded_sats(&mut tracker, &mut chain, 100);
   assert_eq!(row(&tracker, "uncommon").extracted, 100);

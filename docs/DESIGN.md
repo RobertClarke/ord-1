@@ -225,8 +225,8 @@ Per row, maintained incrementally as tracked UTXOs are created and removed:
   and each contiguous run of block 9 sats allows its own length + 10,000.
   So a single rare sat still needs an output of ≤ 10,000 sats and a pure
   block 9 output is extracted, as before; collector consolidations now are
-  too: a collector's address holds 2,298 outputs
-  packing rare sats at ~330 sats of padding each (100 rare sats in 33,000
+  too: one collector's address holds 2,298 outputs packing rare sats at
+  ~330 sats of padding each (100 rare sats in 33,000
   sats, 200 in 66,000, 5,000 in 1,924,843) and near-pure block 9 chunks
   such as 100,000 tracked sats in 100,438 (budget 110,000), all extracted;
   while an exchange output holding a few uncommons in whole BTC is not
