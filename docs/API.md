@@ -215,11 +215,14 @@ up to tens of thousands of pieces, which every line would repeat); add
 ### `GET /blocks?from=&to=`
 `[{ "height": …, "hash": "…", "time": … }]`, `to - from` ≤ 10,000.
 
-## Sales and inscriptions (provisional — being implemented)
+## Sales and inscriptions
 
-Field names below are the contract with the dashboard; the price semantics
-(`price` / `seller_proceeds` / `fees`) are being calibrated against Magisat's
-sales history and may gain fields, not lose them.
+Sales and inscriptions of tracked sats, detected per block by
+`market::analyze` and stored with the block: kept forever (whatever
+`--moves-retention`), rolled back with it on a reorg. Field names are the
+contract with the dashboard; the price semantics (`price` /
+`seller_proceeds` / `fees`) are calibrated against Magisat's sales history
+and may gain fields, not lose them.
 
 **Sale** — one tracked-sat sale: a seller's input carrying tracked sats, paid
 for in the same transaction (a marketplace listing signed
@@ -230,7 +233,8 @@ SINGLE|ANYONECANPAY, an accepted offer, a legacy Magic Eden trade, …).
   "marketplace": "magisat" | "magic_eden" | "okx" | "unisat" | "satflow" | "ordinals_wallet" | "unknown",
   "kind": "listing" | "offer" | "unknown",
   "seller": { "address": "bc1p…", "script_pubkey": "…", "outpoint": "txid:vout", "value": 546 },
-  "buyer": { "address": "bc1p…", "script_pubkey": "…", "outpoint": "txid:vout", "value": 546 },
+  "buyer": { "address": "bc1p…", "script_pubkey": "…", "outpoint": "txid:vout", "value": 546 } | null,
+  "payment_vout": 1 | null,
   "price": 45546,
   "seller_proceeds": 45319,
   "fees": 227,
@@ -238,32 +242,52 @@ SINGLE|ANYONECANPAY, an accepted offer, a legacy Magic Eden trade, …).
   "pieces": [Piece],
   "sats": [{ "sat": 1150805000000000, "height": 250322, "time": 1375694270, "inscribed": false }],
   "rows": { "uncommon": 1 },
-  "unit": { "row": "uncommon", "count": 1, "price": 45000 },
+  "unit": { "row": "uncommon", "count": 1, "price": 45000 } | null,
   "inscribed": false
 }
 ```
+* `time` is the time of the block of the sale (`height`).
+* `seller`: the sold UTXO (`seller.value` its value). `buyer`: the output
+  that received the sold sats (`null` if none did, e.g. they went to fees);
+  its `value` is `null` when unknown. `payment_vout`: the output paying the
+  seller, when identified (additive).
 * `price`: what the buyer paid for this listing (seller proceeds plus the
-  marketplace fees attributable to it); `premium` = `price` − the sold
-  output's own value (`seller.value`), i.e. what was paid for the sats
-  themselves; `unit.price` = `premium` / `unit.count` for the sale's primary
-  row (its rarest row by catalog rank; for block 9 / 450x chunks a per-sat
-  price).
-* `sats`: the individually special sats sold (up to 100; range pieces are in
-  `pieces`), each with the height and time of the block that mined it.
-* `inscribed`: any sold tracked sat carries an inscription (outlier for
-  rare-sat pricing; the fork tracks inscriptions only on tracked sats).
+  marketplace fees attributable to it); `premium` = `price` − `seller.value`
+  (what was paid for the sats themselves; a signed number);
+  `unit.price` = `premium` / `unit.count` (integer division) for the sale's
+  primary row: its rarest row, the one with the fewest sats that will ever
+  exist (`total` in `/rows`, ties to the first row), so a block 9 / 450x
+  chunk without rarer sats gets a per-sat price. `unit` is `null` only for a
+  sale whose sats count toward no row.
+* `pieces`: the sold UTXO's tracked pieces (offsets within that UTXO).
+* `rows`: the sold sats per row, as in `Output`.
+* `sats`: the individually special sats sold — sats that count toward a row
+  other than the pure-range rows (`range: true` in `/rows`), so a block 9
+  chunk lists its alphas, palindromes, … but not every block 9 sat — in sat
+  order within each piece, at most 100; each with the height and time of
+  the block that mined it and whether it carried an inscription when sold.
+* `inscribed`: some sold tracked sat carried an inscription when sold (an
+  outlier for rare-sat pricing; the fork tracks inscriptions only on tracked
+  sats).
 
 ### `GET /sales?row=&from=&to=` (NDJSON)
-Sales oldest first, heights `from..=to` (default: all), optionally only those
-whose pieces include sats of `row`. One `Sale` per line.
+Sales oldest first (by height, transaction, input), heights `from..=to`
+(default `0` to the tip), optionally only those whose pieces include sats of
+`row`. One `Sale` per line. 400 for `from` > `to`, 404 for an unknown row,
+503 before the first commit.
 
 ### `GET /sales/tx/{txid}`
-`{ "txid": "…", "sales": [Sale] }` (404 when the transaction sold nothing tracked).
+`{ "txid": "…", "sales": [Sale] }` by input (404 when the transaction sold
+nothing tracked).
 
 ### Additions to existing objects
-* `/sat/{n}`: `"inscribed": bool`, `"inscriptions": n` (envelopes that landed
-  on the sat, counting reinscriptions), `"sales": [Sale]` (sales that sold it,
-  oldest first).
+* `/sat/{n}`: `"inscribed": bool` (the sat carries an inscription now),
+  `"inscriptions": n` (envelopes that landed on it, counting
+  reinscriptions), `"sales": [Sale]` (sales whose pieces include it, oldest
+  first).
 * `Output`: `"inscribed_sats": [n, …]` (tracked sats in the output that carry
-  inscriptions).
-* `RowStats`: `"inscribed"` — located sats of the row that carry inscriptions.
+  inscriptions, in sat order).
+* `RowStats` in `/supply` and `/supply/{row}` (`stats`): `"inscribed"` —
+  located sats of the row that carry inscriptions now, from the inscribed
+  sats and their current locations (recomputed once per block). History
+  points and `delta` stats do not have it.

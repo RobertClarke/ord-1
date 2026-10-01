@@ -52,6 +52,7 @@ impl Server {
       started,
       stream_timeout: api::STREAM_TIMEOUT,
       streams: Default::default(),
+      inscribed_rows: Default::default(),
     });
 
     let indexer = if self.no_sync {
@@ -65,7 +66,7 @@ impl Server {
       ))?;
       restore(
         &store,
-        &TrackerFactory::new(catalog, settings.config.clone()),
+        &TrackerFactory::new(catalog, settings.config.clone(), settings.chain),
         &published,
         &meta,
         IndexerOptions::new(&settings).supply_top,

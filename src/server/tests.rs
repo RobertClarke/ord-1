@@ -6,10 +6,10 @@ use {
   crate::{
     indexer::Status,
     model::{
-      BlockDelta, Holder, Move, MoveInput, MoveOutput, Piece, RowCounts, RowDelta, RowSupply,
-      SupplySnapshot, TrackedUtxo, UtxoKind,
+      BlockDelta, Holder, InscriptionEvent, MarketDelta, Move, MoveInput, MoveOutput, Piece,
+      RowCounts, RowDelta, RowSupply, Sale, SaleKind, SupplySnapshot, TrackedUtxo, UtxoKind,
     },
-    store::{IndexMeta, SCHEMA_VERSION, StoreOptions},
+    store::{CommitOptions, IndexMeta, SCHEMA_VERSION, StoreOptions},
   },
   bitcoin::{
     CompactTarget, Network, TxMerkleNode, Txid,
@@ -218,6 +218,25 @@ struct Scenario {
   u1: OutPoint,
   d: OutPoint,
   deltas: Vec<BlockDelta>,
+  markets: Vec<MarketDelta>,
+}
+
+impl Scenario {
+  /// Commits blocks `range` with their market deltas.
+  fn commit(&self, store: &Store, range: std::ops::Range<usize>) {
+    store
+      .commit_with(
+        &self.deltas[range.clone()],
+        &self.markets[range],
+        &[4, 4, COIN, 53],
+        true,
+        &CommitOptions {
+          durable: true,
+          target_height: None,
+        },
+      )
+      .unwrap();
+  }
 }
 
 /// Block 0: coinbase A holds block 0's sats but the last (lost).
@@ -226,6 +245,9 @@ struct Scenario {
 ///   T:1 the black; 9,454 sats of fee; coinbase C.
 /// Block 3: U spends C: U:0 (OP_RETURN) burns C's uncommon, U:1 the black;
 ///   coinbase D.
+/// Market: block 1 inscribes B's uncommon (sat 5e9), block 2's spend of B
+/// is a Magisat listing sale (to T:0, 45,000 sats of premium), block 3
+/// reinscribes sat 5e9 and inscribes sat 7 (in A).
 fn scenario() -> Scenario {
   let (a, b, c, d) = (
     OutPoint::new(txid(0), 0),
@@ -471,6 +493,51 @@ fn scenario() -> Scenario {
     ],
   );
 
+  let markets = vec![
+    MarketDelta::default(),
+    MarketDelta {
+      sales: Vec::new(),
+      inscriptions: vec![InscriptionEvent {
+        sat: COIN,
+        txid: txid(10),
+        vin: 0,
+      }],
+    },
+    MarketDelta {
+      sales: vec![Sale {
+        txid: t0.txid,
+        tx_index: 1,
+        vin: 0,
+        kind: SaleKind::Listing,
+        marketplace: "magisat".into(),
+        seller_outpoint: b,
+        seller: utxo_b.clone(),
+        payment_vout: Some(1),
+        price: COIN + 45_000,
+        seller_proceeds: COIN + 44_773,
+        fees: 227,
+        buyer_vout: Some(0),
+        buyer_script: Some(p2tr()),
+      }],
+      inscriptions: Vec::new(),
+    },
+    MarketDelta {
+      sales: Vec::new(),
+      inscriptions: vec![
+        InscriptionEvent {
+          sat: COIN,
+          txid: txid(11),
+          vin: 0,
+        },
+        InscriptionEvent {
+          sat: 7,
+          txid: txid(11),
+          vin: 1,
+        },
+      ],
+    },
+  ];
+
   Scenario {
     a,
     b,
@@ -481,6 +548,7 @@ fn scenario() -> Scenario {
     u1,
     d,
     deltas,
+    markets,
   }
 }
 
@@ -559,7 +627,7 @@ impl TestServer {
     let published = Arc::new(Published::default());
     if let Some(height) = height {
       let deltas = &scenario.deltas[..=height as usize];
-      store.commit(deltas, &[4, 4, COIN, 53], true).unwrap();
+      scenario.commit(&store, 0..height as usize + 1);
       let last = deltas.last().unwrap();
       published.update_status(|status| {
         *status = Status {
@@ -629,6 +697,7 @@ impl TestServer {
       started: 1_700_000_001,
       stream_timeout,
       streams: Default::default(),
+      inscribed_rows: Default::default(),
     });
 
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
@@ -806,7 +875,7 @@ fn supply() {
       "id": "uncommon",
       "total": 6_930_000,
       "stats": { "mined": 4, "located": 3, "burned": 1, "lost": 0, "overwritten": 0,
-                 "extracted": 1, "holders": 3, "extracted_holders": 1 },
+                 "extracted": 1, "holders": 3, "extracted_holders": 1, "inscribed": 1 },
       "active_non_extracted": { "1y": 1, "2y": 2, "3y": 2, "4y": 2, "5y": 2, "7y": 2 },
       "delta": {
         "height": 3,
@@ -820,6 +889,16 @@ fn supply() {
   // block0 did not change in block 3.
   assert_eq!(supply["rows"][2]["id"], "block0");
   assert_eq!(supply["rows"][2]["delta"], Value::Null);
+  // Located inscribed sats: 5e9 (uncommon, alpha) at T:0, 7 (block0) in A.
+  assert_eq!(
+    supply["rows"]
+      .as_array()
+      .unwrap()
+      .iter()
+      .map(|row| row["stats"]["inscribed"].as_u64().unwrap())
+      .collect::<Vec<u64>>(),
+    [1, 0, 1, 1]
+  );
 
   let row = server.json("/supply/uncommon?top=1");
   assert_eq!(row["id"], "uncommon");
@@ -917,6 +996,7 @@ fn sat() {
     "extracted": false,
     "pieces": [piece_json(0, 0, COIN - 1, &["uncommon", "alpha", "block0"])],
     "rows": { "uncommon": 1, "block0": COIN - 1, "alpha": 50 },
+    "inscribed_sats": [7],
   });
 
   assert_eq!(
@@ -934,6 +1014,9 @@ fn sat() {
         "offset": 7,
         "output": output_a,
       },
+      "inscribed": true,
+      "inscriptions": 1,
+      "sales": [],
     })
   );
 
@@ -983,7 +1066,7 @@ fn sat() {
   assert_eq!(
     server.json(&format!("/sat/{}", COIN + 1)),
     json!({ "sat": COIN + 1, "height": 1, "types": [], "tracked": false, "rows": [],
-            "location": null })
+            "location": null, "inscribed": false, "inscriptions": 0, "sales": [] })
   );
   // Tracked but not mined yet.
   let future = server.json(&format!("/sat/{}", 100 * COIN));
@@ -1019,6 +1102,7 @@ fn output_endpoint() {
       "extracted": false,
       "pieces": [piece_json(COIN - 1 - 546, 2 * COIN - 1, 1, &["black"])],
       "rows": { "black": 1 },
+      "inscribed_sats": [],
     })
   );
   assert_eq!(
@@ -1426,10 +1510,7 @@ fn reads_see_new_commits() {
   let server = TestServer::new(Some(2));
   assert_eq!(server.json("/block/2")["height"], 2);
   server.error("/block/3", 404);
-  server
-    .store
-    .commit(&server.scenario.deltas[3..], &[4, 4, COIN, 53], true)
-    .unwrap();
+  server.scenario.commit(&server.store, 3..4);
   server
     .published
     .update_status(|status| status.height = Some(3));
@@ -1455,11 +1536,8 @@ fn concurrent_requests_during_commits() {
         })
       })
       .collect::<Vec<_>>();
-    for delta in &server.scenario.deltas[1..] {
-      server
-        .store
-        .commit(std::slice::from_ref(delta), &[4, 4, COIN, 53], true)
-        .unwrap();
+    for height in 1..4 {
+      server.scenario.commit(&server.store, height..height + 1);
       thread::sleep(std::time::Duration::from_millis(20));
     }
     done.store(true, Ordering::Relaxed);
@@ -1633,4 +1711,161 @@ fn streams_resume_across_read_transactions() {
     .unwrap()
     .count();
   assert_eq!(pieces.len(), tracked);
+}
+
+/// The scenario's one sale (block 2: B sold to T:0), as `/sales` renders it.
+fn sale_json(server: &TestServer) -> Value {
+  let Scenario { b, t0, .. } = server.scenario;
+  json!({
+    "txid": t0.txid.to_string(),
+    "height": 2,
+    "time": TIMES[2],
+    "tx_index": 1,
+    "vin": 0,
+    "marketplace": "magisat",
+    "kind": "listing",
+    "seller": { "address": address(&p2wpkh(1)), "script_pubkey": p2wpkh(1).to_hex_string(),
+                "outpoint": b.to_string(), "value": COIN },
+    "buyer": { "address": address(&p2tr()), "script_pubkey": p2tr().to_hex_string(),
+               "outpoint": t0.to_string(), "value": 546 },
+    "payment_vout": 1,
+    "price": COIN + 45_000,
+    "seller_proceeds": COIN + 44_773,
+    "fees": 227,
+    "premium": 45_000,
+    "pieces": [
+      piece_json(0, COIN, 1, &["uncommon", "alpha"]),
+      piece_json(COIN - 1, 2 * COIN - 1, 1, &["black"]),
+    ],
+    "sats": [
+      { "sat": COIN, "height": 1, "time": TIMES[1], "inscribed": true },
+      { "sat": 2 * COIN - 1, "height": 1, "time": TIMES[1], "inscribed": false },
+    ],
+    "rows": { "uncommon": 1, "black": 1, "alpha": 1 },
+    "unit": { "row": "uncommon", "count": 1, "price": 45_000 },
+    "inscribed": true,
+  })
+}
+
+#[test]
+fn sales() {
+  let server = TestServer::new(Some(3));
+  let Scenario { b, t0, .. } = server.scenario;
+  let expected = sale_json(&server);
+
+  assert_eq!(server.ndjson("/sales"), vec![expected.clone()]);
+  assert_eq!(server.ndjson("/sales?from=2&to=2"), vec![expected.clone()]);
+  assert_eq!(
+    server.ndjson("/sales?from=0&to=100"),
+    vec![expected.clone()]
+  );
+  assert_eq!(server.ndjson("/sales?from=3"), Vec::<Value>::new());
+  assert_eq!(server.ndjson("/sales?to=1"), Vec::<Value>::new());
+  assert_eq!(server.ndjson("/sales?row=black"), vec![expected.clone()]);
+  assert_eq!(server.ndjson("/sales?row=block0"), Vec::<Value>::new());
+  server.error("/sales?row=nope", 404);
+  server.error("/sales?from=3&to=1", 400);
+  server.error("/sales?from=x", 400);
+  TestServer::new(None).error("/sales", 503);
+
+  assert_eq!(
+    server.json(&format!("/sales/tx/{}", t0.txid)),
+    json!({ "txid": t0.txid.to_string(), "sales": [expected.clone()] })
+  );
+  assert!(
+    server
+      .error(&format!("/sales/tx/{}", b.txid), 404)
+      .contains("sold no tracked sat")
+  );
+  server.error("/sales/tx/nonsense", 400);
+
+  // /sat lists the sales that sold the sat and its inscriptions.
+  let sat = server.json(&format!("/sat/{COIN}"));
+  assert_eq!(sat["inscribed"], true);
+  assert_eq!(sat["inscriptions"], 2);
+  assert_eq!(sat["sales"], json!([expected.clone()]));
+  assert_eq!(sat["location"]["output"]["inscribed_sats"], json!([COIN]));
+  let black = server.json(&format!("/sat/{}", 2 * COIN - 1));
+  assert_eq!(black["inscribed"], false);
+  assert_eq!(black["inscriptions"], 0);
+  assert_eq!(black["sales"], json!([expected]));
+
+  // Rolling back block 3 drops its inscriptions; block 2, its sale.
+  server.store.rollback_tip().unwrap().unwrap();
+  let sat = server.json(&format!("/sat/{COIN}"));
+  assert_eq!(sat["inscriptions"], 1);
+  assert_eq!(server.json("/sat/7")["inscribed"], false);
+  server.store.rollback_tip().unwrap().unwrap();
+  assert_eq!(server.ndjson("/sales"), Vec::<Value>::new());
+  server.error(&format!("/sales/tx/{}", t0.txid), 404);
+  assert_eq!(server.json(&format!("/sat/{COIN}"))["sales"], json!([]));
+  assert_eq!(server.json(&format!("/sat/{COIN}"))["inscriptions"], 1);
+}
+
+#[test]
+fn sale_sats_are_the_special_sats_of_the_sold_pieces() {
+  let server = TestServer::new(Some(3));
+  let reader = server.store.reader().unwrap();
+  let render = server.state.render(&reader);
+  let a = server.scenario.a;
+
+  // Selling A: block 0's range piece; its special sats are its 50 alphas
+  // (the first also uncommon), sat 7 (inscribed) is not one.
+  let sale_of = |seller: TrackedUtxo| crate::store::StoredSale {
+    height: 3,
+    sale: Sale {
+      txid: txid(99),
+      tx_index: 1,
+      vin: 0,
+      kind: SaleKind::Unknown,
+      marketplace: "unknown".into(),
+      seller_outpoint: a,
+      seller,
+      payment_vout: None,
+      price: 100,
+      seller_proceeds: 100,
+      fees: 0,
+      buyer_vout: None,
+      buyer_script: None,
+    },
+    buyer_value: None,
+  };
+  let utxo_a = reader.utxo(a).unwrap().unwrap();
+  let sale = render.sale(&sale_of(utxo_a.clone())).unwrap();
+  assert_eq!(
+    sale.sats.iter().map(|sat| sat.sat).collect::<Vec<u64>>(),
+    (0..50).map(|i| i * 100_000_000).collect::<Vec<u64>>()
+  );
+  assert!(
+    sale
+      .sats
+      .iter()
+      .all(|sat| sat.height == 0 && !sat.inscribed)
+  );
+  assert!(sale.inscribed, "sat 7 was inscribed by block 3");
+  assert_eq!(sale.buyer, None);
+  assert_eq!(sale.premium, 100 - i64::try_from(COIN - 1).unwrap());
+  let unit = sale.unit.unwrap();
+  assert_eq!((unit.row.as_str(), unit.count), ("uncommon", 1));
+  assert_eq!(unit.price, sale.premium);
+
+  // Inscriptions made after the sale do not count.
+  let earlier = crate::store::StoredSale {
+    height: 2,
+    ..sale_of(utxo_a)
+  };
+  assert!(!render.sale(&earlier).unwrap().inscribed);
+
+  // At most 100 sats: [0, 20 × 5e9) holds over a thousand alphas.
+  let wide = TrackedUtxo {
+    value: 20 * COIN,
+    script_pubkey: p2pk(),
+    height: 0,
+    kind: UtxoKind::Spendable,
+    pieces: vec![piece(0, 0, 20 * COIN)],
+  };
+  assert_eq!(
+    render.sale(&sale_of(wide)).unwrap().sats.len(),
+    super::sales::MAX_SALE_SATS
+  );
 }

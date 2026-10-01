@@ -2,7 +2,7 @@
 
 use {
   super::{codec::*, *},
-  crate::model::{MoveInput, MoveOutput, RowDelta},
+  crate::model::{InscriptionEvent, MoveInput, MoveOutput, RowDelta, SaleKind},
   bitcoin::{
     CompactTarget, ScriptBuf, TxMerkleNode, Txid,
     block::Version,
@@ -445,6 +445,56 @@ impl TestChain {
   }
 }
 
+/// A deterministic market for a generated block: every tracked input of a
+/// transaction is sold to its first output; every third block inscribes its
+/// first minted sat and reinscribes the one three blocks below.
+pub(crate) fn market_for(delta: &BlockDelta) -> MarketDelta {
+  let mut market = MarketDelta::default();
+  for m in delta.moves.iter().filter(|m| !m.coinbase) {
+    for input in &m.inputs {
+      market.sales.push(Sale {
+        txid: m.txid,
+        tx_index: m.tx_index,
+        vin: input.vin,
+        kind: if input.vin % 2 == 0 {
+          SaleKind::Listing
+        } else {
+          SaleKind::Offer
+        },
+        marketplace: "magisat".into(),
+        seller_outpoint: input.outpoint,
+        seller: input.utxo.clone(),
+        payment_vout: (m.outputs.len() > 1).then_some(1),
+        price: input.utxo.value + 45_000,
+        seller_proceeds: input.utxo.value + 44_000,
+        fees: 1_000,
+        buyer_vout: m.outputs.first().map(|output| output.vout),
+        buyer_script: m.outputs.first().map(|output| output.script_pubkey.clone()),
+      });
+    }
+  }
+  if delta.height.is_multiple_of(3) {
+    let coinbase = delta.moves.iter().find(|m| m.coinbase).unwrap();
+    market.inscriptions.push(InscriptionEvent {
+      sat: u64::from(delta.height) * SUBSIDY,
+      txid: coinbase.txid,
+      vin: 0,
+    });
+    if delta.height >= 3 {
+      market.inscriptions.push(InscriptionEvent {
+        sat: u64::from(delta.height - 3) * SUBSIDY,
+        txid: coinbase.txid,
+        vin: 1,
+      });
+    }
+  }
+  market
+}
+
+fn markets(deltas: &[BlockDelta]) -> Vec<MarketDelta> {
+  deltas.iter().map(market_for).collect()
+}
+
 fn push_piece(pieces: &mut Vec<Piece>, piece: Piece) {
   if let Some(last) = pieces.last_mut()
     && last.offset_end() == piece.offset
@@ -493,6 +543,10 @@ fn dump(store: &Store, with_undo: bool) -> Dump {
   table!(LOST, "lost");
   table!(MOVES, "moves");
   table!(ROW_HISTORY, "row_history");
+  table!(SALES, "sales");
+  table!(SALE_TXS, "sale_txs");
+  table!(SALE_PIECES, "sale_pieces");
+  table!(INSCRIBED, "inscribed");
   if with_undo {
     table!(UNDO, "undo");
   }
@@ -703,9 +757,10 @@ fn undo_round_trip() {
   let mut chain = TestChain::new(3);
   for _ in 0..30 {
     let delta = chain.next_block();
+    let market = market_for(&delta);
     assert_eq!(
-      decode_undo(&encode_undo(&delta), delta.height).unwrap(),
-      delta
+      decode_undo(&encode_undo(&delta, &market), delta.height).unwrap(),
+      (delta, market)
     );
   }
 }
@@ -977,7 +1032,16 @@ fn batched_commits_equal_block_by_block_commits() {
       mined[usize::from(row.row)] = row.after.mined;
     }
     one_by_one
-      .commit(std::slice::from_ref(delta), &mined, false)
+      .commit_with(
+        std::slice::from_ref(delta),
+        &[market_for(delta)],
+        &mined,
+        false,
+        &CommitOptions {
+          durable: true,
+          target_height: None,
+        },
+      )
       .unwrap();
   }
 
@@ -990,7 +1054,18 @@ fn batched_commits_equal_block_by_block_commits() {
         mined[usize::from(row.row)] = row.after.mined;
       }
     }
-    batched.commit(batch, &mined, false).unwrap();
+    batched
+      .commit_with(
+        batch,
+        &markets(batch),
+        &mined,
+        false,
+        &CommitOptions {
+          durable: true,
+          target_height: None,
+        },
+      )
+      .unwrap();
   }
 
   assert_eq!(dump(&batched, true), dump(&one_by_one, true));
@@ -1064,7 +1139,16 @@ fn rollback_restores_every_table() {
       mined[usize::from(row.row)] = row.after.mined;
     }
     store
-      .commit(std::slice::from_ref(&delta), &mined, false)
+      .commit_with(
+        std::slice::from_ref(&delta),
+        &[market_for(&delta)],
+        &mined,
+        false,
+        &CommitOptions {
+          durable: true,
+          target_height: None,
+        },
+      )
       .unwrap();
     dumps.push(dump(&store, false));
     minted.push(mined.clone());
@@ -1090,12 +1174,12 @@ fn rollback_restores_every_table() {
     };
     assert_eq!(decoded(&mut actual), minted[i]);
     let _ = decoded(&mut expected);
-    // `moves_refs` is a conservative flag that rollbacks leave set.
+    // `moves_refs` and `sale_piece_max_len` are conservative bounds that
+    // rollbacks leave as they are.
     for dump in [&mut actual, &mut expected] {
-      dump
-        .get_mut("meta")
-        .unwrap()
-        .retain(|(key, _)| key != KEY_MOVES_REFS.as_bytes());
+      dump.get_mut("meta").unwrap().retain(|(key, _)| {
+        key != KEY_MOVES_REFS.as_bytes() && key != KEY_SALE_PIECE_MAX_LEN.as_bytes()
+      });
     }
     assert_eq!(
       actual, expected,
@@ -1177,6 +1261,7 @@ fn non_durable_commits_are_visible_and_persist_at_the_next_durable_one() {
       store
         .commit_with(
           batch,
+          &[],
           &chain.mined(),
           false,
           &CommitOptions {
@@ -1209,6 +1294,7 @@ fn bounded_moves_retention() {
   store
     .commit_with(
       &deltas[..20],
+      &[],
       &chain.mined(),
       false,
       &CommitOptions {
@@ -1383,12 +1469,16 @@ fn table_info_lists_every_table() {
     names,
     [
       "headers",
+      "inscribed",
       "locator",
       "lost",
       "meta",
       "moves",
       "overwritten",
       "row_history",
+      "sale_pieces",
+      "sale_txs",
+      "sales",
       "scripts",
       "undo",
       "unreferenced",
@@ -1506,4 +1596,206 @@ fn find_output_uses_the_txid_index() {
   let empty = encode_moves(&[], 3, RefPolicy::SELF_CONTAINED);
   assert_eq!(decode_moves(&empty, 3).unwrap().0, Vec::new());
   assert_eq!(find_output(&empty, 3, &OutPoint::null()).unwrap(), None);
+}
+
+/// Brute-force expectations for the market tables of `deltas`.
+struct ExpectedMarket {
+  sales: Vec<StoredSale>,
+  inscribed: BTreeMap<u64, Inscribed>,
+}
+
+impl ExpectedMarket {
+  fn of(deltas: &[BlockDelta]) -> Self {
+    let mut sales = Vec::new();
+    let mut inscribed = BTreeMap::<u64, Inscribed>::new();
+    for delta in deltas {
+      let market = market_for(delta);
+      for sale in market.sales {
+        let buyer_value = sale.buyer_vout.map(|vout| {
+          delta
+            .moves
+            .iter()
+            .find(|m| m.txid == sale.txid)
+            .unwrap()
+            .outputs
+            .iter()
+            .find(|output| output.vout == vout)
+            .unwrap()
+            .value
+        });
+        sales.push(StoredSale {
+          height: delta.height,
+          sale,
+          buyer_value,
+        });
+      }
+      for event in market.inscriptions {
+        inscribed
+          .entry(event.sat)
+          .and_modify(|inscribed| inscribed.count += 1)
+          .or_insert(Inscribed {
+            count: 1,
+            first_txid: event.txid,
+            first_height: delta.height,
+          });
+      }
+    }
+    sales.sort_by_key(StoredSale::key);
+    Self { sales, inscribed }
+  }
+
+  fn check(&self, store: &Store) {
+    let reader = store.reader().unwrap();
+    let sales = reader
+      .sales((0, 0, 0), u32::MAX)
+      .unwrap()
+      .collect::<anyhow::Result<Vec<_>>>()
+      .unwrap();
+    assert_eq!(sales, self.sales);
+
+    for sale in &self.sales {
+      let of_tx = self
+        .sales
+        .iter()
+        .filter(|other| other.sale.txid == sale.sale.txid)
+        .cloned()
+        .collect::<Vec<_>>();
+      assert_eq!(reader.sales_for_tx(sale.sale.txid).unwrap(), of_tx);
+
+      // The first and last sat of every sold piece.
+      for piece in &sale.sale.seller.pieces {
+        for sat in [piece.start, piece.end() - 1] {
+          let covering = self
+            .sales
+            .iter()
+            .filter(|other| {
+              other
+                .sale
+                .seller
+                .pieces
+                .iter()
+                .any(|piece| piece.start <= sat && sat < piece.end())
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+          assert_eq!(reader.sales_for_sat(sat).unwrap(), covering, "sat {sat}");
+        }
+      }
+    }
+    assert_eq!(
+      reader.sales_for_tx(test_txid(u64::MAX)).unwrap(),
+      Vec::new()
+    );
+    assert_eq!(reader.sales_for_sat(u64::MAX - 1).unwrap(), Vec::new());
+
+    let inscribed = reader
+      .inscribed_from(0)
+      .unwrap()
+      .collect::<anyhow::Result<BTreeMap<_, _>>>()
+      .unwrap();
+    assert_eq!(inscribed, self.inscribed);
+    for (sat, expected) in &self.inscribed {
+      assert_eq!(reader.inscribed(*sat).unwrap(), Some(*expected));
+      assert_eq!(
+        reader.inscribed_in(*sat, sat + 1).unwrap(),
+        vec![(*sat, *expected)]
+      );
+    }
+    assert_eq!(reader.inscribed(1).unwrap(), None);
+  }
+}
+
+fn commit_market(store: &Store, deltas: &[BlockDelta], mined: &[u64]) {
+  store
+    .commit_with(
+      deltas,
+      &markets(deltas),
+      mined,
+      false,
+      &CommitOptions {
+        durable: true,
+        target_height: None,
+      },
+    )
+    .unwrap();
+}
+
+#[test]
+fn market_rows_round_trip_roll_back_and_persist() {
+  let dir = TempDir::new().unwrap();
+  let mut chain = TestChain::new(37);
+  chain.txs_per_block = 6;
+  let deltas = (0..90).map(|_| chain.next_block()).collect::<Vec<_>>();
+  let expected = ExpectedMarket::of(&deltas);
+  assert!(expected.sales.len() > 200);
+  assert!(
+    expected
+      .inscribed
+      .values()
+      .any(|inscribed| inscribed.count > 1)
+  );
+  assert!(
+    expected
+      .sales
+      .iter()
+      .any(|sale| sale.sale.seller.pieces.iter().any(|piece| piece.len > 1)),
+    "the sales should include pieces of several sats"
+  );
+
+  {
+    let store = store(&dir, MovesRetention::Blocks(10));
+    commit_market(&store, &deltas[..40], &chain.mined());
+    for delta in &deltas[40..] {
+      commit_market(&store, std::slice::from_ref(delta), &chain.mined());
+    }
+    // Sales are kept whatever the moves retention.
+    assert_eq!(store.reader().unwrap().moves_floor().unwrap(), 80);
+    expected.check(&store);
+
+    // Rolling back blocks removes their sales and inscriptions.
+    for _ in 0..20 {
+      store.rollback_tip().unwrap().unwrap();
+    }
+    ExpectedMarket::of(&deltas[..70]).check(&store);
+    for delta in &deltas[70..] {
+      commit_market(&store, std::slice::from_ref(delta), &chain.mined());
+    }
+  }
+
+  // And all of it survives a restart.
+  let store = store(&dir, MovesRetention::Blocks(10));
+  expected.check(&store);
+}
+
+#[test]
+fn sale_records_round_trip() {
+  let mut chain = TestChain::new(41);
+  chain.txs_per_block = 3;
+  for _ in 0..20 {
+    let delta = chain.next_block();
+    for sale in market_for(&delta).sales {
+      for buyer_value in [None, Some(546)] {
+        assert_eq!(
+          decode_sale(&encode_sale(&sale, buyer_value)).unwrap(),
+          (sale.clone(), buyer_value)
+        );
+      }
+      let unknown = Sale {
+        kind: SaleKind::Unknown,
+        marketplace: "unknown".into(),
+        payment_vout: None,
+        buyer_vout: None,
+        buyer_script: None,
+        ..sale
+      };
+      assert_eq!(
+        decode_sale(&encode_sale(&unknown, None)).unwrap(),
+        (unknown, None)
+      );
+    }
+  }
+  assert_eq!(
+    decode_inscribed(&encode_inscribed(3, &test_txid(1), 777)).unwrap(),
+    (3, test_txid(1), 777)
+  );
 }

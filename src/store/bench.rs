@@ -391,7 +391,7 @@ fn bench_commit() {
     let n = remaining.min(500_000);
     let block = generator.prefill_block(n);
     store
-      .commit_with(&[block], &[], false, &CommitOptions::default())
+      .commit_with(&[block], &[], &[], false, &CommitOptions::default())
       .unwrap();
     remaining -= n;
   }
@@ -424,6 +424,7 @@ fn bench_commit() {
     let stats = store
       .commit_with(
         &deltas,
+        &[],
         &[],
         false,
         &CommitOptions {

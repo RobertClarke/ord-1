@@ -12,6 +12,7 @@
 
 pub mod catalog;
 pub mod json;
+pub mod sales;
 #[cfg(test)]
 mod tests;
 
@@ -42,7 +43,7 @@ use {
     io,
     str::FromStr,
     sync::{
-      Arc,
+      Arc, Mutex,
       atomic::{AtomicBool, AtomicUsize, Ordering},
     },
     time::Duration,
@@ -67,6 +68,7 @@ const CHUNK: usize = 64 << 10;
 /// so filtered streams that emit little still move to a fresh one.
 const MOVES_SCAN: u32 = 256;
 const SATS_SCAN: usize = 100_000;
+const SALES_SCAN: usize = 10_000;
 
 pub struct ServerState {
   pub store: Arc<Store>,
@@ -81,6 +83,8 @@ pub struct ServerState {
   pub stream_timeout: Duration,
   /// NDJSON streams in progress.
   pub streams: AtomicUsize,
+  /// Per-row counts of located inscribed sats, and the height they are for.
+  pub inscribed_rows: Mutex<Option<(u32, Arc<Vec<u64>>)>>,
 }
 
 #[derive(Debug)]
@@ -198,6 +202,8 @@ pub fn router(state: Arc<ServerState>) -> Router {
     .route("/moves", get(moves))
     .route("/sats", get(sats))
     .route("/blocks", get(blocks))
+    .route("/sales", get(sales_stream))
+    .route("/sales/tx/{txid}", get(sales_for_tx))
     .fallback(|| async { not_found("no such endpoint; see docs/API.md") })
     .layer(CompressionLayer::new())
     .layer(CorsLayer::permissive())
@@ -303,12 +309,45 @@ struct SupplyJson {
   rows: Vec<RowSupplyJson>,
 }
 
+/// Located inscribed sats per row (by `RowId`) at the published supply's
+/// height, computed from the `inscribed` table and the sats' current
+/// locations, once per height.
+fn inscribed_rows(
+  state: &ServerState,
+  reader: &Reader,
+  height: u32,
+) -> anyhow::Result<Arc<Vec<u64>>> {
+  if let Some((cached, counts)) = &*state.inscribed_rows.lock().unwrap()
+    && *cached == height
+  {
+    return Ok(counts.clone());
+  }
+  let mut counts = vec![0; state.catalog.rows().len()];
+  for entry in reader.inscribed_from(0)? {
+    let (sat, _) = entry?;
+    if reader
+      .locate(sat)?
+      .is_some_and(|location| location.kind == LocationKind::Unspent)
+    {
+      for row in state.catalog.sat_rows(sat) {
+        if let Some(count) = counts.get_mut(usize::from(row)) {
+          *count += 1;
+        }
+      }
+    }
+  }
+  let counts = Arc::new(counts);
+  *state.inscribed_rows.lock().unwrap() = Some((height, counts.clone()));
+  Ok(counts)
+}
+
 fn row_supply(
   state: &ServerState,
   reader: &Reader,
   supply: &crate::model::RowSupply,
   height: u32,
   top: Option<usize>,
+  inscribed: &[u64],
 ) -> ServerResult<RowSupplyJson> {
   let render = state.render(reader);
   let delta = reader
@@ -330,7 +369,13 @@ fn row_supply(
   Ok(RowSupplyJson {
     id: render.row_name(supply.row),
     total: state.catalog.row_total(supply.row),
-    stats: supply.stats,
+    stats: json::SupplyStatsJson {
+      stats: supply.stats,
+      inscribed: inscribed
+        .get(usize::from(supply.row))
+        .copied()
+        .unwrap_or_default(),
+    },
     active_non_extracted: YearsMap(supply.active_non_extracted.clone()),
     delta,
     top_extracted_holders: top
@@ -346,6 +391,7 @@ async fn supply(State(state): State<Arc<ServerState>>) -> ServerResult<Json<Supp
   read(&state, |state, reader| {
     let supply = state.published.supply();
     let height = supply.height.ok_or(ServerError::NotReady)?;
+    let inscribed = inscribed_rows(state, reader, height)?;
     Ok(Json(SupplyJson {
       height: supply.height,
       hash: supply.hash,
@@ -353,7 +399,7 @@ async fn supply(State(state): State<Arc<ServerState>>) -> ServerResult<Json<Supp
       rows: supply
         .rows
         .iter()
-        .map(|row| row_supply(state, reader, row, height, None))
+        .map(|row| row_supply(state, reader, row, height, None, &inscribed))
         .collect::<ServerResult<_>>()?,
     }))
   })
@@ -378,12 +424,14 @@ async fn supply_row(
       .iter()
       .find(|supply| supply.row == row)
       .ok_or_else(|| not_found(format!("no supply for row `{id}`")))?;
+    let inscribed = inscribed_rows(state, reader, height)?;
     Ok(Json(row_supply(
       state,
       reader,
       row_supply_entry,
       height,
       Some(top),
+      &inscribed,
     )?))
   })
   .await
@@ -861,6 +909,113 @@ impl Produce for SatsStream {
     }
     Ok(false)
   }
+}
+
+async fn sales_stream(
+  State(state): State<Arc<ServerState>>,
+  Query(params): Query<HashMap<String, String>>,
+) -> ServerResult<Response> {
+  let from = param::<u32>(&params, "from")?.unwrap_or(0);
+  let to = param::<u32>(&params, "to")?;
+  let row = params.get("row").cloned();
+
+  let (to, row) = read(&state, move |state, reader| {
+    let tip = tip(reader)?;
+    let to = to.unwrap_or(tip);
+    if from > to {
+      return Err(bad_request(format!("from {from} is above to {to}")));
+    }
+    let row = row
+      .map(|id| state.row(&id).map(|(row, _)| row))
+      .transpose()?;
+    Ok((to, row))
+  })
+  .await?;
+
+  Ok(ndjson(
+    state,
+    SalesStream {
+      next: Some((from, 0, 0)),
+      to,
+      row,
+    },
+  ))
+}
+
+/// `/sales` from the sale key `next` to the end of block `to`.
+struct SalesStream {
+  /// `None` once done.
+  next: Option<crate::store::SaleKey>,
+  to: u32,
+  row: Option<RowId>,
+}
+
+/// The sale key right after `key`.
+fn next_sale_key((height, tx_index, vin): crate::store::SaleKey) -> Option<crate::store::SaleKey> {
+  if let Some(vin) = vin.checked_add(1) {
+    Some((height, tx_index, vin))
+  } else if let Some(tx_index) = tx_index.checked_add(1) {
+    Some((height, tx_index, 0))
+  } else {
+    height.checked_add(1).map(|height| (height, 0, 0))
+  }
+}
+
+impl Produce for SalesStream {
+  fn fill(
+    &mut self,
+    state: &ServerState,
+    reader: &Reader,
+    buffer: &mut Vec<u8>,
+  ) -> anyhow::Result<bool> {
+    let Some(next) = self.next else {
+      return Ok(false);
+    };
+    let render = state.render(reader);
+    let mut scanned = 0;
+    for sale in reader.sales(next, self.to)? {
+      let sale = sale?;
+      self.next = next_sale_key(sale.key());
+      scanned += 1;
+      if self.row.is_none_or(|row| render.sale_has_row(&sale, row)) {
+        line(buffer, &render.sale(&sale)?)?;
+      }
+      if buffer.len() >= CHUNK || scanned >= SALES_SCAN {
+        return Ok(self.next.is_some());
+      }
+    }
+    self.next = None;
+    Ok(false)
+  }
+}
+
+#[derive(Serialize)]
+struct TxSalesJson {
+  txid: bitcoin::Txid,
+  sales: Vec<sales::SaleJson>,
+}
+
+async fn sales_for_tx(
+  State(state): State<Arc<ServerState>>,
+  Path(txid): Path<String>,
+) -> ServerResult<Json<TxSalesJson>> {
+  let txid = parse::<bitcoin::Txid>("txid", &txid)?;
+  read(&state, move |state, reader| {
+    tip(reader)?;
+    let stored = reader.sales_for_tx(txid)?;
+    if stored.is_empty() {
+      return Err(not_found(format!("transaction {txid} sold no tracked sat")));
+    }
+    let render = state.render(reader);
+    Ok(Json(TxSalesJson {
+      txid,
+      sales: stored
+        .iter()
+        .map(|sale| render.sale(sale))
+        .collect::<anyhow::Result<_>>()?,
+    }))
+  })
+  .await
 }
 
 #[derive(Serialize)]

@@ -100,7 +100,11 @@ pub(crate) fn indexer(
   Ok(Indexer::new(
     store,
     Arc::new(RpcNode::new(settings.rpc.clone(), shutdown.clone())?),
-    Arc::new(TrackerFactory::new(catalog, settings.config.clone())),
+    Arc::new(TrackerFactory::new(
+      catalog,
+      settings.config.clone(),
+      settings.chain,
+    )),
     published,
     shutdown,
     options,
