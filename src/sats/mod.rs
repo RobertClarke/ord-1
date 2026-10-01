@@ -304,6 +304,7 @@ pub struct SatCatalog {
   rows_by_key: Vec<Vec<RowId>>,
   row_index: HashMap<String, RowId>,
   totals: Vec<OnceLock<u64>>,
+  ranks: OnceLock<Vec<usize>>,
   fingerprint: OnceLock<String>,
 }
 
@@ -364,6 +365,7 @@ impl SatCatalog {
       rows_by_key: vec![Vec::new(); SatType::ALL.len()],
       row_index: HashMap::new(),
       totals: Vec::new(),
+      ranks: OnceLock::new(),
       fingerprint: OnceLock::new(),
     };
     catalog.build_sources(dense)?;
@@ -777,51 +779,8 @@ impl SatCatalog {
     }
 
     let mut candidates = Vec::new();
-    let mut segments = Vec::new();
-    let needs_segments = self.groups.iter().any(|g| !g.exotic.is_empty());
     for &(a, b) in &gaps {
-      let mut push = |sat: u64, sure: bool| {
-        if sure || self.tracked_by_types(self.types(sat)) {
-          candidates.push(sat);
-        }
-      };
-      if needs_segments {
-        segments.clear();
-        self
-          .exotic
-          .for_each_segment(a, b, |s, e, types| segments.push((s, e, types)));
-      }
-      for group in &self.groups {
-        if let Some(sure) = group.everywhere {
-          group
-            .anchor
-            .for_each(&self.lists, a, b, |sat| push(sat, sure));
-          if sure {
-            continue;
-          }
-        }
-        for_each_overlap(&group.sure_ranges, a, b, |s, e| {
-          group
-            .anchor
-            .for_each(&self.lists, s, e, |sat| push(sat, true))
-        });
-        if group.exotic.is_empty() {
-          continue;
-        }
-        for &(s, e, types) in &segments {
-          let mut matched = None;
-          for &(set, sure) in &group.exotic {
-            if types.contains_all(set) {
-              matched = Some(matched.unwrap_or(false) | sure);
-            }
-          }
-          if let Some(sure) = matched {
-            group
-              .anchor
-              .for_each(&self.lists, s, e, |sat| push(sat, sure));
-          }
-        }
-      }
+      self.for_each_individual(a, b, |sat| candidates.push(sat));
     }
     candidates.sort_unstable();
     candidates.dedup();
@@ -842,6 +801,93 @@ impl SatCatalog {
       add(s, e);
     }
     runs
+  }
+
+  /// Calls `f` for every sat of `[a, b)` tracked by its own types (not just
+  /// by lying in a config range): unordered, possibly more than once.
+  fn for_each_individual(&self, a: u64, b: u64, mut f: impl FnMut(u64)) {
+    let mut push = |sat: u64, sure: bool| {
+      if sure || self.tracked_by_types(self.types(sat)) {
+        f(sat);
+      }
+    };
+    let mut segments = Vec::new();
+    if self.groups.iter().any(|g| !g.exotic.is_empty()) {
+      self
+        .exotic
+        .for_each_segment(a, b, |s, e, types| segments.push((s, e, types)));
+    }
+    for group in &self.groups {
+      if let Some(sure) = group.everywhere {
+        group
+          .anchor
+          .for_each(&self.lists, a, b, |sat| push(sat, sure));
+        if sure {
+          continue;
+        }
+      }
+      for_each_overlap(&group.sure_ranges, a, b, |s, e| {
+        group
+          .anchor
+          .for_each(&self.lists, s, e, |sat| push(sat, true))
+      });
+      if group.exotic.is_empty() {
+        continue;
+      }
+      for &(s, e, types) in &segments {
+        let mut matched = None;
+        for &(set, sure) in &group.exotic {
+          if types.contains_all(set) {
+            matched = Some(matched.unwrap_or(false) | sure);
+          }
+        }
+        if let Some(sure) = matched {
+          group
+            .anchor
+            .for_each(&self.lists, s, e, |sat| push(sat, sure));
+        }
+      }
+    }
+  }
+
+  /// The sats of `[start, end)` that are special on their own (tracked by
+  /// their types, not merely by lying in a config range like block 9),
+  /// ascending, at most `cap`. Cheap for long ranges: it stops early.
+  pub fn individual_sats(&self, start: u64, end: u64, cap: usize) -> Vec<u64> {
+    let end = end.min(SUPPLY);
+    let mut sats = Vec::new();
+    let mut window = 1u64 << 20;
+    let mut a = start;
+    while a < end && sats.len() < cap {
+      let b = end.min(a.saturating_add(window));
+      let mut found = Vec::new();
+      self.for_each_individual(a, b, |sat| found.push(sat));
+      found.sort_unstable();
+      found.dedup();
+      sats.extend(found.into_iter().take(cap - sats.len()));
+      a = b;
+      window = window.saturating_mul(4);
+    }
+    sats
+  }
+
+  /// Rarity rank of a row: 0 for the row with the fewest sats that will ever
+  /// exist (`row_total`), ties by `RowId`. Used to pick a sale's primary row.
+  pub fn row_rank(&self, row: RowId) -> usize {
+    self
+      .ranks
+      .get_or_init(|| {
+        let mut order: Vec<RowId> = (0..self.rows.len() as RowId).collect();
+        order.sort_by_key(|&row| (self.row_total(row), row));
+        let mut ranks = vec![0; order.len()];
+        for (rank, row) in order.into_iter().enumerate() {
+          ranks[usize::from(row)] = rank;
+        }
+        ranks
+      })
+      .get(usize::from(row))
+      .copied()
+      .unwrap_or(usize::MAX)
   }
 
   pub fn rows(&self) -> &[Row] {

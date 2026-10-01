@@ -777,3 +777,63 @@ fn collection_uncommon_rows_in_long_runs() {
     assert!(counts.contains(&(wide.row_id(&id).unwrap(), 1)), "{id}");
   }
 }
+
+#[test]
+fn individual_sats_ignore_config_ranges() {
+  // The default catalog tracks block 9 whole; its individually special sats
+  // are exactly what the range-less catalog tracks.
+  let (default, rangeless) = (default_catalog(), rangeless_catalog());
+  for (a, b) in [
+    (45_000_000_000 - 50, 45_000_000_000 + 3000),
+    (45_099_999_000, 45_100_001_000),
+    (49_999_998_000, 50_000_002_000),
+    (
+      custom_config().ranges[0].start - 500,
+      custom_config().ranges[0].start + 2500,
+    ),
+    (1_968_750_000_000_000 - 100, 1_968_750_000_000_000 + 100),
+  ] {
+    let brute: Vec<u64> = (a..b).filter(|&sat| rangeless.is_tracked(sat)).collect();
+    assert_eq!(
+      default.individual_sats(a, b, usize::MAX),
+      brute,
+      "[{a}, {b})"
+    );
+    assert_eq!(custom_catalog().individual_sats(a, b, usize::MAX), brute);
+  }
+  // Capped and ascending over a whole 5e9 block 9 piece, without walking it.
+  let first = default.individual_sats(45_000_000_000, 50_000_000_000, 100);
+  assert_eq!(first.len(), 100);
+  assert!(first.windows(2).all(|w| w[0] < w[1]));
+  assert_eq!(first[..2], [45_000_000_000, 45_000_000_054]);
+  assert_eq!(
+    default
+      .individual_sats(45_000_000_000, 50_000_000_000, usize::MAX)
+      .len(),
+    50_000 + 100
+  );
+  assert!(
+    default
+      .individual_sats(45_000_000_001, 45_000_000_054, 10)
+      .is_empty()
+  );
+}
+
+#[test]
+fn row_ranks_order_rows_by_rarity() {
+  let catalog = default_catalog();
+  let rank = |id: &str| catalog.row_rank(catalog.row_id(id).unwrap());
+  assert_eq!(rank("mythic"), 0);
+  assert!(rank("legendary") < rank("epic"));
+  assert!(rank("nakamoto_uncommon") < rank("vintage_uncommon"));
+  assert!(rank("vintage_uncommon") < rank("uncommon_2009"));
+  assert!(rank("uncommon_2009") < rank("uncommon"));
+  assert!(rank("450x") < rank("block9"));
+  assert_eq!(rank("block9"), catalog.rows().len() - 1);
+  let mut ranks: Vec<usize> = (0..catalog.rows().len() as RowId)
+    .map(|row| catalog.row_rank(row))
+    .collect();
+  ranks.sort_unstable();
+  assert_eq!(ranks, (0..catalog.rows().len()).collect::<Vec<_>>());
+  assert_eq!(catalog.row_rank(u16::MAX), usize::MAX);
+}
