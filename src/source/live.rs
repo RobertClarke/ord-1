@@ -6,10 +6,11 @@ use {
     Rpc, hex, input_envelopes, input_sighash,
     rpc::{ParseError, RpcError},
   },
-  crate::model::{ResolvedBlock, ResolvedInput, ResolvedTx},
+  crate::model::{ResolvedBlock, ResolvedInput, ResolvedTx, script_hash},
   anyhow::{Context, anyhow, bail, ensure},
   bitcoin::{
-    Amount, BlockHash, CompactTarget, OutPoint, ScriptBuf, TxMerkleNode, TxOut, Txid, Witness,
+    Amount, BlockHash, CompactTarget, OutPoint, Script, ScriptBuf, TxMerkleNode, TxOut, Txid,
+    Witness,
     block::{Header, Version},
     hashes::Hash,
     merkle_tree,
@@ -237,6 +238,8 @@ struct VerboseInput<'a> {
 struct VerbosePrevout<'a> {
   #[serde(borrow)]
   value: &'a RawValue,
+  #[serde(rename = "scriptPubKey", borrow)]
+  script_pub_key: VerboseScript<'a>,
 }
 
 #[derive(Deserialize)]
@@ -355,10 +358,13 @@ fn resolve_tx(index: usize, tx: &VerboseTx) -> anyhow::Result<ResolvedTx> {
         );
         let witness =
           witness(&input.txinwitness).with_context(|| format!("witness of input {vin}"))?;
+        let spent_script = hex::decode(prevout.script_pub_key.hex.as_bytes())
+          .with_context(|| format!("script of the output spent by input {vin}"))?;
         Ok(ResolvedInput {
           previous_output: OutPoint { txid, vout },
           value: parse_btc(prevout.value.get())
             .with_context(|| format!("value of the output spent by input {vin}"))?,
+          script_hash: script_hash(Script::from_bytes(&spent_script)),
           sighash: input_sighash(&script_sig, &witness),
           envelopes: input_envelopes(&witness),
         })

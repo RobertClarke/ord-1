@@ -1,11 +1,13 @@
-//! The fast source's in-memory UTXO value map: outpoint → sats.
+//! The fast source's in-memory UTXO value map: outpoint → (sats, script
+//! hash).
 //!
-//! 256 hashbrown tables (std `HashMap`), sharded by txid byte 8, of 44-byte
-//! buckets: the full 36-byte outpoint (exact, no truncated keys) and the
-//! value as two `u32`s so the bucket needs no padding. With hashbrown's 7/8
-//! load factor and power-of-two bucket counts that is 45 bytes per bucket
-//! including the control byte: 12.1 GB (11.25 GiB) for 2^28 buckets, which
-//! hold up to 234.9 M entries. Pre-size it (`utxo_capacity`).
+//! 256 hashbrown tables (std `HashMap`), sharded by txid byte 8, of 48-byte
+//! buckets: the full 36-byte outpoint (exact, no truncated keys), then the
+//! value and the spent script's `model::script_hash` as three `u32`s so the
+//! bucket needs no padding. With hashbrown's 7/8 load factor and
+//! power-of-two bucket counts that is 49 bytes per bucket including the
+//! control byte: 13.2 GB (12.25 GiB) for 2^28 buckets, which hold up to
+//! 234.9 M entries. Pre-size it (`utxo_capacity`).
 //!
 //! Why shards: a remove can leave a tombstone that only a rehash clears, and
 //! once a hashbrown table is more than half full it rehashes by doubling. On
@@ -39,18 +41,18 @@ impl Hash for Key {
   }
 }
 
+/// Sats (low, high 32 bits) and the script hash, packed without padding.
 #[derive(Clone, Copy)]
-struct Value([u32; 2]);
+struct Value([u32; 3]);
 
-impl From<u64> for Value {
-  fn from(value: u64) -> Self {
-    Self([value as u32, (value >> 32) as u32])
+impl Value {
+  fn new(value: u64, script_hash: u32) -> Self {
+    Self([value as u32, (value >> 32) as u32, script_hash])
   }
-}
 
-impl From<Value> for u64 {
-  fn from(Value([lo, hi]): Value) -> Self {
-    u64::from(lo) | u64::from(hi) << 32
+  fn get(self) -> (u64, u32) {
+    let [lo, hi, script_hash] = self.0;
+    (u64::from(lo) | u64::from(hi) << 32, script_hash)
   }
 }
 
@@ -143,25 +145,31 @@ impl UtxoMap {
     &mut self.shards[usize::from(outpoint.txid.as_byte_array()[8])]
   }
 
-  /// Returns the value of the entry it replaced, if any.
-  pub(crate) fn insert(&mut self, outpoint: OutPoint, value: u64) -> Option<u64> {
+  /// Returns the value and script hash of the entry it replaced, if any.
+  pub(crate) fn insert(
+    &mut self,
+    outpoint: OutPoint,
+    value: u64,
+    script_hash: u32,
+  ) -> Option<(u64, u32)> {
     let replaced = self
       .shard(&outpoint)
       .map
-      .insert(Key(outpoint), value.into())
-      .map(u64::from);
+      .insert(Key(outpoint), Value::new(value, script_hash))
+      .map(Value::get);
     if replaced.is_none() {
       self.len += 1;
     }
     replaced
   }
 
-  pub(crate) fn remove(&mut self, outpoint: &OutPoint) -> Option<u64> {
+  /// The spent output's value and script hash.
+  pub(crate) fn remove(&mut self, outpoint: &OutPoint) -> Option<(u64, u32)> {
     let value = self
       .shard(outpoint)
       .map
       .remove(&Key(*outpoint))
-      .map(u64::from);
+      .map(Value::get);
     if value.is_some() {
       self.len -= 1;
     }
@@ -271,23 +279,23 @@ mod tests {
   }
 
   #[test]
-  fn bucket_is_44_bytes() {
-    assert_eq!(UtxoMap::BUCKET_BYTES, 44);
+  fn bucket_is_48_bytes() {
+    assert_eq!(UtxoMap::BUCKET_BYTES, 48);
   }
 
   #[test]
   fn insert_remove_overwrite() {
     let mut map = UtxoMap::with_capacity(0);
-    assert_eq!(map.insert(outpoint(1, 0), 5), None);
-    assert_eq!(map.insert(outpoint(1, 1), 0), None);
-    assert_eq!(map.insert(outpoint(2, 0), u64::MAX), None);
+    assert_eq!(map.insert(outpoint(1, 0), 5, 0xaaaa_aaaa), None);
+    assert_eq!(map.insert(outpoint(1, 1), 0, 0), None);
+    assert_eq!(map.insert(outpoint(2, 0), u64::MAX, u32::MAX), None);
     assert_eq!(map.len(), 3);
-    assert_eq!(map.insert(outpoint(1, 0), 7), Some(5));
+    assert_eq!(map.insert(outpoint(1, 0), 7, 3), Some((5, 0xaaaa_aaaa)));
     assert_eq!(map.len(), 3);
-    assert_eq!(map.remove(&outpoint(1, 0)), Some(7));
+    assert_eq!(map.remove(&outpoint(1, 0)), Some((7, 3)));
     assert_eq!(map.remove(&outpoint(1, 0)), None);
-    assert_eq!(map.remove(&outpoint(1, 1)), Some(0));
-    assert_eq!(map.remove(&outpoint(2, 0)), Some(u64::MAX));
+    assert_eq!(map.remove(&outpoint(1, 1)), Some((0, 0)));
+    assert_eq!(map.remove(&outpoint(2, 0)), Some((u64::MAX, u32::MAX)));
     assert_eq!(map.len(), 0);
   }
 
@@ -299,11 +307,11 @@ mod tests {
     let mut bytes = *b.txid.as_byte_array();
     bytes[20] ^= 1;
     b.txid = Txid::from_byte_array(bytes);
-    map.insert(a, 1);
-    map.insert(b, 2);
+    map.insert(a, 1, 10);
+    map.insert(b, 2, 20);
     assert_eq!(map.len(), 2);
-    assert_eq!(map.remove(&a), Some(1));
-    assert_eq!(map.remove(&b), Some(2));
+    assert_eq!(map.remove(&a), Some((1, 10)));
+    assert_eq!(map.remove(&b), Some((2, 20)));
   }
 
   #[test]
@@ -311,15 +319,21 @@ mod tests {
     let map = UtxoMap::with_capacity(256 * 1_000);
     // 1,000 per shard: 2,048 buckets, 1,792 entries.
     assert_eq!(map.capacity(), 256 * 1_792);
-    assert_eq!(map.allocated_bytes(), 256 * (2048 * 45 + 16));
+    assert_eq!(map.allocated_bytes(), 256 * (2048 * 49 + 16));
     assert_eq!(map.tombstones(), 0);
 
-    // The recommended sizing: 2^28 buckets in all, 11.25 GiB.
+    // The recommended sizing: 2^28 buckets in all, 12.25 GiB.
     assert_eq!(
       buckets_for_capacity(200_000_000_usize.div_ceil(256)),
       1 << 20
     );
     assert_eq!(capacity_for_buckets(1 << 28), 234_881_024);
+    assert_eq!(
+      UtxoMap::with_capacity(0).allocated_bytes(),
+      0,
+      "an empty map allocates nothing"
+    );
+    assert_eq!(256 * ((1u64 << 20) * 49 + 16), 13_153_341_440);
   }
 
   #[test]
@@ -362,16 +376,19 @@ mod tests {
     let (mut next, mut oldest) = (0u64, 0u64);
     // Fill shard 0 to ~90%, then churn: remove the oldest, add a new one.
     while next < 100 {
-      map.insert(shard_zero(next), next);
+      map.insert(shard_zero(next), next, next as u32);
       reference.insert(next, ());
       next += 1;
     }
     let mut compacted = 0;
     for _ in 0..100_000 {
-      assert_eq!(map.remove(&shard_zero(oldest)), Some(oldest));
+      assert_eq!(
+        map.remove(&shard_zero(oldest)),
+        Some((oldest, oldest as u32))
+      );
       reference.remove(&oldest);
       oldest += 1;
-      assert_eq!(map.insert(shard_zero(next), next), None);
+      assert_eq!(map.insert(shard_zero(next), next, next as u32), None);
       reference.insert(next, ());
       next += 1;
 
@@ -384,7 +401,7 @@ mod tests {
     assert_eq!(map.len(), 100);
     assert_eq!(map.len(), reference.len());
     for n in oldest..next {
-      assert_eq!(map.remove(&shard_zero(n)), Some(n));
+      assert_eq!(map.remove(&shard_zero(n)), Some((n, n as u32)));
     }
     assert_eq!(map.len(), 0);
   }
@@ -393,7 +410,7 @@ mod tests {
   fn shards_grow_individually() {
     let mut map = UtxoMap::with_capacity(256 * 100);
     for n in 0..500 {
-      map.insert(shard_zero(n), n);
+      map.insert(shard_zero(n), n, !(n as u32));
     }
     let maintenance = map.maintain();
     assert_eq!(maintenance.grown, 1);
@@ -401,7 +418,7 @@ mod tests {
     assert_eq!(map.capacity(), 255 * 112 + 896);
     assert_eq!(map.len(), 500);
     for n in 0..500 {
-      assert_eq!(map.remove(&shard_zero(n)), Some(n));
+      assert_eq!(map.remove(&shard_zero(n)), Some((n, !(n as u32))));
     }
   }
 }

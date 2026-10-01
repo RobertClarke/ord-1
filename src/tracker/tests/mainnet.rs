@@ -109,6 +109,9 @@ fn block(rpc: &Rpc, height: u32) -> ResolvedBlock {
             vout: vin["vout"].as_u64().unwrap() as u32,
           },
           value: sats(&vin["prevout"]["value"]),
+          script_hash: crate::model::script_hash(bitcoin::Script::from_bytes(
+            &hex::decode(vin["prevout"]["scriptPubKey"]["hex"].as_str().unwrap()).unwrap(),
+          )),
           sighash: None,
           envelopes: Vec::new(),
         })

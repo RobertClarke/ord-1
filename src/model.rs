@@ -6,7 +6,7 @@
 //! user in the same commit.
 
 use {
-  bitcoin::{BlockHash, OutPoint, ScriptBuf, TxOut, Txid, block::Header},
+  bitcoin::{BlockHash, OutPoint, Script, ScriptBuf, TxOut, Txid, block::Header},
   serde::{Deserialize, Serialize},
 };
 
@@ -37,6 +37,13 @@ pub struct ResolvedInput {
   pub previous_output: OutPoint,
   /// Value, in sats, of the output being spent.
   pub value: u64,
+  /// `script_hash` of the spent output's scriptPubKey: compare inputs'
+  /// scripts with each other, and with outputs' (hash them with
+  /// `script_hash`), without carrying scripts around. Equal scripts hash
+  /// equal; two different scripts collide with probability 2^-32 by
+  /// chance, but anyone can grind a collision, so never treat a match as
+  /// proof.
+  pub script_hash: u32,
   /// Sighash flag of the input's (first) signature, as signed: `0x00` taproot
   /// default, `0x01` ALL, `0x02` NONE, `0x03` SINGLE, `| 0x80` ANYONECANPAY.
   /// `None` when no signature was recognized (or the source does not read
@@ -45,6 +52,60 @@ pub struct ResolvedInput {
   /// Inscription envelopes this input reveals (ord's envelope in a taproot
   /// script-path spend), in envelope order. Usually empty.
   pub envelopes: Vec<Envelope>,
+}
+
+/// The 32-bit script hash `ResolvedInput::script_hash` carries: the low 32
+/// bits of SipHash-1-3 with key (0, 0) over the script's bytes (no length
+/// prefix). Implemented here, not taken from a dependency, so it never
+/// changes and may be stored.
+pub fn script_hash(script: &Script) -> u32 {
+  siphash13(script.as_bytes()) as u32
+}
+
+/// SipHash-1-3 with key (0, 0).
+fn siphash13(bytes: &[u8]) -> u64 {
+  #[inline(always)]
+  fn round(v: &mut [u64; 4]) {
+    v[0] = v[0].wrapping_add(v[1]);
+    v[1] = v[1].rotate_left(13) ^ v[0];
+    v[0] = v[0].rotate_left(32);
+    v[2] = v[2].wrapping_add(v[3]);
+    v[3] = v[3].rotate_left(16) ^ v[2];
+    v[0] = v[0].wrapping_add(v[3]);
+    v[3] = v[3].rotate_left(21) ^ v[0];
+    v[2] = v[2].wrapping_add(v[1]);
+    v[1] = v[1].rotate_left(17) ^ v[2];
+    v[2] = v[2].rotate_left(32);
+  }
+
+  let mut v = [
+    0x736f_6d65_7073_6575,
+    0x646f_7261_6e64_6f6d,
+    0x6c79_6765_6e65_7261,
+    0x7465_6462_7974_6573,
+  ];
+
+  let (chunks, tail) = bytes.as_chunks::<8>();
+  for chunk in chunks {
+    let m = u64::from_le_bytes(*chunk);
+    v[3] ^= m;
+    round(&mut v);
+    v[0] ^= m;
+  }
+
+  let mut last = [0u8; 8];
+  last[..tail.len()].copy_from_slice(tail);
+  let m = u64::from_le_bytes(last) | (bytes.len() as u64) << 56;
+  v[3] ^= m;
+  round(&mut v);
+  v[0] ^= m;
+
+  v[2] ^= 0xff;
+  round(&mut v);
+  round(&mut v);
+  round(&mut v);
+
+  v[0] ^ v[1] ^ v[2] ^ v[3]
 }
 
 /// One inscription envelope revealed by an input. Per ord, it inscribes the
@@ -433,6 +494,48 @@ pub struct SupplySnapshot {
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn script_hash_is_stable() {
+    // Pinned: stored hashes depend on these never changing. (SipHash-1-3,
+    // key (0, 0); checked against std's DefaultHasher when written.)
+    let script = |prefix: &[u8], fill: u8, len: usize, suffix: &[u8]| {
+      let mut bytes = prefix.to_vec();
+      bytes.extend(vec![fill; len]);
+      bytes.extend(suffix);
+      ScriptBuf::from_bytes(bytes)
+    };
+    for (script, hash) in [
+      (ScriptBuf::new(), 0x150c_532c),
+      (script(&[0x00, 0x14], 0xab, 20, &[]), 0x0a27_86ec),
+      (script(&[0x51, 0x20], 0xcd, 32, &[]), 0x916c_fc6d),
+      (
+        script(&[0x76, 0xa9, 0x14], 0x11, 20, &[0x88, 0xac]),
+        0x90c9_c6af,
+      ),
+      (script(&[0x6a, 0x01, 0x00], 0, 0, &[]), 0x6baf_f564),
+    ] {
+      assert_eq!(script_hash(&script), hash, "{script:?}");
+    }
+  }
+
+  #[test]
+  fn script_hash_spreads() {
+    // Scripts differing in any one bit (and in length alone) hash apart.
+    let base = vec![0x51u8; 34];
+    let mut hashes = std::collections::BTreeSet::new();
+    hashes.insert(script_hash(Script::from_bytes(&base)));
+    for byte in 0..base.len() {
+      for bit in 0..8 {
+        let mut bytes = base.clone();
+        bytes[byte] ^= 1 << bit;
+        assert!(hashes.insert(script_hash(Script::from_bytes(&bytes))));
+      }
+    }
+    for len in 0..base.len() {
+      assert!(hashes.insert(script_hash(Script::from_bytes(&base[..len]))));
+    }
+  }
 
   const B9: u64 = 45_000_000_000;
   const SINCE: u32 = 1_670_976_000;

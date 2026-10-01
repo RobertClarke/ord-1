@@ -17,7 +17,7 @@
 
 use {
   super::{RetryPolicy, Rpc, enters_utxo_set, input_envelopes, input_sighash, utxo::UtxoMap},
-  crate::model::{ResolvedBlock, ResolvedInput, ResolvedTx},
+  crate::model::{ResolvedBlock, ResolvedInput, ResolvedTx, script_hash},
   anyhow::{Context, anyhow, ensure},
   bitcoin::{
     Block, BlockHash, OutPoint, Transaction, TxMerkleNode, Txid, consensus, hashes::Hash,
@@ -55,7 +55,7 @@ impl FastSyncOptions {
   /// * 16 fetch threads keep bitcoind busy (~330 MB/s of raw blocks, 660
   ///   MB/s of hex);
   /// * 256 buffered blocks smooth out the consumer (≤ ~0.75 GB);
-  /// * 200 M entries sizes the UTXO map at 2^28 buckets (11.25 GiB, 44 + 1
+  /// * 200 M entries sizes the UTXO map at 2^28 buckets (12.25 GiB, 48 + 1
   ///   bytes each), room for 234.9 M entries; mainnet peaks at ~190 M. Any
   ///   value from 117.5 M to 234.9 M gives the same table; above that it
   ///   doubles.
@@ -150,6 +150,7 @@ enum Op {
   Insert {
     outpoint: OutPoint,
     value: u64,
+    script_hash: u32,
   },
   Spend {
     outpoint: OutPoint,
@@ -489,13 +490,14 @@ fn prepare(
   height: u32,
   hash: BlockHash,
   raw: &[u8],
-  created: &mut FxHashMap<OutPoint, (u64, usize)>,
+  created: &mut FxHashMap<OutPoint, (u64, u32, usize)>,
 ) -> anyhow::Result<PreparedBlock> {
   prepare_with(height, hash, raw, created, true)
 }
 
 /// Decodes a raw block exactly like the fast source's fetchers, without the
-/// UTXO value map: inputs spending outputs of earlier blocks keep value 0.
+/// UTXO value map: inputs spending outputs of earlier blocks keep value 0
+/// and script hash 0.
 /// `witness: false` skips reading sighash flags and envelopes. For
 /// validation and benchmarks.
 #[doc(hidden)]
@@ -512,7 +514,7 @@ fn prepare_with(
   height: u32,
   hash: BlockHash,
   raw: &[u8],
-  created: &mut FxHashMap<OutPoint, (u64, usize)>,
+  created: &mut FxHashMap<OutPoint, (u64, u32, usize)>,
   witness: bool,
 ) -> anyhow::Result<PreparedBlock> {
   let block = consensus::deserialize::<Block>(raw)
@@ -560,11 +562,11 @@ fn prepare_with(
         .enumerate()
         .map(|(vin, input)| {
           let outpoint = input.previous_output;
-          let value = match created.remove(&outpoint) {
-            Some((value, op)) => {
+          let (value, script_hash) = match created.remove(&outpoint) {
+            Some((value, script_hash, op)) => {
               ops[op] = Op::Cancelled;
               intra_block_spends += 1;
-              value
+              (value, script_hash)
             }
             None => {
               ops.push(Op::Spend {
@@ -572,12 +574,13 @@ fn prepare_with(
                 tx: index as u32,
                 vin: vin as u32,
               });
-              0
+              (0, 0)
             }
           };
           ResolvedInput {
             previous_output: outpoint,
             value,
+            script_hash,
             sighash: witness
               .then(|| input_sighash(&input.script_sig, &input.witness))
               .flatten(),
@@ -598,8 +601,13 @@ fn prepare_with(
           vout: vout as u32,
         };
         let value = output.value.to_sat();
-        created.insert(outpoint, (value, ops.len()));
-        ops.push(Op::Insert { outpoint, value });
+        let script_hash = script_hash(&output.script_pubkey);
+        created.insert(outpoint, (value, script_hash, ops.len()));
+        ops.push(Op::Insert {
+          outpoint,
+          value,
+          script_hash,
+        });
       }
     }
 
@@ -729,8 +737,12 @@ impl Resolver {
 
     for op in &ops {
       match *op {
-        Op::Insert { outpoint, value } => {
-          if self.map.insert(outpoint, value).is_some() {
+        Op::Insert {
+          outpoint,
+          value,
+          script_hash,
+        } => {
+          if self.map.insert(outpoint, value, script_hash).is_some() {
             log::info!(
               "block {}: output {outpoint} replaces an unspent output with the same outpoint (BIP30)",
               block.height
@@ -740,7 +752,7 @@ impl Resolver {
         }
         Op::Spend { outpoint, tx, vin } => {
           let tx = &mut block.txs[tx as usize];
-          let Some(value) = self.map.remove(&outpoint) else {
+          let Some((value, script_hash)) = self.map.remove(&outpoint) else {
             return Err(anyhow!(
               "block {} ({}): input {vin} of transaction {} spends {outpoint}, which is not in the UTXO set",
               block.height,
@@ -748,7 +760,9 @@ impl Resolver {
               tx.txid,
             ));
           };
-          tx.inputs[vin as usize].value = value;
+          let input = &mut tx.inputs[vin as usize];
+          input.value = value;
+          input.script_hash = script_hash;
         }
         Op::Cancelled => unreachable!(),
       }
@@ -874,10 +888,32 @@ mod tests {
     }
   }
 
+  /// An output whose script depends on its value, so script hashes differ.
   fn out(value: u64) -> TxOut {
     TxOut {
       value: Amount::from_sat(value),
-      script_pubkey: ScriptBuf::from_bytes(vec![0x51]),
+      script_pubkey: ScriptBuf::from_bytes([&[0x51][..], &value.to_le_bytes()].concat()),
+    }
+  }
+
+  /// Every input carries the script hash of the output it spends.
+  fn check_script_hashes(blocks: &[ResolvedBlock]) {
+    let mut outputs = std::collections::HashMap::new();
+    for block in blocks {
+      for tx in &block.txs {
+        for input in &tx.inputs {
+          let expected = outputs
+            .remove(&input.previous_output)
+            .expect("spent output exists");
+          assert_eq!(input.script_hash, expected, "{}", input.previous_output);
+        }
+        for (vout, output) in tx.outputs.iter().enumerate() {
+          outputs.insert(
+            OutPoint::new(tx.txid, vout as u32),
+            script_hash(&output.script_pubkey),
+          );
+        }
+      }
     }
   }
 
@@ -953,6 +989,7 @@ mod tests {
       .into_iter()
       .collect::<anyhow::Result<Vec<_>>>()
       .unwrap();
+    check_script_hashes(&blocks);
 
     assert!(blocks[0].txs[0].inputs.is_empty());
     assert!(blocks[1].txs[0].inputs.is_empty());
@@ -1035,6 +1072,7 @@ mod tests {
       .into_iter()
       .collect::<anyhow::Result<Vec<_>>>()
       .unwrap();
+    check_script_hashes(&blocks);
     assert_eq!(resolver.shared.overwrites.load(Ordering::Relaxed), 2);
     assert_eq!(value(&blocks[4], 1, 0), 25);
     // dup:0, b2 cb, b4 cb, spender:0 — the overwritten entries are gone.
