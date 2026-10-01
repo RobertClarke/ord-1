@@ -107,8 +107,12 @@ tip every 2 s when live, or blocks delivered during the fast sync). Both are
 Row definitions, in `RowId` order.
 ```json
 [{ "id": "uncommon", "label": "Uncommon", "all_of": ["uncommon"], "any_of": [],
-   "heights": null, "range": false, "total": 6930000 }]
+   "heights": null, "range": false, "market": true, "total": 6930000 }]
 ```
+`market` (additive): whether sales are priced per the row's sats (`unit` in
+`Sale`). `false` for label rows that name the same circulating sats as
+another row: `block9_1st_tx` holds every block 9 sat that ever moved (the
+other 40 BTC of block 9 never did), so its sales are priced as `block9`.
 
 ### `GET /supply`
 ```json
@@ -265,16 +269,19 @@ SINGLE|ANYONECANPAY, an accepted offer, a legacy Magic Eden trade, …).
   seller's own sats that went into it). `premium` = `price` − `seller.value`
   (what was paid for the sats themselves; a signed number);
   `unit.price` = `premium` / `unit.count` (integer division) for the sale's
-  unit row: its rarest pure row (below), or, for a mixed bundle that no row
-  holds whole, its rarest row with sold sats (rarest: fewest sats that will
-  ever exist, `total` in `/rows`, ties to the first row). So a block 9 /
-  450x chunk gets a per-sat price even when it holds a palindrome or an
-  alpha. `unit` is `null` only for a sale whose sats count toward no row.
-* `pure_rows` (additive): the rows every sold sat belongs to, rarest first —
-  a block 9 chunk is pure for `block9` (and `block9_1st_tx` / `450x` when
-  inside them), a single 2009 alpha uncommon for `uncommon`, `alpha`,
-  `alpha_uncommon`, `uncommon_2009`, …; empty for a mixed bundle. The sale
-  can be charted under each of them, at `premium` / its `rows` count.
+  unit row: its rarest pure market row (`market` in `/rows`; pure: below),
+  or, for a mixed bundle that no market row holds whole, its rarest market
+  row with sold sats (rarest: fewest sats that will ever exist, `total` in
+  `/rows`, ties to the first row). So a block 9 chunk gets a per-sat price
+  as `block9` (or `450x` inside block 9's first BTC) even when it holds a
+  palindrome or an alpha. `unit` is `null` only for a sale whose sats count
+  toward no row.
+* `pure_rows` (additive): the rows every sold sat belongs to, rarest first,
+  label rows included — a block 9 chunk is pure for `block9` (and
+  `block9_1st_tx` / `450x` when inside them), a single 2009 alpha uncommon
+  for `uncommon`, `alpha`, `alpha_uncommon`, `uncommon_2009`, …; empty for
+  a mixed bundle. The sale can be charted under each of them, at `premium`
+  / its `rows` count.
 * `pieces`: the sold UTXO's tracked pieces (offsets within that UTXO); for a
   sale that sells only part of a UTXO (a split sale), only the pieces that
   left the seller.

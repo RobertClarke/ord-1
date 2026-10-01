@@ -236,6 +236,16 @@ pub struct Row {
   pub sats: Option<(u64, u64)>,
   /// Pure range-membership row, counted by overlap length.
   pub range: bool,
+  /// A market row: a sale can be priced per its sats (`market::units`).
+  /// `false` for a label row naming the same circulating sats as another
+  /// row (`block9_1st_tx`: every block 9 sat that ever moved is in it).
+  /// Changes no index, so it is not part of the catalog fingerprint.
+  #[serde(skip_serializing, default = "market_default")]
+  pub market: bool,
+}
+
+fn market_default() -> bool {
+  true
 }
 
 /// Types that `normalizePaliblockTypes` lets `paliblock` coexist with.

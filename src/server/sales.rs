@@ -151,7 +151,19 @@ impl Render<'_> {
     let sold = pieces.iter().map(|piece| piece.len).sum();
     let premium = i128::from(sale.price) - i128::from(sale.seller.value);
     let premium = i64::try_from(premium).unwrap_or(if premium < 0 { i64::MIN } else { i64::MAX });
-    let unit = unit_row(&counts, sold, |row| self.rank(row)).map(|row| {
+    let unit = unit_row(
+      &counts,
+      sold,
+      |row| self.rank(row),
+      |row| {
+        self
+          .catalog
+          .rows()
+          .get(usize::from(row))
+          .is_some_and(|row| row.market)
+      },
+    )
+    .map(|row| {
       let count = counts[usize::from(row)];
       UnitJson {
         row: self.row_name(row),

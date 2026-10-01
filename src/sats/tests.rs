@@ -591,6 +591,23 @@ fn fingerprint() {
     ..TrackerConfig::default()
   };
   assert_ne!(a, SatCatalog::new(&config).unwrap().fingerprint());
+  // Whether a row prices sales is serve-time only: no reindex.
+  let mut rows = default_rows();
+  for row in &mut rows {
+    row.market = !row.market;
+  }
+  assert_eq!(
+    a,
+    SatCatalog::with_rows(&TrackerConfig::default(), rows)
+      .unwrap()
+      .fingerprint()
+  );
+  // Pinned (rules version 3): indexes built under another fingerprint are
+  // refused, so a change here means a reindex.
+  assert_eq!(
+    a,
+    "6385347665d0f46a32d7200649c84768a828fa473bfa0b0b1ee4c0f4abeece2c"
+  );
 }
 
 #[test]
@@ -603,6 +620,7 @@ fn invalid_rows_and_configs_are_rejected() {
     heights: None,
     sats: None,
     range,
+    market: true,
   };
   let config = TrackerConfig::default();
   assert!(SatCatalog::with_rows(&config, vec![row("a", &[SatType::Pizza], false)]).is_err());

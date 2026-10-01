@@ -45,6 +45,7 @@ impl FakeCatalog {
       any_of: Vec::new(),
       heights: None,
       range,
+      market: true,
     };
     let mut rows = vec![
       row("uncommon", &["uncommon"], false),
@@ -857,7 +858,7 @@ fn rows() {
   assert_eq!(
     rows[0],
     json!({ "id": "uncommon", "label": "UNCOMMON", "all_of": ["uncommon"], "any_of": [],
-            "heights": null, "range": false, "total": 6_930_000 })
+            "heights": null, "range": false, "market": true, "total": 6_930_000 })
   );
   assert_eq!(rows[2]["range"], true);
   assert_eq!(rows[3]["heights"], json!([0, 5923]));

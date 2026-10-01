@@ -19,6 +19,8 @@ pub struct RowInfo {
   pub any_of: Vec<&'static str>,
   pub heights: Option<(u32, u32)>,
   pub range: bool,
+  /// A market row (sales are priced per its sats); `false` for label rows.
+  pub market: bool,
 }
 
 pub trait Catalog: Send + Sync {
@@ -74,6 +76,7 @@ impl SatCatalogView {
         any_of: names(&row.any_of),
         heights: row.heights,
         range: row.range,
+        market: row.market,
       })
       .collect::<Vec<RowInfo>>();
     let totals = (0..rows.len())
@@ -164,6 +167,17 @@ mod tests {
     let block9 = view.row_id("block9").unwrap();
     assert!(view.rows()[usize::from(block9)].range);
     assert_eq!(view.row_total(block9), 5_000_000_000);
+    // Market rows price sales; block9_1st_tx is a label of block 9's
+    // circulating sats.
+    assert!(view.rows()[usize::from(block9)].market);
+    assert!(view.rows()[usize::from(uncommon)].market);
+    let first_tx = view.row_id("block9_1st_tx").unwrap();
+    assert!(!view.rows()[usize::from(first_tx)].market);
+    assert_eq!(
+      view.rows().iter().filter(|row| !row.market).count(),
+      1,
+      "the only label row"
+    );
     assert_eq!(view.row_id("nope"), None);
     assert!(!view.fingerprint().is_empty());
   }

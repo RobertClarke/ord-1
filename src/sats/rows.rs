@@ -16,6 +16,7 @@ fn row(id: &str, label: &str, all_of: &[SatType]) -> Row {
     heights: None,
     sats: None,
     range: false,
+    market: true,
   }
 }
 
@@ -79,6 +80,7 @@ pub fn default_rows() -> Vec<Row> {
     range("450x", "450x", Block450x),
     Row {
       sats: Some(BLOCK9_FIRST_TX),
+      market: false,
       ..range("block9_1st_tx", "Block 9, 1st tx", Block9)
     },
     row("block9_alpha", "Block 9 alpha", &[Block9, Alpha]),

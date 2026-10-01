@@ -1275,6 +1275,22 @@ fn sale_units_of_ranges_and_combinations() {
 }
 
 #[test]
+fn unit_rows_skip_label_rows() {
+  // Rows 0 (a label, rarest), 1 and 2 (market rows); ranked by id.
+  let market = |row: crate::model::RowId| row != 0;
+  let rank = |row: crate::model::RowId| row;
+  // Pure for the label and row 2: row 2 prices it.
+  assert_eq!(unit_row(&[10, 3, 10], 10, rank, market), Some(2));
+  // Pure for the label only: the rarest market row with sold sats.
+  assert_eq!(unit_row(&[10, 3, 4], 10, rank, market), Some(1));
+  // Only label sats: the label after all.
+  assert_eq!(unit_row(&[10, 0, 0], 10, rank, market), Some(0));
+  assert_eq!(unit_row(&[0, 0, 0], 0, rank, market), None);
+  // The pure rows list labels too, rarest first.
+  assert_eq!(pure_rows(&[10, 3, 10], 10, rank), [0, 2]);
+}
+
+#[test]
 fn sale_units_by_pure_rows() {
   let ctx = context();
   let catalog = &ctx.catalog;
@@ -1321,14 +1337,16 @@ fn sale_units_by_pure_rows() {
   assert_eq!(unit(&chunk), ("450x".into(), 1_000, 2_000));
   let palindrome = catalog.row_id("block9_palindrome").unwrap();
   assert!(catalog.row_rank(palindrome) < catalog.row_rank(catalog.row_id("450x").unwrap()));
-  // Past the first BTC of block 9 (this chunk starts with an alpha), per sat
-  // of block 9's first transaction.
+  // Past the first BTC of block 9 (this chunk starts with an alpha), per
+  // block 9 sat: block9_1st_tx, holding every block 9 sat that ever moved,
+  // is a label row, listed as pure but never the unit.
   let later = sale(vec![piece(0, 45_200_000_000, 1_000)], 1_000, 1_001_000);
   assert_eq!(
     ids(sale_pure_rows(&later, catalog)),
     ["block9_1st_tx", "block9"]
   );
-  assert_eq!(unit(&later), ("block9_1st_tx".into(), 1_000, 1_000));
+  assert!(!catalog.rows()[usize::from(catalog.row_id("block9_1st_tx").unwrap())].market);
+  assert_eq!(unit(&later), ("block9".into(), 1_000, 1_000));
 
   // A single 2009 alpha uncommon (block 500's first sat) is pure for every
   // row it counts toward; the rarest prices it.
