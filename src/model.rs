@@ -578,8 +578,7 @@ mod tests {
 
   #[test]
   fn collector_consolidations_are_extracted() {
-    // a collector's address: ~330 sats of padding per
-    // rare sat.
+    // A collector's consolidations: ~330 sats of padding per rare sat.
     let config = TrackerConfig::default();
     for (sats, value) in [(100, 33_000), (200, 66_000), (5_000, 1_924_843)] {
       let consolidation = utxo(value, &singles(sats));
