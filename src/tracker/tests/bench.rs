@@ -206,7 +206,19 @@ fn tracker_throughput() {
         }
       }
       fees += fee;
-      txs.push(tx(txid, &inputs, outputs));
+      let mut resolved = tx(txid, &inputs, outputs);
+      if tracked {
+        // Half the tracked spends look like listings, a tenth inscribe.
+        if rng.below(2) == 0 {
+          resolved.inputs[0].sighash = Some(crate::market::LISTING_SIGHASH);
+        }
+        if rng.below(10) == 0 {
+          resolved.inputs[0]
+            .envelopes
+            .push(crate::model::Envelope { pointer: None });
+        }
+      }
+      txs.push(resolved);
     }
     let claim = subsidy(chain.next.into()) + fees;
     let mut all = vec![coinbase(
@@ -218,13 +230,28 @@ fn tracker_throughput() {
   }
   eprintln!("generated {blocks} blocks in {:.2?}", t.elapsed());
 
+  let ctx = crate::market::MarketContext {
+    catalog: tracker.catalog().clone(),
+    marketplaces: crate::market::Marketplaces::default(),
+  };
   let t = Instant::now();
   let mut moves = 0;
+  let mut analyzing = std::time::Duration::ZERO;
+  let (mut sales, mut inscriptions) = (0, 0);
   for block in &generated {
     let delta = tracker.apply_block(block).unwrap();
     moves += delta.moves.len();
+    let a = Instant::now();
+    let market = crate::market::analyze(block, &delta, &ctx);
+    analyzing += a.elapsed();
+    sales += market.sales.len();
+    inscriptions += market.inscriptions.len();
   }
-  let elapsed = t.elapsed();
+  let elapsed = t.elapsed() - analyzing;
+  eprintln!(
+    "market::analyze: {analyzing:.2?} for {blocks} blocks ({:.1}% of applying them), {sales} sales, {inscriptions} inscriptions",
+    100.0 * analyzing.as_secs_f64() / elapsed.as_secs_f64()
+  );
   let txs = u64::from(blocks) * txs_per_block;
   eprintln!(
     "applied {blocks} blocks ({txs} txs, {moves} moves) in {elapsed:.2?}: {:.0} blocks/s, {:.2} M txs/s; {} tracked UTXOs, {} pieces",

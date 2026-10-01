@@ -1,0 +1,4 @@
+{
+  "comment": "Marketplace fee addresses by height range; schema in src/market/marketplaces.rs, sources in docs/MARKETPLACES.md.",
+  "marketplaces": []
+}
