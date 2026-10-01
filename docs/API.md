@@ -220,9 +220,9 @@ up to tens of thousands of pieces, which every line would repeat); add
 Sales and inscriptions of tracked sats, detected per block by
 `market::analyze` and stored with the block: kept forever (whatever
 `--moves-retention`), rolled back with it on a reorg. Field names are the
-contract with the dashboard; the price semantics (`price` /
-`seller_proceeds` / `fees`) are calibrated against Magisat's sales history
-and may gain fields, not lose them.
+contract with the dashboard; the detection rules and price semantics are
+calibrated against Magisat's sales history (docs/SALES-SHAPES.md) and
+on-chain marketplace fee addresses (data/marketplaces.json).
 
 **Sale** — one tracked-sat sale: a seller's input carrying tracked sats, paid
 for in the same transaction (a marketplace listing signed
@@ -230,7 +230,7 @@ SINGLE|ANYONECANPAY, an accepted offer, a legacy Magic Eden trade, …).
 ```json
 {
   "txid": "…", "height": 968899, "time": 1790000000, "tx_index": 12, "vin": 0,
-  "marketplace": "magisat" | "magic_eden" | "okx" | "unisat" | "satflow" | "ordinals_wallet" | "unknown",
+  "marketplace": "magisat" | "magic_eden" | "satflow" | "ordinals_wallet" | "ord_net" | "gamma" | "ordswap" | "goldmine" | "tx_dev" | "unisat" | "unknown",
   "kind": "listing" | "offer" | "unknown",
   "seller": { "address": "bc1p…", "script_pubkey": "…", "outpoint": "txid:vout", "value": 546 },
   "buyer": { "address": "bc1p…", "script_pubkey": "…", "outpoint": "txid:vout", "value": 546 } | null,
@@ -251,15 +251,26 @@ SINGLE|ANYONECANPAY, an accepted offer, a legacy Magic Eden trade, …).
   that received the sold sats (`null` if none did, e.g. they went to fees);
   its `value` is `null` when unknown. `payment_vout`: the output paying the
   seller, when identified (additive).
-* `price`: what the buyer paid for this listing (seller proceeds plus the
-  marketplace fees attributable to it); `premium` = `price` − `seller.value`
+* `marketplace`: an id from `data/marketplaces.json`, by the fee output (or
+  marker / layout) the transaction carries; `unknown` when it carries none
+  we know (e.g. OKX fills and Magisat fees below dust have no fee output).
+* `price`: the sale price as the venue states it. Magisat: its listing price
+  — the seller's payment plus Magisat's maker fee (⌊payment / 199⌋ from
+  height 861,287), excluding the buyer's fee; Magisat offers: the seller's
+  payment plus half the fee output. Elsewhere: the seller's payment plus the
+  marketplace fees attributable to the listing (a shared fee output is split
+  over a transaction's sales in proportion to their payments).
+  `seller_proceeds`: what the seller netted (the payment output, less the
+  seller's own sats that went into it). `premium` = `price` − `seller.value`
   (what was paid for the sats themselves; a signed number);
   `unit.price` = `premium` / `unit.count` (integer division) for the sale's
   primary row: its rarest row, the one with the fewest sats that will ever
   exist (`total` in `/rows`, ties to the first row), so a block 9 / 450x
   chunk without rarer sats gets a per-sat price. `unit` is `null` only for a
   sale whose sats count toward no row.
-* `pieces`: the sold UTXO's tracked pieces (offsets within that UTXO).
+* `pieces`: the sold UTXO's tracked pieces (offsets within that UTXO); for a
+  sale that sells only part of a UTXO (a split sale), only the pieces that
+  left the seller.
 * `rows`: the sold sats per row, as in `Output`.
 * `sats`: the individually special sats sold — sats that count toward a row
   other than the pure-range rows (`range: true` in `/rows`), so a block 9
