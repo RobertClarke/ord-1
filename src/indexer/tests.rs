@@ -4,7 +4,8 @@ use {
   super::*,
   crate::{
     model::{
-      Move, MoveInput, MoveOutput, Piece, ResolvedTx, RowDelta, RowStats, TrackedUtxo, UtxoKind,
+      InscriptionEvent, Move, MoveInput, MoveOutput, Piece, ResolvedTx, RowDelta, RowStats, Sale,
+      SaleKind, TrackedUtxo, UtxoKind,
     },
     store::{MovesRetention, StoreOptions},
   },
@@ -376,6 +377,11 @@ impl Engine for FakeEngine {
     })
   }
 
+  /// Every spend is a sale; every fourth block inscribes its minted sat.
+  fn analyze(&self, _block: &ResolvedBlock, delta: &BlockDelta) -> MarketDelta {
+    fake_market(delta)
+  }
+
   fn undo_block(&mut self, delta: &BlockDelta) -> anyhow::Result<()> {
     ensure!(
       Some(delta.height) == self.height && Some(delta.hash) == self.hash,
@@ -413,6 +419,38 @@ impl Engine for FakeEngine {
   fn piece_count(&self) -> usize {
     self.utxos.values().map(|utxo| utxo.pieces.len()).sum()
   }
+}
+
+pub(crate) fn fake_market(delta: &BlockDelta) -> MarketDelta {
+  let mut market = MarketDelta::default();
+  for m in delta.moves.iter().filter(|m| !m.coinbase) {
+    for input in &m.inputs {
+      market.sales.push(Sale {
+        txid: m.txid,
+        tx_index: m.tx_index,
+        vin: input.vin,
+        kind: SaleKind::Listing,
+        marketplace: "fake".into(),
+        seller_outpoint: input.outpoint,
+        seller: input.utxo.clone(),
+        payment_vout: None,
+        price: 10_000,
+        seller_proceeds: 9_000,
+        fees: 1_000,
+        buyer_vout: m.outputs.first().map(|output| output.vout),
+        buyer_script: m.outputs.first().map(|output| output.script_pubkey.clone()),
+      });
+    }
+  }
+  if delta.height.is_multiple_of(4) {
+    let coinbase = delta.moves.iter().find(|m| m.coinbase).unwrap();
+    market.inscriptions.push(InscriptionEvent {
+      sat: coinbase.mined[0].start,
+      txid: coinbase.txid,
+      vin: 0,
+    });
+  }
+  market
 }
 
 pub(crate) struct FakeFactory;
@@ -534,6 +572,49 @@ impl Context {
     assert_eq!(status.bitcoind_height, Some(tip));
     assert_eq!(status.tracked_utxos, snapshot.utxos.len() as u64);
     assert_eq!(self.published.supply().height, Some(tip));
+
+    // Market rows: those of the chain as it is now, none of rolled-back
+    // blocks.
+    let blocks = self.node.blocks_vec();
+    let reader = self.store.reader().unwrap();
+    let sales = reader
+      .sales((0, 0, 0), tip)
+      .unwrap()
+      .collect::<anyhow::Result<Vec<_>>>()
+      .unwrap();
+    assert_eq!(sales.len(), tip as usize);
+    for (sale, height) in sales.iter().zip(1..) {
+      assert_eq!(sale.height, height);
+      let spend = Txid::from_raw_hash(sha256d::Hash::hash(
+        blocks[height as usize].txs[0].txid.as_byte_array(),
+      ));
+      assert_eq!(sale.sale.txid, spend, "sale of block {height}");
+      assert_eq!(
+        sale.sale.seller_outpoint.txid,
+        blocks[height as usize - 1].txs[0].txid
+      );
+      assert_eq!(sale.buyer_value, Some(5_000_000_000));
+      assert_eq!(reader.sales_for_tx(spend).unwrap(), vec![sale.clone()]);
+    }
+    let inscribed = reader
+      .inscribed_from(0)
+      .unwrap()
+      .collect::<anyhow::Result<Vec<_>>>()
+      .unwrap();
+    let expected = (0..=tip)
+      .filter(|height| height % 4 == 0)
+      .map(|height| u64::from(height) * 5_000_000_000)
+      .collect::<Vec<u64>>();
+    assert_eq!(
+      inscribed.iter().map(|(sat, _)| *sat).collect::<Vec<u64>>(),
+      expected
+    );
+    for (sat, inscribed) in inscribed {
+      let height = u32::try_from(sat / 5_000_000_000).unwrap();
+      assert_eq!(inscribed.count, 1);
+      assert_eq!(inscribed.first_height, height);
+      assert_eq!(inscribed.first_txid, blocks[height as usize].txs[0].txid);
+    }
   }
 }
 

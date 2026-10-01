@@ -24,9 +24,23 @@
 //! | `row_history` | (row `u16`, height `u32`) | `RowStats` after the block, 8 varints; only rows the block changed |
 //! | `undo` | height `u32` | the whole `BlockDelta`, self-contained; the last `UNDO_DEPTH` blocks |
 //! | `unreferenced` | outpoint (36 bytes) | height of the block that created it: tracked UTXOs that no move output of their block matches (normally empty); their spends are stored in full |
+//! | `sales` | (height `u32`, tx_index `u32`, vin `u32`) | a `Sale` (below), kept forever whatever the moves retention |
+//! | `sale_txs` | txid (32 bytes) | (height, tx_index) of the transaction's sales |
+//! | `sale_pieces` | (first sat of a sold piece `u64`, height, tx_index, vin) | the piece's length: finds the sales whose pieces cover a sat |
+//! | `inscribed` | sat `u64` | count (envelopes that landed on it), first txid, first height: tracked sats only |
 //!
 //! Pieces are encoded as a count and `(offset gap, start, len)` triples, the
 //! gap being the distance from the previous piece's `offset_end()`.
+//!
+//! **Sales and inscriptions** (`market::analyze`, docs/API.md "Sales and
+//! inscriptions") are written with their block and reverted with it: the
+//! undo record carries the block's `MarketDelta`. A sale record is the
+//! `Sale` (version byte, txid, tx_index, vin, kind, marketplace, seller
+//! outpoint and UTXO, payment vout, price, proceeds, fees, buyer vout and
+//! script) plus the buyer output's value, read from the block's moves at
+//! commit. Pieces of different sales overlap (a sat sells many times), so
+//! `sale_pieces` is scanned from `sat - longest sold piece + 1`
+//! (`sale_piece_max_len` in `meta`) to `sat`.
 //!
 //! `meta` keys: `schema_version` (u32 LE), `meta` (`IndexMeta` as JSON),
 //! `mined` (count ‖ varint per row: the per-row mined counters), `lost_sats`
@@ -64,18 +78,18 @@ pub(crate) mod tests;
 
 use {
   self::codec::{
-    Enc, Loc, OutPointKey, RefPolicy, decode_loc, decode_lost, decode_moves, decode_row_stats,
-    decode_u64s, decode_undo, decode_utxo, encode_loc, encode_lost, encode_moves, encode_row_stats,
-    encode_u64s, encode_undo, encode_utxo, find_output, header_bytes, header_from_bytes,
-    moves_have_external_refs, outpoint_from_key, outpoint_key, overwritten_from_key,
-    overwritten_key, script_key,
+    Enc, Loc, OutPointKey, RefPolicy, decode_inscribed, decode_loc, decode_lost, decode_moves,
+    decode_row_stats, decode_sale, decode_u64s, decode_undo, decode_utxo, encode_inscribed,
+    encode_loc, encode_lost, encode_moves, encode_row_stats, encode_sale, encode_u64s, encode_undo,
+    encode_utxo, find_output, header_bytes, header_from_bytes, moves_have_external_refs,
+    outpoint_from_key, outpoint_key, overwritten_from_key, overwritten_key, script_key,
   },
   crate::model::{
-    BlockDelta, LocationKind, Move, Piece, RowId, RowStats, SatLocation, TrackedUtxo,
-    TrackerConfig, TrackerSnapshot, UtxoKind,
+    BlockDelta, LocationKind, MarketDelta, Move, Piece, RowId, RowStats, Sale, SatLocation,
+    TrackedUtxo, TrackerConfig, TrackerSnapshot, UtxoKind,
   },
   anyhow::{Context, bail, ensure},
-  bitcoin::{BlockHash, OutPoint, Script, block::Header},
+  bitcoin::{BlockHash, OutPoint, Script, Txid, block::Header, hashes::Hash},
   rayon::prelude::*,
   redb::{
     Database, Durability, MultimapTableDefinition, MultimapTableHandle, ReadTransaction,
@@ -93,8 +107,9 @@ use {
   },
 };
 
-/// Bumped whenever a table layout or encoding changes.
-pub const SCHEMA_VERSION: u32 = 1;
+/// Bumped whenever a table layout or encoding changes (2: sales and
+/// inscriptions).
+pub const SCHEMA_VERSION: u32 = 2;
 
 /// Undo records are kept for this many blocks below and including the tip.
 pub const UNDO_DEPTH: u32 = 144;
@@ -111,6 +126,10 @@ const MOVES: TableDefinition<u32, &[u8]> = TableDefinition::new("moves");
 const ROW_HISTORY: TableDefinition<(u16, u32), &[u8]> = TableDefinition::new("row_history");
 const UNDO: TableDefinition<u32, &[u8]> = TableDefinition::new("undo");
 const UNREFERENCED: TableDefinition<&OutPointKey, u32> = TableDefinition::new("unreferenced");
+const SALES: TableDefinition<SaleKey, &[u8]> = TableDefinition::new("sales");
+const SALE_TXS: TableDefinition<&[u8; 32], (u32, u32)> = TableDefinition::new("sale_txs");
+const SALE_PIECES: TableDefinition<(u64, u32, u32, u32), u64> = TableDefinition::new("sale_pieces");
+const INSCRIBED: TableDefinition<u64, &[u8]> = TableDefinition::new("inscribed");
 
 const KEY_SCHEMA_VERSION: &str = "schema_version";
 const KEY_META: &str = "meta";
@@ -118,6 +137,7 @@ const KEY_MINED: &str = "mined";
 const KEY_LOST_SATS: &str = "lost_sats";
 const KEY_MOVES_FLOOR: &str = "moves_floor";
 const KEY_MOVES_REFS: &str = "moves_refs";
+const KEY_SALE_PIECE_MAX_LEN: &str = "sale_piece_max_len";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct IndexMeta {
@@ -349,6 +369,10 @@ impl Store {
     tx.open_table(ROW_HISTORY)?;
     tx.open_table(UNDO)?;
     tx.open_table(UNREFERENCED)?;
+    tx.open_table(SALES)?;
+    tx.open_table(SALE_TXS)?;
+    tx.open_table(SALE_PIECES)?;
+    tx.open_table(INSCRIBED)?;
     tx.commit()?;
     Ok(())
   }
@@ -367,6 +391,10 @@ impl Store {
     tx.delete_table(ROW_HISTORY)?;
     tx.delete_table(UNDO)?;
     tx.delete_table(UNREFERENCED)?;
+    tx.delete_table(SALES)?;
+    tx.delete_table(SALE_TXS)?;
+    tx.delete_table(SALE_PIECES)?;
+    tx.delete_table(INSCRIBED)?;
     tx.commit()?;
     self.create_tables()
   }
@@ -485,6 +513,7 @@ impl Store {
     self
       .commit_with(
         deltas,
+        &[],
         mined,
         fast_sync_complete,
         &CommitOptions {
@@ -495,13 +524,24 @@ impl Store {
       .map(|_| ())
   }
 
+  /// `markets` holds each block's `MarketDelta` (same length as `deltas`),
+  /// or is empty for blocks without market data.
   pub fn commit_with(
     &self,
     deltas: &[BlockDelta],
+    markets: &[MarketDelta],
     mined: &[u64],
     fast_sync_complete: bool,
     options: &CommitOptions,
   ) -> anyhow::Result<CommitStats> {
+    ensure!(
+      markets.is_empty() || markets.len() == deltas.len(),
+      "{} market deltas for {} blocks",
+      markets.len(),
+      deltas.len()
+    );
+    let no_market = MarketDelta::default();
+    let market = |i: usize| markets.get(i).unwrap_or(&no_market);
     let start = Instant::now();
     let mut stats = CommitStats {
       blocks: deltas.len(),
@@ -674,12 +714,22 @@ impl Store {
         }
         let encoded = deltas
           .par_iter()
-          .filter(|delta| delta.height >= undo_from)
-          .map(|delta| (delta.height, encode_undo(delta)))
+          .enumerate()
+          .filter(|(_, delta)| delta.height >= undo_from)
+          .map(|(i, delta)| (delta.height, encode_undo(delta, market(i))))
           .collect::<Vec<_>>();
         for (height, bytes) in encoded {
           undo.insert(height, bytes.as_slice())?;
         }
+      }
+
+      if markets.iter().any(|market| *market != no_market) {
+        let mut max_len = get_u64(&tx.open_table(META)?, KEY_SALE_PIECE_MAX_LEN)?;
+        for (i, delta) in deltas.iter().enumerate() {
+          write_market(&tx, delta, market(i), &mut max_len)?;
+        }
+        tx.open_table(META)?
+          .insert(KEY_SALE_PIECE_MAX_LEN, max_len.to_le_bytes().as_slice())?;
       }
 
       meta.height = Some(tip);
@@ -718,13 +768,15 @@ impl Store {
       return Ok(None);
     };
 
-    let delta = {
+    let (delta, market) = {
       let undo = tx.open_table(UNDO)?;
       let Some(bytes) = undo.get(height)? else {
         return Ok(None);
       };
       decode_undo(bytes.value(), height)?
     };
+
+    revert_market(&tx, height, &market)?;
 
     {
       let mut utxos = tx.open_table(UTXOS)?;
@@ -889,6 +941,10 @@ impl Store {
     table!(ROW_HISTORY);
     table!(UNDO);
     table!(UNREFERENCED);
+    table!(SALES);
+    table!(SALE_TXS);
+    table!(SALE_PIECES);
+    table!(INSCRIBED);
 
     tx.abort()?;
     Ok(info)
@@ -914,6 +970,152 @@ fn read_meta(
   Ok(Some(
     serde_json::from_slice(value.value()).context("corrupt index meta")?,
   ))
+}
+
+fn get_u64(
+  table: &impl ReadableTable<&'static str, &'static [u8]>,
+  key: &str,
+) -> anyhow::Result<u64> {
+  let Some(value) = table.get(key)? else {
+    return Ok(0);
+  };
+  Ok(u64::from_le_bytes(
+    value
+      .value()
+      .try_into()
+      .with_context(|| format!("corrupt index meta `{key}`"))?,
+  ))
+}
+
+/// Key of a sale: (height, tx_index, vin), oldest first.
+pub type SaleKey = (u32, u32, u32);
+
+/// A sale as stored: the analyzer's `Sale`, its block, and the value of the
+/// buyer's output (from the block's moves).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StoredSale {
+  pub height: u32,
+  pub sale: Sale,
+  pub buyer_value: Option<u64>,
+}
+
+impl StoredSale {
+  pub fn key(&self) -> SaleKey {
+    (self.height, self.sale.tx_index, self.sale.vin)
+  }
+}
+
+/// The inscriptions on one tracked sat.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Inscribed {
+  /// Envelopes that landed on the sat (reinscriptions count).
+  pub count: u32,
+  pub first_txid: Txid,
+  pub first_height: u32,
+}
+
+/// Writes a block's sales and inscriptions; `max_len` tracks the longest
+/// sold piece.
+fn write_market(
+  tx: &WriteTransaction,
+  delta: &BlockDelta,
+  market: &MarketDelta,
+  max_len: &mut u64,
+) -> anyhow::Result<()> {
+  let height = delta.height;
+
+  if !market.sales.is_empty() {
+    let mut sales = tx.open_table(SALES)?;
+    let mut sale_txs = tx.open_table(SALE_TXS)?;
+    let mut sale_pieces = tx.open_table(SALE_PIECES)?;
+    for sale in &market.sales {
+      let buyer_value = sale.buyer_vout.and_then(|vout| {
+        delta
+          .moves
+          .iter()
+          .filter(|m| m.txid == sale.txid)
+          .flat_map(|m| &m.outputs)
+          .find(|output| output.vout == vout)
+          .map(|output| output.value)
+      });
+      sales.insert(
+        (height, sale.tx_index, sale.vin),
+        encode_sale(sale, buyer_value).as_slice(),
+      )?;
+      sale_txs.insert(sale.txid.as_byte_array(), (height, sale.tx_index))?;
+      for piece in &sale.seller.pieces {
+        sale_pieces.insert((piece.start, height, sale.tx_index, sale.vin), piece.len)?;
+        *max_len = (*max_len).max(piece.len);
+      }
+    }
+  }
+
+  if !market.inscriptions.is_empty() {
+    let mut inscribed = tx.open_table(INSCRIBED)?;
+    for event in &market.inscriptions {
+      let previous = match inscribed.get(event.sat)? {
+        Some(value) => Some(decode_inscribed(value.value())?),
+        None => None,
+      };
+      let value = match previous {
+        Some((count, txid, first)) => encode_inscribed(count.saturating_add(1), &txid, first),
+        None => encode_inscribed(1, &event.txid, height),
+      };
+      inscribed.insert(event.sat, value.as_slice())?;
+    }
+  }
+
+  Ok(())
+}
+
+/// Reverts `write_market` for the block at `height`.
+fn revert_market(tx: &WriteTransaction, height: u32, market: &MarketDelta) -> anyhow::Result<()> {
+  {
+    let mut sales = tx.open_table(SALES)?;
+    let mut sale_txs = tx.open_table(SALE_TXS)?;
+    let mut sale_pieces = tx.open_table(SALE_PIECES)?;
+    let mut removed = Vec::new();
+    for entry in sales.range((height, 0, 0)..=(height, u32::MAX, u32::MAX))? {
+      let (key, value) = entry?;
+      removed.push((key.value(), decode_sale(value.value())?.0));
+    }
+    for ((height, tx_index, vin), sale) in removed {
+      let points_here = sale_txs
+        .get(sale.txid.as_byte_array())?
+        .is_some_and(|value| value.value() == (height, tx_index));
+      if points_here {
+        sale_txs.remove(sale.txid.as_byte_array())?;
+      }
+      for piece in &sale.seller.pieces {
+        sale_pieces.remove((piece.start, height, tx_index, vin))?;
+      }
+      sales.remove((height, tx_index, vin))?;
+    }
+  }
+
+  if !market.inscriptions.is_empty() {
+    let mut inscribed = tx.open_table(INSCRIBED)?;
+    for event in market.inscriptions.iter().rev() {
+      let Some(value) = inscribed.get(event.sat)? else {
+        bail!(
+          "corrupt index: undoing an inscription on sat {} that is not recorded",
+          event.sat
+        );
+      };
+      let (count, txid, first) = decode_inscribed(value.value())?;
+      drop(value);
+      if count <= 1 {
+        inscribed.remove(event.sat)?;
+      } else {
+        inscribed.insert(
+          event.sat,
+          encode_inscribed(count - 1, &txid, first).as_slice(),
+        )?;
+      }
+    }
+  }
+
+  Ok(())
 }
 
 fn get_u32(
@@ -1487,6 +1689,134 @@ impl Reader {
       None => RowStats::default(),
     };
     Ok(Some((before, after)))
+  }
+
+  /// Sales from `from` (a sale key) to the end of block `to_height`, oldest
+  /// first.
+  pub fn sales(
+    &self,
+    from: SaleKey,
+    to_height: u32,
+  ) -> anyhow::Result<impl Iterator<Item = anyhow::Result<StoredSale>> + 'static> {
+    let table = self.tx.open_table(SALES)?;
+    let end = (to_height, u32::MAX, u32::MAX);
+    let range = table.range(from..=end.max(from))?;
+    Ok(range.map(|entry| {
+      let (key, value) = entry?;
+      let (height, _, _) = key.value();
+      let (sale, buyer_value) = decode_sale(value.value())?;
+      Ok(StoredSale {
+        height,
+        sale,
+        buyer_value,
+      })
+    }))
+  }
+
+  pub fn sale(&self, key: SaleKey) -> anyhow::Result<Option<StoredSale>> {
+    let table = self.tx.open_table(SALES)?;
+    let Some(value) = table.get(key)? else {
+      return Ok(None);
+    };
+    let (sale, buyer_value) = decode_sale(value.value())?;
+    Ok(Some(StoredSale {
+      height: key.0,
+      sale,
+      buyer_value,
+    }))
+  }
+
+  /// The sales a transaction made, by vin.
+  pub fn sales_for_tx(&self, txid: Txid) -> anyhow::Result<Vec<StoredSale>> {
+    let Some((height, tx_index)) = self
+      .tx
+      .open_table(SALE_TXS)?
+      .get(txid.as_byte_array())?
+      .map(|value| value.value())
+    else {
+      return Ok(Vec::new());
+    };
+    self
+      .sales((height, tx_index, 0), height)?
+      .take_while(|sale| {
+        sale
+          .as_ref()
+          .map_or(true, |sale| sale.sale.tx_index == tx_index)
+      })
+      .collect()
+  }
+
+  /// The sales whose sold pieces cover `sat`, oldest first.
+  pub fn sales_for_sat(&self, sat: u64) -> anyhow::Result<Vec<StoredSale>> {
+    let max_len = get_u64(&self.tx.open_table(META)?, KEY_SALE_PIECE_MAX_LEN)?;
+    if max_len == 0 {
+      return Ok(Vec::new());
+    }
+    let table = self.tx.open_table(SALE_PIECES)?;
+    let low = sat.saturating_sub(max_len - 1);
+    let mut keys = Vec::new();
+    for entry in table.range((low, 0, 0, 0)..=(sat, u32::MAX, u32::MAX, u32::MAX))? {
+      let (key, len) = entry?;
+      let (start, height, tx_index, vin) = key.value();
+      if sat - start < len.value() {
+        keys.push((height, tx_index, vin));
+      }
+    }
+    keys.sort_unstable();
+    keys.dedup();
+    let mut sales = Vec::with_capacity(keys.len());
+    for key in keys {
+      sales.push(
+        self
+          .sale(key)?
+          .with_context(|| format!("corrupt index: sale piece for missing sale {key:?}"))?,
+      );
+    }
+    Ok(sales)
+  }
+
+  pub fn inscribed(&self, sat: u64) -> anyhow::Result<Option<Inscribed>> {
+    let table = self.tx.open_table(INSCRIBED)?;
+    let Some(value) = table.get(sat)? else {
+      return Ok(None);
+    };
+    let (count, first_txid, first_height) = decode_inscribed(value.value())?;
+    Ok(Some(Inscribed {
+      count,
+      first_txid,
+      first_height,
+    }))
+  }
+
+  /// Inscribed sats in `[start, end)`.
+  pub fn inscribed_in(&self, start: u64, end: u64) -> anyhow::Result<Vec<(u64, Inscribed)>> {
+    if start >= end {
+      return Ok(Vec::new());
+    }
+    self
+      .inscribed_from(start)?
+      .take_while(|entry| entry.as_ref().map_or(true, |(sat, _)| *sat < end))
+      .collect()
+  }
+
+  /// Every inscribed sat from `from` on, in sat order.
+  pub fn inscribed_from(
+    &self,
+    from: u64,
+  ) -> anyhow::Result<impl Iterator<Item = anyhow::Result<(u64, Inscribed)>> + 'static> {
+    let table = self.tx.open_table(INSCRIBED)?;
+    Ok(table.range(from..)?.map(|entry| {
+      let (key, value) = entry?;
+      let (count, first_txid, first_height) = decode_inscribed(value.value())?;
+      Ok((
+        key.value(),
+        Inscribed {
+          count,
+          first_txid,
+          first_height,
+        },
+      ))
+    }))
   }
 
   pub fn undo_heights(&self) -> anyhow::Result<Vec<u32>> {

@@ -20,6 +20,14 @@ use {
 #[derive(Debug, Clone, Default)]
 pub struct Marketplaces {}
 
+impl Marketplaces {
+  /// STUB (store agent) until rst/market lands: the embedded
+  /// data/marketplaces.json.
+  pub fn embedded() -> Self {
+    Self::default()
+  }
+}
+
 pub struct MarketContext {
   pub catalog: Arc<SatCatalog>,
   pub marketplaces: Marketplaces,

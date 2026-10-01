@@ -9,7 +9,10 @@
 
 use {
   crate::{
-    model::{BlockDelta, ResolvedBlock, SupplySnapshot, TrackerConfig, TrackerSnapshot},
+    market::{self, MarketContext, Marketplaces},
+    model::{
+      BlockDelta, MarketDelta, ResolvedBlock, SupplySnapshot, TrackerConfig, TrackerSnapshot,
+    },
     sats::SatCatalog,
     settings::{Chain, FastSync, Settings},
     source::{FastSource, FastSourceStats, FastSyncOptions, LiveSource, Rpc, RpcConfig},
@@ -202,6 +205,9 @@ pub trait Engine {
   fn height(&self) -> Option<u32>;
   fn hash(&self) -> Option<BlockHash>;
   fn apply_block(&mut self, block: &ResolvedBlock) -> anyhow::Result<BlockDelta>;
+  /// Sales and inscriptions of tracked sats in `block`, whose delta
+  /// `apply_block` just returned (`market::analyze`).
+  fn analyze(&self, block: &ResolvedBlock, delta: &BlockDelta) -> MarketDelta;
   fn undo_block(&mut self, delta: &BlockDelta) -> anyhow::Result<()>;
   /// Per-row mined counters, indexed by `RowId`.
   fn mined(&self) -> Vec<u64>;
@@ -219,6 +225,7 @@ pub trait EngineFactory: Send + Sync {
 
 pub struct TrackerEngine {
   tracker: Tracker,
+  market: MarketContext,
 }
 
 impl Engine for TrackerEngine {
@@ -232,6 +239,10 @@ impl Engine for TrackerEngine {
 
   fn apply_block(&mut self, block: &ResolvedBlock) -> anyhow::Result<BlockDelta> {
     self.tracker.apply_block(block)
+  }
+
+  fn analyze(&self, block: &ResolvedBlock, delta: &BlockDelta) -> MarketDelta {
+    market::analyze(block, delta, &self.market)
   }
 
   fn undo_block(&mut self, delta: &BlockDelta) -> anyhow::Result<()> {
@@ -274,13 +285,24 @@ impl EngineFactory for TrackerFactory {
   fn fresh(&self) -> anyhow::Result<Box<dyn Engine>> {
     Ok(Box::new(TrackerEngine {
       tracker: Tracker::new(self.catalog.clone(), self.config.clone()),
+      market: self.market_context(),
     }))
   }
 
   fn restore(&self, snapshot: TrackerSnapshot) -> anyhow::Result<Box<dyn Engine>> {
     Ok(Box::new(TrackerEngine {
       tracker: Tracker::restore(self.catalog.clone(), self.config.clone(), snapshot)?,
+      market: self.market_context(),
     }))
+  }
+}
+
+impl TrackerFactory {
+  fn market_context(&self) -> MarketContext {
+    MarketContext {
+      catalog: self.catalog.clone(),
+      marketplaces: Marketplaces::embedded(),
+    }
   }
 }
 
@@ -661,7 +683,7 @@ impl Indexer {
 
     let committer = Committer::spawn(self.store.clone(), self.published.clone());
 
-    let mut batch = Vec::new();
+    let mut batch = Applied::default();
     let mut end = FastSyncEnd::Done;
     let mut result = Ok(());
 
@@ -678,13 +700,16 @@ impl Indexer {
       };
       let height = block.height;
       match state.engine.apply_block(&block) {
-        Ok(delta) => batch.push(delta),
+        Ok(delta) => {
+          let market = state.engine.analyze(&block, &delta);
+          batch.push(delta, market);
+        }
         Err(err) => {
           result = Err(err.context(format!("failed to apply block {height}")));
           break;
         }
       }
-      if (batch.len() >= self.options.commit_interval as usize
+      if (batch.deltas.len() >= self.options.commit_interval as usize
         || state.last_commit.elapsed() >= self.options.commit_every
         || height >= stop)
         && let Err(err) = self.submit(&committer, state, &mut batch, stop, &*source)
@@ -726,11 +751,11 @@ impl Indexer {
     &self,
     committer: &Committer,
     state: &mut State,
-    batch: &mut Vec<BlockDelta>,
+    batch: &mut Applied,
     stop: u32,
     source: &dyn FastBlocks,
   ) -> anyhow::Result<()> {
-    let Some(last) = batch.last() else {
+    let Some(last) = batch.deltas.last() else {
       return Ok(());
     };
     let complete = last.height >= stop;
@@ -744,13 +769,15 @@ impl Indexer {
       .update_status(|status| status.timings.last_poll_ok_at = Some(unix_now()));
     log::info!(
       "fast sync: committing {} blocks to {} ({} UTXOs in the value map, {:.1} GB fetched)",
-      batch.len(),
+      batch.deltas.len(),
       last.height,
       stats.utxos,
       stats.bytes_fetched as f64 / 1e9
     );
+    let Applied { deltas, markets } = std::mem::take(batch);
     committer.submit(Batch {
-      deltas: std::mem::take(batch),
+      deltas,
+      markets,
       mined: state.engine.mined(),
       fast_sync_complete: complete,
       target: Some(stop),
@@ -836,7 +863,7 @@ impl Indexer {
         Mode::Live
       });
 
-      let mut pending = Vec::new();
+      let mut pending = Applied::default();
       let mut error = None;
       for block in self.node.blocks(from, count, self.options.fetch_threads) {
         if self.stopping() {
@@ -862,13 +889,13 @@ impl Indexer {
           break;
         }
         let height = block.height;
-        pending.push(
-          state
-            .engine
-            .apply_block(&block)
-            .with_context(|| format!("failed to apply block {height}"))?,
-        );
-        if pending.len() >= self.options.commit_interval as usize
+        let delta = state
+          .engine
+          .apply_block(&block)
+          .with_context(|| format!("failed to apply block {height}"))?;
+        let market = state.engine.analyze(&block, &delta);
+        pending.push(delta, market);
+        if pending.deltas.len() >= self.options.commit_interval as usize
           || state.last_commit.elapsed() >= self.options.commit_every
         {
           self.commit(state, &mut pending)?;
@@ -882,8 +909,8 @@ impl Indexer {
     }
   }
 
-  fn commit(&self, state: &mut State, pending: &mut Vec<BlockDelta>) -> anyhow::Result<()> {
-    let Some(last) = pending.last() else {
+  fn commit(&self, state: &mut State, pending: &mut Applied) -> anyhow::Result<()> {
+    let Some(last) = pending.deltas.last() else {
       return Ok(());
     };
     state.fast_sync_complete |= state
@@ -892,8 +919,10 @@ impl Indexer {
     let supply_start = Instant::now();
     let supply = state.engine.supply(self.options.supply_top);
     let supply_seconds = supply_start.elapsed().as_secs_f64();
+    let Applied { deltas, markets } = std::mem::take(pending);
     let batch = Batch {
-      deltas: std::mem::take(pending),
+      deltas,
+      markets,
       mined: state.engine.mined(),
       fast_sync_complete: state.fast_sync_complete,
       target: None,
@@ -1028,9 +1057,24 @@ pub fn restore(
   Ok(engine)
 }
 
+/// Applied blocks waiting for their commit, with their market deltas.
+#[derive(Default)]
+struct Applied {
+  deltas: Vec<BlockDelta>,
+  markets: Vec<MarketDelta>,
+}
+
+impl Applied {
+  fn push(&mut self, delta: BlockDelta, market: MarketDelta) {
+    self.deltas.push(delta);
+    self.markets.push(market);
+  }
+}
+
 /// Blocks to commit and what to publish once they are.
 struct Batch {
   deltas: Vec<BlockDelta>,
+  markets: Vec<MarketDelta>,
   mined: Vec<u64>,
   fast_sync_complete: bool,
   target: Option<u32>,
@@ -1047,6 +1091,7 @@ impl Batch {
     let start = Instant::now();
     let stats = store.commit_with(
       &self.deltas,
+      &self.markets,
       &self.mined,
       self.fast_sync_complete,
       &CommitOptions {

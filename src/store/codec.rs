@@ -4,8 +4,8 @@
 
 use {
   crate::model::{
-    BlockDelta, LocationKind, Move, MoveInput, MoveOutput, Piece, RowDelta, RowStats, TrackedUtxo,
-    UtxoKind,
+    BlockDelta, InscriptionEvent, LocationKind, MarketDelta, Move, MoveInput, MoveOutput, Piece,
+    RowDelta, RowStats, Sale, SaleKind, TrackedUtxo, UtxoKind,
   },
   anyhow::{Context, bail, ensure},
   bitcoin::{
@@ -977,11 +977,12 @@ pub(crate) fn utxo_from_output(output: &MoveOutput, height: u32) -> TrackedUtxo 
 //   rows: n, n × (row before:row_stats after:row_stats)
 // ---------------------------------------------------------------------------
 
-const UNDO_V1: u8 = 1;
+/// Version 2 appends the block's `MarketDelta`.
+const UNDO_V2: u8 = 2;
 
-pub(crate) fn encode_undo(delta: &BlockDelta) -> Vec<u8> {
+pub(crate) fn encode_undo(delta: &BlockDelta, market: &MarketDelta) -> Vec<u8> {
   let mut enc = Enc::with_capacity(256);
-  enc.u8(UNDO_V1);
+  enc.u8(UNDO_V2);
   enc.raw(delta.hash.as_byte_array());
   enc.raw(&header_bytes(&delta.header));
   enc.blob(&encode_moves(
@@ -1001,14 +1002,24 @@ pub(crate) fn encode_undo(delta: &BlockDelta) -> Vec<u8> {
     enc.row_stats(&row.before);
     enc.row_stats(&row.after);
   }
+  enc.varint(market.sales.len() as u64);
+  for sale in &market.sales {
+    enc.blob(&encode_sale(sale, None));
+  }
+  enc.varint(market.inscriptions.len() as u64);
+  for event in &market.inscriptions {
+    enc.varint(event.sat);
+    enc.txid(&event.txid);
+    enc.varint(event.vin.into());
+  }
   enc.buf
 }
 
-pub(crate) fn decode_undo(bytes: &[u8], height: u32) -> anyhow::Result<BlockDelta> {
+pub(crate) fn decode_undo(bytes: &[u8], height: u32) -> anyhow::Result<(BlockDelta, MarketDelta)> {
   let mut dec = Dec::new(bytes);
   let version = dec.u8()?;
   ensure!(
-    version == UNDO_V1,
+    version == UNDO_V2,
     "corrupt store record: undo version {version}"
   );
   let hash = BlockHash::from_byte_array(dec.raw(32)?.try_into().unwrap());
@@ -1033,18 +1044,184 @@ pub(crate) fn decode_undo(bytes: &[u8], height: u32) -> anyhow::Result<BlockDelt
       after: dec.row_stats()?,
     });
   }
+  let n_sales = dec.len()?;
+  let mut sales = Vec::with_capacity(n_sales);
+  for _ in 0..n_sales {
+    sales.push(decode_sale(dec.blob()?)?.0);
+  }
+  let n_inscriptions = dec.len()?;
+  let mut inscriptions = Vec::with_capacity(n_inscriptions);
+  for _ in 0..n_inscriptions {
+    inscriptions.push(InscriptionEvent {
+      sat: dec.varint()?,
+      txid: dec.txid()?,
+      vin: dec.u32()?,
+    });
+  }
   dec.finish()?;
-  Ok(BlockDelta {
-    height,
-    hash,
-    header,
-    moves,
-    spent,
-    created,
-    overwritten,
-    lost,
-    lost_sats_before,
-    lost_sats_after,
-    rows,
+  Ok((
+    BlockDelta {
+      height,
+      hash,
+      header,
+      moves,
+      spent,
+      created,
+      overwritten,
+      lost,
+      lost_sats_before,
+      lost_sats_after,
+      rows,
+    },
+    MarketDelta {
+      sales,
+      inscriptions,
+    },
+  ))
+}
+
+// ---------------------------------------------------------------------------
+// Sales: one record per sale (key: height, tx_index, vin).
+//
+//   version u8 (= SALE_V1)
+//   txid[32] tx_index vin kind:u8 marketplace:blob
+//   seller_outpoint seller:utxo
+//   payment_vout:option price seller_proceeds fees
+//   buyer_vout:option buyer_script:option-blob
+//   buyer_value:option        computed by the store from the block's moves
+//
+// An option is a varint: 0 for none, else value + 1 (blobs: a flag byte).
+// ---------------------------------------------------------------------------
+
+const SALE_V1: u8 = 1;
+
+fn sale_kind_code(kind: SaleKind) -> u8 {
+  match kind {
+    SaleKind::Listing => 0,
+    SaleKind::Offer => 1,
+    SaleKind::Unknown => 2,
+  }
+}
+
+fn sale_kind_from_code(code: u8) -> anyhow::Result<SaleKind> {
+  Ok(match code {
+    0 => SaleKind::Listing,
+    1 => SaleKind::Offer,
+    2 => SaleKind::Unknown,
+    _ => bail!("corrupt store record: sale kind {code}"),
   })
+}
+
+impl Enc {
+  fn option(&mut self, value: Option<u64>) {
+    self.varint(value.map_or(0, |value| value + 1));
+  }
+}
+
+impl Dec<'_> {
+  fn option(&mut self) -> anyhow::Result<Option<u64>> {
+    Ok(match self.varint()? {
+      0 => None,
+      value => Some(value - 1),
+    })
+  }
+
+  fn option_u32(&mut self) -> anyhow::Result<Option<u32>> {
+    self
+      .option()?
+      .map(|value| u32::try_from(value).context("corrupt store record: u32 out of range"))
+      .transpose()
+  }
+}
+
+pub(crate) fn encode_sale(sale: &Sale, buyer_value: Option<u64>) -> Vec<u8> {
+  let mut enc = Enc::with_capacity(128 + sale.seller.script_pubkey.len());
+  enc.u8(SALE_V1);
+  enc.txid(&sale.txid);
+  enc.varint(sale.tx_index.into());
+  enc.varint(sale.vin.into());
+  enc.u8(sale_kind_code(sale.kind));
+  enc.blob(sale.marketplace.as_bytes());
+  enc.outpoint(&sale.seller_outpoint);
+  enc.utxo(&sale.seller);
+  enc.option(sale.payment_vout.map(u64::from));
+  enc.varint(sale.price);
+  enc.varint(sale.seller_proceeds);
+  enc.varint(sale.fees);
+  enc.option(sale.buyer_vout.map(u64::from));
+  match &sale.buyer_script {
+    Some(script) => {
+      enc.u8(1);
+      enc.blob(script.as_bytes());
+    }
+    None => enc.u8(0),
+  }
+  enc.option(buyer_value);
+  enc.buf
+}
+
+/// The sale and the buyer output's value.
+pub(crate) fn decode_sale(bytes: &[u8]) -> anyhow::Result<(Sale, Option<u64>)> {
+  let mut dec = Dec::new(bytes);
+  let version = dec.u8()?;
+  ensure!(
+    version == SALE_V1,
+    "corrupt store record: sale version {version}"
+  );
+  let txid = dec.txid()?;
+  let tx_index = dec.u32()?;
+  let vin = dec.u32()?;
+  let kind = sale_kind_from_code(dec.u8()?)?;
+  let marketplace =
+    String::from_utf8(dec.blob()?.to_vec()).context("corrupt store record: marketplace id")?;
+  let seller_outpoint = dec.outpoint()?;
+  let seller = dec.utxo()?;
+  let payment_vout = dec.option_u32()?;
+  let price = dec.varint()?;
+  let seller_proceeds = dec.varint()?;
+  let fees = dec.varint()?;
+  let buyer_vout = dec.option_u32()?;
+  let buyer_script = match dec.u8()? {
+    0 => None,
+    1 => Some(ScriptBuf::from_bytes(dec.blob()?.to_vec())),
+    flag => bail!("corrupt store record: buyer script flag {flag}"),
+  };
+  let buyer_value = dec.option()?;
+  dec.finish()?;
+  Ok((
+    Sale {
+      txid,
+      tx_index,
+      vin,
+      kind,
+      marketplace,
+      seller_outpoint,
+      seller,
+      payment_vout,
+      price,
+      seller_proceeds,
+      fees,
+      buyer_vout,
+      buyer_script,
+    },
+    buyer_value,
+  ))
+}
+
+/// Value of the `inscribed` table: count, first txid, first height.
+pub(crate) fn encode_inscribed(count: u32, first_txid: &Txid, first_height: u32) -> Vec<u8> {
+  let mut enc = Enc::with_capacity(40);
+  enc.varint(count.into());
+  enc.txid(first_txid);
+  enc.varint(first_height.into());
+  enc.buf
+}
+
+pub(crate) fn decode_inscribed(bytes: &[u8]) -> anyhow::Result<(u32, Txid, u32)> {
+  let mut dec = Dec::new(bytes);
+  let count = dec.u32()?;
+  let txid = dec.txid()?;
+  let height = dec.u32()?;
+  dec.finish()?;
+  Ok((count, txid, height))
 }
