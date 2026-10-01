@@ -65,6 +65,8 @@ pub struct OutputJson {
   #[serde(skip_serializing_if = "Option::is_none")]
   pub pieces: Option<Vec<PieceJson>>,
   pub rows: RowMap,
+  /// Tracked sats of the output that carry inscriptions.
+  pub inscribed_sats: Vec<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -84,6 +86,12 @@ pub struct SatJson {
   pub tracked: bool,
   pub rows: Vec<String>,
   pub location: Option<LocationJson>,
+  /// Carries an inscription (tracked sats only).
+  pub inscribed: bool,
+  /// Envelopes that landed on it, counting reinscriptions.
+  pub inscriptions: u32,
+  /// Sales that sold it, oldest first.
+  pub sales: Vec<super::sales::SaleJson>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -143,11 +151,20 @@ pub struct DeltaJson {
   pub after: RowStats,
 }
 
+/// `RowStats` with the current `inscribed` count (`/supply` only).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SupplyStatsJson {
+  #[serde(flatten)]
+  pub stats: RowStats,
+  /// Located sats of the row that carry inscriptions.
+  pub inscribed: u64,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct RowSupplyJson {
   pub id: String,
   pub total: u64,
-  pub stats: RowStats,
+  pub stats: SupplyStatsJson,
   pub active_non_extracted: YearsMap,
   pub delta: Option<DeltaJson>,
   #[serde(skip_serializing_if = "Option::is_none")]
@@ -296,6 +313,12 @@ impl<'a> Render<'a> {
       extracted: self.extracted(utxo.kind, utxo.value, &utxo.pieces, created_time),
       pieces: with_pieces.then(|| self.pieces(&utxo.pieces)),
       rows: self.row_map(&counts),
+      inscribed_sats: self
+        .reader
+        .inscribed_in_pieces(&utxo.pieces)?
+        .into_iter()
+        .map(|(sat, _)| sat)
+        .collect(),
     })
   }
 
@@ -349,6 +372,13 @@ impl<'a> Render<'a> {
       Some(location) => Some(self.location(&location)?),
       None => None,
     };
+    let inscribed = self.reader.inscribed(sat)?;
+    let sales = self
+      .reader
+      .sales_for_sat(sat)?
+      .iter()
+      .map(|sale| self.sale(sale))
+      .collect::<anyhow::Result<_>>()?;
     Ok(SatJson {
       sat,
       height: ordinals::Sat(sat).height().n(),
@@ -356,6 +386,9 @@ impl<'a> Render<'a> {
       tracked,
       rows,
       location,
+      inscribed: inscribed.is_some(),
+      inscriptions: inscribed.map_or(0, |inscribed| inscribed.count),
+      sales,
     })
   }
 

@@ -52,6 +52,7 @@ impl Server {
       started,
       stream_timeout: api::STREAM_TIMEOUT,
       streams: Default::default(),
+      inscribed_rows: Default::default(),
     });
 
     let indexer = if self.no_sync {

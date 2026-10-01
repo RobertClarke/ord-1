@@ -1799,6 +1799,31 @@ impl Reader {
       .collect()
   }
 
+  /// The inscribed sats of `pieces`, in sat order.
+  pub fn inscribed_in_pieces(&self, pieces: &[Piece]) -> anyhow::Result<Vec<(u64, Inscribed)>> {
+    let table = self.tx.open_table(INSCRIBED)?;
+    if table.is_empty()? {
+      return Ok(Vec::new());
+    }
+    let mut inscribed = Vec::new();
+    for piece in pieces {
+      for entry in table.range(piece.start..piece.end())? {
+        let (key, value) = entry?;
+        let (count, first_txid, first_height) = decode_inscribed(value.value())?;
+        inscribed.push((
+          key.value(),
+          Inscribed {
+            count,
+            first_txid,
+            first_height,
+          },
+        ));
+      }
+    }
+    inscribed.sort_unstable_by_key(|(sat, _)| *sat);
+    Ok(inscribed)
+  }
+
   /// Every inscribed sat from `from` on, in sat order.
   pub fn inscribed_from(
     &self,
