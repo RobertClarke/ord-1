@@ -1,5 +1,5 @@
 {
-  "comment": "Marketplaces that sold tracked sats on chain: fee addresses and markers by height range (inclusive), layouts, and evidence transactions; schema in src/market/marketplaces.rs, sources in docs/MARKETPLACES.md. Heights and counts were measured on chain up to block 969,444 (every block 770,000-969,444 for fee addresses).",
+  "comment": "Marketplaces that sold tracked sats on chain: fee addresses and markers by height range (inclusive), layouts, and evidence transactions; schema in src/market/marketplaces.rs, sources in docs/MARKETPLACES.md. Heights and counts were measured on chain up to block 969,444 (every block 770,000-969,444 for fee addresses); raresats.net's entry is its layout at launch (block 969,480).",
   "marketplaces": [
     {
       "id": "magisat",
@@ -488,6 +488,38 @@
             "50939fd7af4ba92a9818c8fd78516d3a3e1d9bca017045188ddf5583cff0e78a",
             "052923574d1200d2a5c31394914e3b3a4728a7174af367716c5894044e690acb"
           ]
+        }
+      ]
+    },
+    {
+      "id": "raresats",
+      "name": "raresats.net",
+      "role": "marketplace",
+      "status": "active",
+      "price_rule": "proceeds",
+      "flows": [
+        "listing_0x83_msigner"
+      ],
+      "notes": "Rare-sat marketplace, active from block 969,480 (no earlier sales). Listings in Magisat's standard layout (docs/SALES-SHAPES.md §3): k+1 buyer padding inputs at vin 0..k, sellers signing 0x83 at vin k+1..2k with their payments at the same indices, the items at vout 1..k, one fee output at vout 2k+1, k+1 new 600-sat padding outputs, change, and the OP_RETURN marker as the last output. Price: the payment P (no maker fee; the buyer's taker fee in the fee output is on top of the price). A purchase is attributed by its fee output, or by the marker alone if it has none. Listings only: a transaction paying the fee address or carrying the marker without a 0x83 listing is no sale.",
+      "sources": [
+        "raresats.net: the marketplace's purchase layout, fee and marker at launch"
+      ],
+      "fee_addresses": [
+        {
+          "address": "bc1p4hefchfnn06cn2xmk6fq6xcw5ew260q2dptc4c35fcazgedmzlcqkxf057",
+          "from_height": 969480,
+          "to_height": null,
+          "fee": "2.5% of the summed listing prices, at least 546 sats, paid by the buyer on top of the price; no maker fee (the seller's payment is the full listing price)",
+          "note": "One fee output per purchase, at vout 2k+1."
+        }
+      ],
+      "markers": [
+        {
+          "op_return": "6a0c72617265736174732e6e6574",
+          "text": "raresats.net",
+          "from_height": 969480,
+          "to_height": null,
+          "note": "Exactly one per purchase, value 0, the last output."
         }
       ]
     },

@@ -31,10 +31,14 @@
 //!   paid by its transfer and send tools: an output to one is never a
 //!   payment.
 //! * `markers`: `op_return` (the output script, hex) outputs that mark the
-//!   marketplace's transactions, between the same kind of heights.
+//!   marketplace's transactions, between the same kind of heights. A listing
+//!   in a transaction with a marker and no fee output is the marketplace's
+//!   sale.
 //! * `price_rule`: how a listing's price is derived (`PriceRule`):
-//!   `proceeds_plus_fees` (the default) or `magisat` (its maker-fee rule;
-//!   it also enables the Magisat offer shape).
+//!   `proceeds_plus_fees` (the default), `proceeds` (the payment alone: the
+//!   fee is the buyer's, on top of the price, and paid on listings only, so
+//!   it never marks an offer) or `magisat` (its maker-fee rule; it also
+//!   enables the Magisat offer shape).
 //! * `anonymous`: a venue known only by its fee address: its sales are found
 //!   and its fees counted, but they are reported as `"unknown"`.
 //! * `flows`: the transaction shapes the marketplace uses; two change the
@@ -110,6 +114,10 @@ pub enum PriceRule {
   /// sales in proportion to their proceeds.
   #[default]
   ProceedsPlusFees,
+  /// The paired payment `P` alone: the fee output is the buyer's taker fee,
+  /// on top of the listing price, and the seller pays none. The fee is paid
+  /// on listing purchases only, so it never marks an offer.
+  Proceeds,
   /// Magisat: the paired payment `P`, plus the 0.5 % maker fee `⌊P/199⌋`
   /// from block 861,287; the buyer's taker fee in the fee output is not
   /// part of the price.
@@ -457,6 +465,37 @@ mod tests {
         .unwrap()
         .has_flow("passthrough_2of2")
     );
+    // raresats.net's fee address and OP_RETURN "raresats.net" marker, from
+    // its launch at block 969,480; its price is the payment alone.
+    let fee = "bc1p4hefchfnn06cn2xmk6fq6xcw5ew260q2dptc4c35fcazgedmzlcqkxf057";
+    let marker = ScriptBuf::from_hex("6a0c72617265736174732e6e6574").unwrap();
+    assert_eq!(&marker.as_bytes()[2..], b"raresats.net");
+    assert_eq!(id(fee, 969_479), None);
+    assert_eq!(table.marker(&marker, 969_479), None);
+    for height in [969_480, 1_000_000] {
+      assert_eq!(id(fee, height), Some("raresats"));
+      assert_eq!(
+        table.marker(&marker, height).map(|m| m.id.as_str()),
+        Some("raresats")
+      );
+    }
+    let raresats = table.by_id("raresats").unwrap();
+    assert_eq!(
+      (
+        raresats.name.as_str(),
+        raresats.role,
+        raresats.price_rule,
+        raresats.reported_id()
+      ),
+      (
+        "raresats.net",
+        Role::Marketplace,
+        PriceRule::Proceeds,
+        "raresats"
+      )
+    );
+    assert!(raresats.has_flow("listing_0x83_msigner"));
+    assert_eq!(table.buying_wallet(&script(fee), 969_480), None);
   }
 
   fn address(network: Network) -> (String, ScriptBuf) {

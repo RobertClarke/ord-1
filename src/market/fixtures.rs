@@ -27,24 +27,33 @@
 //!
 //! The tracker's outputs are recomputed by FIFO; the builder checks them
 //! against the fork's move.
+//!
+//! A marketplace with no sales on chain yet (raresats.net, from block
+//! 969,480) is tested on synthesized fixtures in its layout instead:
+//! synthetic txids and scripts, its own fee address and marker.
 
 use {
-  super::{MarketContext, Marketplaces, PSBT_SIGHASH, UNKNOWN_MARKETPLACE, analyze, sale_unit},
+  super::{
+    LISTING_SIGHASH, MarketContext, Marketplaces, PSBT_SIGHASH, UNKNOWN_MARKETPLACE, analyze,
+    sale_unit,
+  },
   crate::{
     model::{
       BlockDelta, Envelope, Move, MoveInput, MoveOutput, Piece, ResolvedBlock, ResolvedInput,
       ResolvedTx, SaleKind,
       SaleKind::{Listing, Offer},
-      TrackedUtxo, TrackerConfig, UtxoKind,
+      TrackedUtxo, TrackerConfig, UtxoKind, script_hash,
     },
     settings::Chain,
-    tracker::tests::catalog_for,
+    tracker::tests::{catalog_for, out_to, script},
   },
   bitcoin::{
-    Amount, BlockHash, CompactTarget, OutPoint, ScriptBuf, TxMerkleNode, TxOut, Txid,
+    Address, Amount, BlockHash, CompactTarget, Network, OutPoint, ScriptBuf, TxMerkleNode, TxOut,
+    Txid,
     block::{Header, Version},
     hashes::Hash,
   },
+  ordinals::Height,
   serde::{Deserialize, Serialize},
   serde_json::Value,
   std::{collections::BTreeMap, str::FromStr},
@@ -559,7 +568,12 @@ const SETTLED: &[&str] = &["psbt_0x81_sale", "psbt_0x81_separate_payment"];
 type Seen = (u32, SaleKind, String, u32, u32, u64, u64, u64);
 
 fn sales_of(name: &str) -> Vec<Seen> {
-  let fixture = Fixture::load(name);
+  sales(&Fixture::load(name))
+}
+
+/// The sales the embedded table finds in the fixture, checked against it.
+fn sales(fixture: &Fixture) -> Vec<Seen> {
+  let name = &fixture.name;
   let (block, delta) = fixture.block_and_delta();
   let market = analyze(&block, &delta, &context());
   market
@@ -628,11 +642,24 @@ fn sold(
 /// The fixture's transaction pays a fee address of `id` valid at its
 /// height.
 fn pays(name: &str, id: &str) -> bool {
-  let fixture = Fixture::load(name);
+  paid(&Fixture::load(name), id)
+}
+
+fn paid(fixture: &Fixture, id: &str) -> bool {
   let marketplaces = Marketplaces::embedded();
   fixture.outputs.iter().any(|output| {
     marketplaces
       .fee_output(&output.script_pubkey, fixture.height)
+      .is_some_and(|marketplace| marketplace.id == id)
+  })
+}
+
+/// The fixture's transaction carries a marker of `id` valid at its height.
+fn marked(fixture: &Fixture, id: &str) -> bool {
+  let marketplaces = Marketplaces::embedded();
+  fixture.outputs.iter().any(|output| {
+    marketplaces
+      .marker(&output.script_pubkey, fixture.height)
       .is_some_and(|marketplace| marketplace.id == id)
   })
 }
@@ -1053,6 +1080,310 @@ fn lookalikes_are_not_sales() {
     Marketplaces::embedded()
       .tool_output(&fixture.outputs[1].script_pubkey, fixture.height)
       .is_some()
+  );
+}
+
+/// raresats.net, from block 969,480: its fee address and its OP_RETURN
+/// "raresats.net" marker.
+const RARESATS_FEE: &str = "bc1p4hefchfnn06cn2xmk6fq6xcw5ew260q2dptc4c35fcazgedmzlcqkxf057";
+const RARESATS_MARKER: &str = "6a0c72617265736174732e6e6574";
+const RARESATS_FROM: u32 = 969_480;
+
+/// The buyer of synthesized purchases (`script(BUYER)`).
+const BUYER: u8 = 9;
+
+fn raresats_fee(value: u64) -> TxOut {
+  TxOut {
+    value: Amount::from_sat(value),
+    script_pubkey: Address::from_str(RARESATS_FEE)
+      .unwrap()
+      .require_network(Network::Bitcoin)
+      .unwrap()
+      .script_pubkey(),
+  }
+}
+
+fn raresats_marker() -> TxOut {
+  TxOut {
+    value: Amount::ZERO,
+    script_pubkey: ScriptBuf::from_hex(RARESATS_MARKER).unwrap(),
+  }
+}
+
+/// The uncommon first sat of block `height`.
+fn uncommon(height: u32) -> u64 {
+  Height(height).starting_sat().n()
+}
+
+/// An input of a synthesized transaction: its owner (`script(owner)`),
+/// value, sighash flag, and the tracked sat at its offset 0, if any.
+type SynthInput = (u8, u64, Option<u8>, Option<u64>);
+
+/// A synthesized transaction at `height`, as a fixture: its txid and its
+/// inputs' outpoints are hashes of its name, its scripts `script(owner)`.
+fn synthesized(name: &str, height: u32, inputs: &[SynthInput], outputs: Vec<TxOut>) -> Fixture {
+  let txid = |what: &str| Txid::hash(format!("{name} {what}").as_bytes());
+  let mut fixture = Fixture {
+    name: name.into(),
+    txid: txid("tx"),
+    height,
+    tx_index: 1,
+    pieces_from: "synthesized".into(),
+    tracked: Vec::new(),
+    inputs: Vec::new(),
+    outputs: outputs
+      .into_iter()
+      .map(|output| FixtureOutput {
+        value: output.value.to_sat(),
+        script_pubkey: output.script_pubkey,
+      })
+      .collect(),
+    spender: None,
+  };
+  for (vin, &(owner, value, sighash, sat)) in inputs.iter().enumerate() {
+    let outpoint = OutPoint::new(txid(&format!("input {vin}")), 0);
+    let script_pubkey = script(owner);
+    fixture.inputs.push(FixtureInput {
+      outpoint,
+      value,
+      script_hash: script_hash(&script_pubkey),
+      sighash,
+      envelopes: Vec::new(),
+    });
+    if let Some(start) = sat {
+      fixture.tracked.push(FixtureTracked {
+        vin: vin as u32,
+        outpoint,
+        value,
+        script_pubkey,
+        height: height - 1,
+        pieces: vec![Piece {
+          offset: 0,
+          start,
+          len: 1,
+        }],
+      });
+    }
+  }
+  fixture
+}
+
+/// A synthesized raresats.net purchase of the listings paying `payments`,
+/// in Magisat's standard layout (docs/SALES-SHAPES.md §3): the buyer's k + 1
+/// 600-sat padding inputs, the sellers' 546-sat UTXOs (owners 20.., an
+/// uncommon sat each) signed SINGLE|ANYONECANPAY at vin k+1..=2k, the
+/// buyer's funding; outputs: the merged padding, the items at 1..=k, the
+/// payments (to owners 40..) at the sellers' indices, `fee` at 2k + 1, k + 1
+/// new 600-sat padding outputs, the change, and the marker last.
+fn raresats_purchase(
+  name: &str,
+  height: u32,
+  payments: &[u64],
+  fee: Option<u64>,
+  marker: bool,
+) -> Fixture {
+  let k = payments.len() as u64;
+  let padding = 600 * (k + 1);
+  let mut inputs: Vec<SynthInput> = (0..=k).map(|_| (BUYER, 600, Some(0x01), None)).collect();
+  for (i, _) in (0u8..).zip(payments) {
+    let sat = uncommon(969_000 + u32::from(i));
+    inputs.push((20 + i, 546, Some(LISTING_SIGHASH), Some(sat)));
+  }
+  // The funding leaves 10,000 sats of change and a 1,000-sat miner fee.
+  let spent: u64 = payments.iter().sum::<u64>() + fee.unwrap_or(0);
+  inputs.push((BUYER, spent + padding + 11_000, Some(0x01), None));
+  let mut outputs = vec![out_to(padding, BUYER)];
+  outputs.extend(payments.iter().map(|_| out_to(546, BUYER)));
+  outputs.extend(
+    (0u8..)
+      .zip(payments)
+      .map(|(i, &payment)| out_to(payment, 40 + i)),
+  );
+  outputs.extend(fee.map(raresats_fee));
+  outputs.extend((0..=k).map(|_| out_to(600, BUYER)));
+  outputs.push(out_to(10_000, BUYER));
+  outputs.extend(marker.then(raresats_marker));
+  synthesized(name, height, &inputs, outputs)
+}
+
+#[test]
+fn raresats_purchases() {
+  // One listing of 45,000 sats: the 2.5 % fee (1,125) at vout 3, the marker
+  // last. The price is the seller's payment; the fee is the buyer's, on top.
+  let one = raresats_purchase("one", RARESATS_FROM, &[45_000], Some(1_125), true);
+  assert_eq!(one.outputs[3].script_pubkey, raresats_fee(0).script_pubkey);
+  assert!(paid(&one, "raresats") && marked(&one, "raresats"));
+  assert_eq!(
+    sales(&one),
+    [sold(2, Listing, "raresats", (2, 1), (45_000, 45_000, 0))]
+  );
+  // Three listings: one fee for all, 2.5 % of 60,000, at vout 7 (2k + 1).
+  let three = raresats_purchase(
+    "three",
+    RARESATS_FROM + 1,
+    &[30_000, 20_000, 10_000],
+    Some(1_500),
+    true,
+  );
+  assert_eq!(
+    three.outputs[7].script_pubkey,
+    raresats_fee(0).script_pubkey
+  );
+  assert_eq!(
+    sales(&three),
+    [
+      sold(4, Listing, "raresats", (4, 1), (30_000, 30_000, 0)),
+      sold(5, Listing, "raresats", (5, 2), (20_000, 20_000, 0)),
+      sold(6, Listing, "raresats", (6, 3), (10_000, 10_000, 0)),
+    ]
+  );
+  // The 546-sat minimum fee (2.5 % of 10,000 is 250), the fee without the
+  // marker, and the marker alone (a purchase without its fee output).
+  for (name, payments, fee, marker) in [
+    ("minimum fee", &[10_000][..], Some(546), true),
+    ("fee only", &[10_000], Some(546), false),
+    ("marker only", &[10_000], None, true),
+    ("marker only, three", &[30_000, 20_000, 10_000], None, true),
+  ] {
+    let fixture = raresats_purchase(name, RARESATS_FROM, payments, fee, marker);
+    assert_eq!(
+      (paid(&fixture, "raresats"), marked(&fixture, "raresats")),
+      (fee.is_some(), marker),
+      "{name}"
+    );
+    let k = payments.len() as u32;
+    assert_eq!(
+      sales(&fixture),
+      (1..)
+        .zip(payments)
+        .map(|(i, &payment)| sold(
+          k + i,
+          Listing,
+          "raresats",
+          (k + i, i),
+          (payment, payment, 0)
+        ))
+        .collect::<Vec<Seen>>(),
+      "{name}"
+    );
+  }
+  // Before block 969,480 neither is raresats.net's (it has no earlier
+  // sales): the sale of an unknown venue, at the payment.
+  let early = raresats_purchase("early", RARESATS_FROM - 1, &[45_000], Some(1_125), true);
+  assert!(!paid(&early, "raresats") && !marked(&early, "raresats"));
+  assert_eq!(
+    sales(&early),
+    [sold(
+      2,
+      Listing,
+      UNKNOWN_MARKETPLACE,
+      (2, 1),
+      (45_000, 45_000, 0)
+    )]
+  );
+}
+
+#[test]
+fn raresats_lookalikes_are_not_sales() {
+  let sat = Some(uncommon(969_100));
+  // A transfer in an accepted offer's shape: the seller's UTXO (owner 20)
+  // signed ALL, another party's funding (owner 30); the item to owner 31,
+  // 40,000 sats to owner 32, the fee at vout 2 (Magisat's offer layout), the
+  // funder's change. raresats.net sells by listings only: no sale, with its
+  // fee, its marker or both.
+  let transfer = |name: &str, fee: bool, marker: bool| {
+    let mut outputs = vec![out_to(546, 31), out_to(40_000, 32)];
+    outputs.extend(fee.then(|| raresats_fee(1_000)));
+    outputs.push(out_to(if fee { 8_000 } else { 9_000 }, 30));
+    outputs.extend(marker.then(raresats_marker));
+    synthesized(
+      name,
+      RARESATS_FROM,
+      &[(20, 546, Some(0x01), sat), (30, 50_000, Some(0x01), None)],
+      outputs,
+    )
+  };
+  for (name, fee, marker) in [
+    ("fee", true, false),
+    ("fee and marker", true, true),
+    ("marker", false, true),
+  ] {
+    let fixture = transfer(name, fee, marker);
+    assert_eq!(
+      (paid(&fixture, "raresats"), marked(&fixture, "raresats")),
+      (fee, marker),
+      "{name}"
+    );
+    assert_eq!(sales(&fixture), [], "{name}");
+  }
+  // Were its fee in the price (proceeds plus fees, the default), the first
+  // would be its offer: the price rule is what keeps such transfers out.
+  let table = Marketplaces::from_json(&include_str!("../../data/marketplaces.json").replace(
+    r#""price_rule": "proceeds""#,
+    r#""price_rule": "proceeds_plus_fees""#,
+  ))
+  .unwrap();
+  let (block, delta) = transfer("fee", true, false).block_and_delta();
+  let ctx = MarketContext::new(
+    catalog_for(&TrackerConfig::default()),
+    table,
+    Chain::Mainnet,
+  );
+  assert_eq!(
+    analyze(&block, &delta, &ctx)
+      .sales
+      .iter()
+      .map(|sale| (sale.kind, sale.marketplace.as_str(), sale.price))
+      .collect::<Vec<_>>(),
+    [(Offer, "raresats", 41_000)]
+  );
+
+  // A wallet moving its item to a new address of its own, paying the fee
+  // and the marker (a tool's transfer): no sale.
+  let tool = synthesized(
+    "tool",
+    RARESATS_FROM,
+    &[(20, 546, Some(0x01), sat), (20, 5_000, Some(0x01), None)],
+    vec![
+      out_to(546, 21),
+      raresats_fee(1_000),
+      out_to(3_500, 20),
+      raresats_marker(),
+    ],
+  );
+  assert!(paid(&tool, "raresats") && marked(&tool, "raresats"));
+  assert_eq!(sales(&tool), []);
+
+  // The fee address receiving a listing it buys is no fee: without the
+  // marker, the sale of an unknown venue.
+  let bought = synthesized(
+    "bought",
+    RARESATS_FROM,
+    &[
+      (BUYER, 600, Some(0x01), None),
+      (BUYER, 600, Some(0x01), None),
+      (20, 546, Some(LISTING_SIGHASH), sat),
+      (BUYER, 50_000, Some(0x01), None),
+    ],
+    vec![
+      out_to(1_200, BUYER),
+      raresats_fee(546),
+      out_to(30_000, 40),
+      out_to(600, BUYER),
+      out_to(600, BUYER),
+      out_to(50_000 - 30_000 - 1_200 - 1_000, BUYER),
+    ],
+  );
+  assert!(paid(&bought, "raresats"));
+  assert_eq!(
+    sales(&bought),
+    [sold(
+      2,
+      Listing,
+      UNKNOWN_MARKETPLACE,
+      (2, 1),
+      (30_000, 30_000, 0)
+    )]
   );
 }
 

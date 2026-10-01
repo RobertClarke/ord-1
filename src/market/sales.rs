@@ -40,7 +40,8 @@
 //! 4. **Offer or passthrough** (Magic Eden's offers and bids, ord.net and
 //!    Ordinals Wallet passthrough sales, Satflow's bid acceptances): no
 //!    listing in the transaction, a fee output of a marketplace (not
-//!    Magisat, whose offers are shape 2, nor a buying tool) and no input
+//!    Magisat, whose offers are shape 2, nor one priced by its `proceeds`,
+//!    whose fee is paid on listings only, nor a buying tool) and no input
 //!    from a fee address (a marketplace's own wallet); at least two input
 //!    scripts; some of the sats leave the seller's script (only those are
 //!    sold: a seller may split one sat out of a UTXO); and a payment: the
@@ -63,6 +64,10 @@
 //! A fee output alone is never a sale (transfer and isolation tools pay one
 //! too).
 //!
+//! **Markers** (the table's OP_RETURN outputs) attribute a listing whose
+//! transaction pays no fee address (a purchase without its fee output); a
+//! marker alone is never a sale either.
+//!
 //! **Price**:
 //! * a listing in a transaction with a Magisat fee output: Magisat's price
 //!   rule, `P` = the paired payment, plus the 0.5 % maker fee `⌊P/199⌋` from
@@ -71,6 +76,9 @@
 //! * a Magisat offer: output 1 plus the taker fee, half of output 2 (maker
 //!   and taker fees are equal since August 2024; 4 of 129 earlier offers
 //!   differ);
+//! * a listing of a marketplace priced by its `proceeds` (raresats.net): `P`
+//!   alone, no `fees`; its fee output is the buyer's taker fee, on top of
+//!   the price;
 //! * other marketplaces: proceeds (an offer's net payment) plus the
 //!   transaction's fee outputs, split over its sales in proportion to their
 //!   proceeds; a payment shared by several sales is split by their UTXOs'
@@ -78,13 +86,13 @@
 //! * UniSat (no fixed fee address; recognized by its two 300-sat dummies
 //!   from one script, returned merged to it at output 0): plus the output
 //!   after the payment when it pays that script;
-//! * no fee output: the proceeds, marketplace "unknown" (a fee-less
-//!   msigner purchase is not attributed to OKX: Magisat purchases whose fee
-//!   is below dust have the same layout).
+//! * no fee output nor marker: the proceeds, marketplace "unknown" (a
+//!   fee-less msigner purchase is not attributed to OKX: Magisat purchases
+//!   whose fee is below dust have the same layout).
 //!
 //! A listing a marketplace buys with its own wallet (a fee address marked as
-//! its buying wallet) and no fee output is that marketplace's sale (Magisat:
-//! 8 / 8 such sales are in its records, at its price rule).
+//! its buying wallet) and no fee output nor marker is that marketplace's
+//! sale (Magisat: 8 / 8 such sales are in its records, at its price rule).
 //!
 //! An anonymous marketplace (known only by its fee address) is reported as
 //! "unknown", its fees still counted.
@@ -152,7 +160,16 @@ struct Marks<'a> {
   funded_by_marketplace: bool,
 }
 
-impl Marks<'_> {
+impl<'a> Marks<'a> {
+  /// The selling marketplace whose marker the transaction carries.
+  fn marker(&self) -> Option<&'a Marketplace> {
+    self
+      .markers
+      .iter()
+      .map(|&(_, marketplace)| marketplace)
+      .find(|marketplace| marketplace.sells())
+  }
+
   fn marks_flow(&self, flow: &str) -> bool {
     self.fees.iter().any(|fee| fee.marketplace.has_flow(flow))
       || self
@@ -254,7 +271,7 @@ pub(super) fn detect(
       offers.push(sale);
     }
   }
-  price_listings(view, marketplaces, &mut listings, &marks.fees);
+  price_listings(view, marketplaces, &mut listings, &marks);
   out.append(&mut listings);
   attribute_psbts(view, block, marketplaces, &mut psbts, &marks.fees);
   out.append(&mut psbts);
@@ -407,15 +424,18 @@ fn payment_to(outputs: &[TxOut], seller: &Script, buyer: u32) -> Option<u32> {
     .map(|(vout, _)| vout as u32)
 }
 
+/// A fee that can mark an offer or passthrough sale (shape 4): that of a
+/// marketplace priced proceeds plus fees, not Magisat's (its offers are
+/// shape 2), a `proceeds` marketplace's (paid on its listings only) or a
+/// buying tool's.
+fn offer_fee(fee: &Fee) -> bool {
+  fee.marketplace.role == Role::Marketplace
+    && fee.marketplace.price_rule == PriceRule::ProceedsPlusFees
+}
+
 /// Shape 4: a marketplace's accepted offer or passthrough sale.
 fn offer(view: &TxView, input: &MoveInput, marks: &Marks) -> Option<Sale> {
-  let fees: Vec<&Fee> = marks
-    .fees
-    .iter()
-    .filter(|fee| {
-      fee.marketplace.role == Role::Marketplace && fee.marketplace.price_rule != PriceRule::Magisat
-    })
-    .collect();
+  let fees: Vec<&Fee> = marks.fees.iter().filter(|fee| offer_fee(fee)).collect();
   let marketplace = main_marketplace(fees.iter().copied())?;
   if marks.funded_by_marketplace {
     return None;
@@ -534,12 +554,15 @@ where
     .map(|(m, _)| m)
 }
 
-/// Prices the transaction's listings by its marketplace's rule.
-fn price_listings(view: &TxView, marketplaces: &Marketplaces, sales: &mut [Sale], fees: &[Fee]) {
+/// Prices the transaction's listings by its marketplace's rule: the
+/// marketplace whose fee the transaction pays, else whose marker it carries,
+/// else the one buying with its own wallet (or UniSat, by its dummies).
+fn price_listings(view: &TxView, marketplaces: &Marketplaces, sales: &mut [Sale], marks: &Marks) {
   if sales.is_empty() {
     return;
   }
-  let marketplace = match main_marketplace(fees.iter()) {
+  let fees = &marks.fees;
+  let marketplace = match main_marketplace(fees.iter()).or_else(|| marks.marker()) {
     Some(marketplace) => marketplace,
     None => {
       // A marketplace buying a listing with its own wallet pays itself no
@@ -579,6 +602,8 @@ fn price_listings(view: &TxView, marketplaces: &Marketplaces, sales: &mut [Sale]
     PriceRule::ProceedsPlusFees => {
       attribute(sales, fees.iter().map(|fee| fee.value).sum(), marketplace)
     }
+    // The fee output is the buyer's, on top of the price.
+    PriceRule::Proceeds => attribute(sales, 0, marketplace),
   }
 }
 
@@ -663,12 +688,7 @@ fn attribute_psbts(
 /// are more than half the price.
 fn price_offers(sales: &mut Vec<Sale>, fees: &[Fee]) {
   split_payments(sales);
-  let fees: Vec<&Fee> = fees
-    .iter()
-    .filter(|fee| {
-      fee.marketplace.role == Role::Marketplace && fee.marketplace.price_rule != PriceRule::Magisat
-    })
-    .collect();
+  let fees: Vec<&Fee> = fees.iter().filter(|fee| offer_fee(fee)).collect();
   let Some(marketplace) = main_marketplace(fees.iter().copied()) else {
     sales.clear();
     return;
