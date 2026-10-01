@@ -51,7 +51,10 @@ fn input(previous_output: OutPoint, value: u64, sighash: Option<u8>) -> Resolved
 fn inscribing(mut input: ResolvedInput, pointers: &[Option<u64>]) -> ResolvedInput {
   input.envelopes = pointers
     .iter()
-    .map(|&pointer| Envelope { pointer })
+    .map(|&pointer| Envelope {
+      pointer,
+      unrecognized_even_field: false,
+    })
     .collect();
   input
 }
@@ -483,6 +486,12 @@ fn ignored_envelopes() {
     vec![out_to(1_546, 1)],
   )]);
   assert_eq!(events(&delta), [(rare, 1)]);
+  // An unrecognized even field unbinds the envelope: no sat.
+  let x = op(txid(22), 0);
+  let mut unbound = inscribing(input(x, 1_546, Some(0x00)), &[None]);
+  unbound.envelopes[0].unrecognized_even_field = true;
+  let delta = market.apply(vec![tx(txid(23), vec![unbound], vec![out_to(1_546, 1)])]);
+  assert_eq!(events(&delta), []);
 }
 
 #[test]

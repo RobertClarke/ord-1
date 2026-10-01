@@ -213,9 +213,10 @@ fn tracker_throughput() {
           resolved.inputs[0].sighash = Some(crate::market::LISTING_SIGHASH);
         }
         if rng.below(10) == 0 {
-          resolved.inputs[0]
-            .envelopes
-            .push(crate::model::Envelope { pointer: None });
+          resolved.inputs[0].envelopes.push(crate::model::Envelope {
+            pointer: None,
+            unrecognized_even_field: false,
+          });
         }
       }
       txs.push(resolved);
