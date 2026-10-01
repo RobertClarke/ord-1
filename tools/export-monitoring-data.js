@@ -26,8 +26,10 @@
  *     name_len u8, name (ASCII)
  *     count    u32
  *     count x (start u64, end u64): half-open [start, end) sat ranges, sorted,
- *              overlapping and adjacent source ranges merged. The JS ranges
- *              are inclusive [start, end]; end here is the JS end + 1.
+ *              overlapping and adjacent source ranges merged. The JS reads
+ *              its ranges' ends as inclusive today, so end here is the JS
+ *              end + 1; the export probes the JS (INCLUSIVE_ENDS) and
+ *              follows it if that changes.
  * data/exotic-ranges.json: manifest (per-type source/merged range counts and
  *   sat totals, the .bin's sha256 and the source file's sha256).
  *
@@ -99,7 +101,7 @@ function sourceHash(relative) {
 }
 
 
-const { EXOTIC_RANGES, getExoticRangeIndex, findOverlapWindow } = require(
+const { EXOTIC_RANGES, getExoticRangeIndex, findOverlapWindow, findExoticTypes } = require(
   path.join(monitoring, SOURCES.exotic)
 );
 const rules = require(path.join(monitoring, SOURCES.rules));
@@ -156,9 +158,9 @@ const HISTORIC_BLOCK_TYPES = parseArrayLiteral(psbtSource, 'HISTORIC_BLOCK_TYPES
 // Exotic ranges.
 
 function mergeRanges(ranges) {
-  // Inclusive JS ranges -> sorted, merged half-open ranges.
+  // JS ranges -> sorted, merged half-open ranges.
   const sorted = ranges
-    .map(([start, end]) => [BigInt(start), BigInt(end) + 1n])
+    .map(([start, end]) => [BigInt(start), BigInt(end) + (INCLUSIVE_ENDS ? 1n : 0n)])
     .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
   const merged = [];
   for (const [start, end] of sorted) {
@@ -176,6 +178,31 @@ function mergeRanges(ranges) {
 }
 
 const exoticTypes = Object.keys(EXOTIC_RANGES);
+
+// Whether the JS counts a range's end sat as inside it. Its ranges were
+// written half-open, but isInRanges (`value <= end`) and the scanner's
+// point-sat sweep read them as inclusive, so each range also claims the sat
+// after it. Asked of the JS itself (findExoticTypes, at an end no other range
+// of the type covers), so that a fix on either side, the comparison or the
+// data, exports without changes here.
+function probeInclusiveEnds() {
+  const verdicts = {};
+  for (const name of exoticTypes) {
+    const ranges = EXOTIC_RANGES[name].map(([start, end]) => [BigInt(start), BigInt(end)]);
+    const lone = ranges.find(([, end], i) =>
+      ranges.every(([start, other], j) => j === i || end < start || end > other)
+    );
+    if (lone) verdicts[name] = findExoticTypes(lone[1]).includes(name);
+  }
+  const answers = new Set(Object.values(verdicts));
+  if (answers.size !== 1) {
+    throw new Error(`the JS reads exotic range ends inconsistently: ${JSON.stringify(verdicts)}`);
+  }
+  return [...answers][0];
+}
+const INCLUSIVE_ENDS = probeInclusiveEnds();
+console.error(`JS exotic range ends: ${INCLUSIVE_ENDS ? 'inclusive' : 'exclusive'}`);
+
 const mergedExotic = {};
 for (const name of exoticTypes) {
   mergedExotic[name] = mergeRanges(EXOTIC_RANGES[name]);
@@ -330,7 +357,7 @@ function exoticTypesOf(sat) {
     const [from, to] = findOverlapWindow(index, sat, sat + 1n);
     for (let i = from; i < to; i++) {
       const [start, end] = index.ranges[i];
-      if (start <= sat && sat <= end) {
+      if (start <= sat && (INCLUSIVE_ENDS ? sat <= end : sat < end)) {
         types.push(name);
         break;
       }
