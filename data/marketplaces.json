@@ -11,7 +11,7 @@
         "listing_0x83_msigner",
         "offer_sighash_all"
       ],
-      "notes": "Rare-sat marketplace. Listings: msigner layout (600-sat dummies), sellers signing 0x83 at vin k+1..2k, payments at the same indices, one fee output after the payments. Accepted offers (OFFER_PURCHASED): the seller at vin 0 and the buyer both sign ALL (taproot: explicit 0x01); [item -> buyer vout 0, payment vout 1, fee vout 2, change]. Price: the payment P plus floor(P/199) from block 861,287 (Magisat's price excludes the buyer's taker fee); offers: output 1 plus half of output 2. Its listings are also filled by other tools without its fee.",
+      "notes": "Rare-sat marketplace. Listings: msigner layout (600-sat dummies), sellers signing 0x83 at vin k+1..2k, payments at the same indices, one fee output after the payments. Accepted offers (OFFER_PURCHASED): the seller at vin 0 and the buyer both sign ALL (taproot: explicit 0x01); [item -> buyer vout 0, payment vout 1, fee vout 2, change]. Price: the payment P plus floor(P/199) from block 861,287 (Magisat's price excludes the buyer's taker fee); offers: output 1 plus half of output 2. Its listings are also filled by other tools without its fee. Its send and transfer tools look like offers: they move an item and pay a Magisat fee, but output 1 returns change to a funder, pays the item's own address or a tool address; not sales.",
       "sources": [
         "Magisat's public API (api.magisat.io): sales by tag and owner (buyerTxId), /info/platform-fee-percentage",
         "mrv777/omb-gallery ONCHAIN_TAGGING.md"
@@ -21,8 +21,9 @@
           "address": "bc1pan37k3yyvpnazh4zsz284hsyvsrucxzjgs5td8h22regpfzhgu9sg4xlc6",
           "from_height": 793428,
           "to_height": 831296,
+          "buying_wallet": true,
           "fee": "seller payment = price - 0.5% maker fee (from block 861,287); one fee output = maker + taker fees of every listing in the transaction, omitted when below dust",
-          "note": "Not paid as a fee from 831,297 to 852,668 (F2 only, per Magisat's sales records). Also Magisat's trading wallet: outputs to it that receive the transaction's tracked sats or that fund it are purchases, not fees.",
+          "note": "Not paid as a fee from 831,297 to 852,668 (F2 only, per Magisat's sales records). Also Magisat's buying wallet: outputs to it that receive the transaction's tracked sats or that fund it are purchases, not fees, and a listing it buys with no fee output is a Magisat sale.",
           "first_seen": {
             "height": 793428,
             "date": "2023-06-08"
@@ -45,8 +46,9 @@
           "address": "bc1pan37k3yyvpnazh4zsz284hsyvsrucxzjgs5td8h22regpfzhgu9sg4xlc6",
           "from_height": 852669,
           "to_height": null,
+          "buying_wallet": true,
           "fee": "seller payment = price - 0.5% maker fee (from block 861,287); one fee output = maker + taker fees of every listing in the transaction, omitted when below dust",
-          "note": "From 852,779 F2 takes fees of 10,000 sats to 1 BTC and F1 the others.",
+          "note": "From 852,779 F2 takes fees of 10,000 sats to 1 BTC and F1 the others. F1 is also Magisat's buying wallet: a listing it buys with no fee output (none is due) is a Magisat sale.",
           "first_seen": {
             "height": 793428,
             "date": "2023-06-08"
@@ -93,6 +95,18 @@
             "82d5b938c1d5019a73f33d39f9f0bcede7e8be24de1f7cf2ee3eae4bed935c20",
             "72cb8faa3f6806fad40fff7e2bfadfc701d1d320796d5b67932d7adb67c1b954",
             "a67fb7f7a12730a47d43902e9388856c928c4e791167cb193931db61963d95b5"
+          ]
+        }
+      ],
+      "tool_addresses": [
+        {
+          "address": "3M9f2TYEQVJEEQEFqU5cYf9mBLdMfhgZPz",
+          "from_height": null,
+          "to_height": null,
+          "note": "Paid by Magisat's send and transfer tools in the place of an offer's payment (output 1), next to a Magisat fee: never a payment.",
+          "evidence": [
+            "4220297ed1ddef1e6a398d3956f1380fa3600d76e754b09b3e27ebe954a2b210",
+            "2fdbdc156d313eb5e2394cc84d097fb67ef9f3eae601483d5f1485227c3ac474"
           ]
         }
       ]

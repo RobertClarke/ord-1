@@ -25,7 +25,11 @@
 //! * `fee_addresses`: outputs paying one of these, between `from_height`
 //!   and `to_height` (inclusive, either open), are the entry's fees.
 //!   `address` is a mainnet address; `script_pubkey` (hex) also works on
-//!   any chain.
+//!   any chain. `buying_wallet: true` marks a fee address the marketplace
+//!   also buys with: a listing it buys with no fee output is its own sale.
+//! * `tool_addresses`: the marketplace's service addresses (same shape),
+//!   paid by its transfer and send tools: an output to one is never a
+//!   payment.
 //! * `markers`: `op_return` (the output script, hex) outputs that mark the
 //!   marketplace's transactions, between the same kind of heights.
 //! * `price_rule`: how a listing's price is derived (`PriceRule`):
@@ -132,6 +136,9 @@ pub struct Marketplaces {
   fees: HashMap<ScriptBuf, Vec<Range>>,
   /// `fees` by `script_hash`, to recognize inputs spending from them.
   fee_hashes: HashMap<u32, Vec<Range>>,
+  /// Fee addresses the marketplace buys with.
+  buying_wallets: HashMap<ScriptBuf, Vec<Range>>,
+  tools: HashMap<ScriptBuf, Vec<Range>>,
   markers: HashMap<ScriptBuf, Vec<Range>>,
 }
 
@@ -161,6 +168,8 @@ struct MarketplaceJson {
   #[serde(default)]
   fee_addresses: Vec<FeeAddressJson>,
   #[serde(default)]
+  tool_addresses: Vec<FeeAddressJson>,
+  #[serde(default)]
   markers: Vec<MarkerJson>,
 }
 
@@ -174,6 +183,24 @@ struct FeeAddressJson {
   from_height: Option<u32>,
   #[serde(default)]
   to_height: Option<u32>,
+  #[serde(default)]
+  buying_wallet: bool,
+}
+
+impl FeeAddressJson {
+  fn script(&self, id: &str) -> anyhow::Result<ScriptBuf> {
+    Ok(match (&self.address, &self.script_pubkey) {
+      (Some(address), None) => Address::from_str(address)
+        .with_context(|| format!("{id}: address {address}"))?
+        .require_network(Network::Bitcoin)
+        .with_context(|| format!("{id}: address {address}"))?
+        .script_pubkey(),
+      (None, Some(hex)) => {
+        ScriptBuf::from_hex(hex).with_context(|| format!("{id}: script {hex}"))?
+      }
+      _ => anyhow::bail!("{id}: each address needs exactly one of `address` and `script_pubkey`"),
+    })
+  }
 }
 
 #[derive(Deserialize)]
@@ -231,26 +258,26 @@ impl Marketplaces {
       }
       let index = table.marketplaces.len();
       for fee in marketplace.fee_addresses {
-        let script = match (&fee.address, &fee.script_pubkey) {
-          (Some(address), None) => Address::from_str(address)
-            .with_context(|| format!("{id}: fee address {address}"))?
-            .require_network(Network::Bitcoin)
-            .with_context(|| format!("{id}: fee address {address}"))?
-            .script_pubkey(),
-          (None, Some(hex)) => {
-            ScriptBuf::from_hex(hex).with_context(|| format!("{id}: fee script {hex}"))?
-          }
-          _ => anyhow::bail!(
-            "{id}: each fee address needs exactly one of `address` and `script_pubkey`"
-          ),
-        };
+        let script = fee.script(&id)?;
         let range = range(&id, index, fee.from_height, fee.to_height)?;
         table
           .fee_hashes
           .entry(script_hash(&script))
           .or_default()
           .push(range);
+        if fee.buying_wallet {
+          table
+            .buying_wallets
+            .entry(script.clone())
+            .or_default()
+            .push(range);
+        }
         table.fees.entry(script).or_default().push(range);
+      }
+      for tool in marketplace.tool_addresses {
+        let script = tool.script(&id)?;
+        let range = range(&id, index, tool.from_height, tool.to_height)?;
+        table.tools.entry(script).or_default().push(range);
       }
       for marker in marketplace.markers {
         let script = ScriptBuf::from_hex(&marker.op_return)
@@ -297,6 +324,16 @@ impl Marketplaces {
   /// The marketplace an output with `script` at `height` marks.
   pub fn marker(&self, script: &Script, height: u32) -> Option<&Marketplace> {
     self.find(&self.markers, script, height)
+  }
+
+  /// The marketplace whose tool address `script` is at `height`.
+  pub fn tool_output(&self, script: &Script, height: u32) -> Option<&Marketplace> {
+    self.find(&self.tools, script, height)
+  }
+
+  /// The marketplace that buys with the fee address `script` at `height`.
+  pub fn buying_wallet(&self, script: &Script, height: u32) -> Option<&Marketplace> {
+    self.find(&self.buying_wallets, script, height)
   }
 
   /// The entry (of any role) one of whose fee addresses has `script_hash`

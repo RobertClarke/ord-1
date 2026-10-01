@@ -19,7 +19,11 @@
 //!    seller's input is vin 0, signed ALL (`0x01`) like every other input,
 //!    which all come from other scripts; output 0 receives the sold sats,
 //!    worth exactly the input, at another script; output 1 pays the seller;
-//!    output 2 is a Magisat fee.
+//!    output 2 is a Magisat fee. Magisat's send and transfer tools have the
+//!    same shape, so output 1 must not return change to a funder (an input
+//!    other than the seller's), pay the item's own address or a tool address
+//!    (219 such transactions in Magisat's history, none of them a sale in
+//!    its records; all 102 recorded offers keep matching).
 //! 3. **Two-party ALL|ANYONECANPAY sale** (`0x81`; Satflow's secure
 //!    purchase): the seller pre-signs `[sats → buyer, payment → seller]` and
 //!    the buyer adds inputs signed without ANYONECANPAY. Every `0x81` input
@@ -77,6 +81,10 @@
 //! * no fee output: the proceeds, marketplace "unknown" (a fee-less
 //!   msigner purchase is not attributed to OKX: Magisat purchases whose fee
 //!   is below dust have the same layout).
+//!
+//! A listing a marketplace buys with its own wallet (a fee address marked as
+//! its buying wallet) and no fee output is that marketplace's sale (Magisat:
+//! 8 / 8 such sales are in its records, at its price rule).
 //!
 //! An anonymous marketplace (known only by its fee address) is reported as
 //! "unknown", its fees still counted.
@@ -136,6 +144,8 @@ struct Marks<'a> {
   fees: Vec<Fee<'a>>,
   /// Marker outputs.
   markers: Vec<(u32, &'a Marketplace)>,
+  /// Outputs paying a marketplace's tool address: never a payment.
+  tools: Vec<u32>,
   /// The transaction pays a lending or swap address.
   lending: bool,
   /// An input spends from a fee address: the marketplace's own wallet.
@@ -151,8 +161,11 @@ impl Marks<'_> {
         .any(|(_, marketplace)| marketplace.has_flow(flow))
   }
 
-  fn is_fee_or_marker(&self, vout: u32) -> bool {
-    self.fees.iter().any(|fee| fee.vout == vout) || self.markers.iter().any(|(v, _)| *v == vout)
+  /// A fee, marker or tool output: the marketplace's, never a payment.
+  fn is_marketplace_output(&self, vout: u32) -> bool {
+    self.fees.iter().any(|fee| fee.vout == vout)
+      || self.markers.iter().any(|(v, _)| *v == vout)
+      || self.tools.contains(&vout)
   }
 }
 
@@ -165,6 +178,7 @@ fn marks<'a>(
   let mut marks = Marks {
     fees: Vec::new(),
     markers: Vec::new(),
+    tools: Vec::new(),
     lending: false,
     funded_by_marketplace: tx.inputs.iter().any(|input| {
       marketplaces
@@ -176,6 +190,10 @@ fn marks<'a>(
     let script = output.script_pubkey.as_script();
     if let Some(marketplace) = marketplaces.marker(script, height) {
       marks.markers.push((vout as u32, marketplace));
+      continue;
+    }
+    if marketplaces.tool_output(script, height).is_some() {
+      marks.tools.push(vout as u32);
       continue;
     }
     let Some(marketplace) = marketplaces.fee_output(script, height) else {
@@ -228,7 +246,7 @@ pub(super) fn detect(
       listings.extend(listing(view, input));
     } else if listing_tx || settlement(input, &marks) {
       // The buyer's dummies or funding; an escrow leg's settlement.
-    } else if let Some(sale) = magisat_offer(view, input, &marks.fees) {
+    } else if let Some(sale) = magisat_offer(view, input, &marks) {
       out.push(sale);
     } else if let Some(sale) = psbt(view, input, &marks) {
       psbts.push(sale);
@@ -291,7 +309,7 @@ fn settlement(input: &MoveInput, marks: &Marks) -> bool {
 }
 
 /// Shape 2: an accepted Magisat offer.
-fn magisat_offer(view: &TxView, input: &MoveInput, fees: &[Fee]) -> Option<Sale> {
+fn magisat_offer(view: &TxView, input: &MoveInput, marks: &Marks) -> Option<Sale> {
   let (inputs, outputs) = (&view.tx.inputs, &view.tx.outputs);
   if input.vin != 0
     || inputs.len() < 2
@@ -303,12 +321,21 @@ fn magisat_offer(view: &TxView, input: &MoveInput, fees: &[Fee]) -> Option<Sale>
   {
     return None;
   }
-  let fee = fees
+  let fee = marks
+    .fees
     .iter()
     .find(|fee| fee.vout == 2 && fee.marketplace.price_rule == PriceRule::Magisat)?;
+  // Magisat's send and transfer tools have the same shape, but output 1
+  // pays a tool address, the item's own address, or change back to a
+  // funder (the seller's own address is a real offer's payment).
+  let payment = &outputs[1].script_pubkey;
+  let payment_hash = script_hash(payment);
   if outputs[0].value.to_sat() != inputs[0].value
     || outputs[0].script_pubkey == input.utxo.script_pubkey
     || view.main_destination(input) != Some(0)
+    || marks.tools.contains(&1)
+    || *payment == outputs[0].script_pubkey
+    || inputs[1..].iter().any(|i| i.script_hash == payment_hash)
   {
     return None;
   }
@@ -364,7 +391,7 @@ fn psbt(view: &TxView, input: &MoveInput, marks: &Marks) -> Option<Sale> {
     let output = outputs.get(vout)?;
     (output.value.to_sat() > 0
       && output.script_pubkey != *buyer_script
-      && !marks.is_fee_or_marker(vout as u32)
+      && !marks.is_marketplace_output(vout as u32)
       && !buyer_hashes.contains(&script_hash(&output.script_pubkey)))
     .then_some(vout as u32)
   })?;
@@ -450,7 +477,7 @@ fn offer(view: &TxView, input: &MoveInput, marks: &Marks) -> Option<Sale> {
     .enumerate()
     .filter(|&(vout, output)| {
       !items.contains(&(vout as u32))
-        && !marks.is_fee_or_marker(vout as u32)
+        && !marks.is_marketplace_output(vout as u32)
         && !output.script_pubkey.is_op_return()
         && output.script_pubkey != *buyer
     })
@@ -512,12 +539,29 @@ fn price_listings(view: &TxView, marketplaces: &Marketplaces, sales: &mut [Sale]
   if sales.is_empty() {
     return;
   }
-  let Some(marketplace) = main_marketplace(fees.iter()) else {
-    if let (Some(unisat), Some(fee)) = (marketplaces.by_id(UNISAT), unisat_fee(view)) {
-      let fee = fee.map(|vout| view.tx.outputs[vout as usize].value.to_sat());
-      attribute(sales, fee.unwrap_or(0), unisat);
+  let marketplace = match main_marketplace(fees.iter()) {
+    Some(marketplace) => marketplace,
+    None => {
+      // A marketplace buying a listing with its own wallet pays itself no
+      // fee: its sale all the same.
+      let buyer = sales[0].buyer_script.as_deref();
+      if let Some(marketplace) = buyer
+        .and_then(|script| marketplaces.buying_wallet(script, view.height))
+        .filter(|_| {
+          sales
+            .iter()
+            .all(|sale| sale.buyer_script.as_deref() == buyer)
+        })
+      {
+        marketplace
+      } else {
+        if let (Some(unisat), Some(fee)) = (marketplaces.by_id(UNISAT), unisat_fee(view)) {
+          let fee = fee.map(|vout| view.tx.outputs[vout as usize].value.to_sat());
+          attribute(sales, fee.unwrap_or(0), unisat);
+        }
+        return;
+      }
     }
-    return;
   };
   match marketplace.price_rule {
     PriceRule::Magisat => {

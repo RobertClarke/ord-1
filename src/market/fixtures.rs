@@ -18,6 +18,8 @@
 //! them), plus, for two-transaction sales, the transaction of the same block
 //! that spends its escrow output, and its tracked inputs, from:
 //! * `fork`: the fork's recorded move (blocks in its moves window);
+//! * `fork_sales`: the sold pieces of the sales the fork recorded for the
+//!   transaction (`/sales/tx`), when the fork lists it;
 //! * `magisat`: Magisat's sale records, the main sat at its offset in the
 //!   sold UTXO (the sale's shape is real, the piece stands for the sats);
 //! * `fork_output`: the tracked sats the buyer's output still holds today
@@ -423,6 +425,14 @@ const FIXTURES: &[(&str, &str)] = &[
     "magisat_offer_not_in_api",
     "82d5b938c1d5019a73f33d39f9f0bcede7e8be24de1f7cf2ee3eae4bed935c20",
   ),
+  (
+    "magisat_offer_paid_to_the_item_address",
+    "b04178fb6ad59b6eb9aef64a26604c86544efa686d7e4ecaeeb5b85f1e6bd4f0",
+  ),
+  (
+    "magisat_buys_with_own_wallet_no_fee",
+    "9a64e88da4d426392b54449143ee58cd8784d743f7524d6e5f01bf2745425b6d",
+  ),
   // Magic Eden (closed 2026-03), sats still where the buyer received them.
   (
     "me_listing_2023",
@@ -525,6 +535,18 @@ const FIXTURES: &[(&str, &str)] = &[
   (
     "liquidium_loan",
     "56711f668e018fa8ad81293400fe9b38db86f101239895eecdebe5a41ca0b1a5",
+  ),
+  (
+    "magisat_tool_change_back",
+    "21151f083d134d844f7e95182ae1d082883baf3cc5e25e895b1d859369051d5f",
+  ),
+  (
+    "magisat_tool_same_address",
+    "92e00e8d7b9bd39d0f3d71735b437bfe21ee6e590072d780c131e2d137306d05",
+  ),
+  (
+    "magisat_tool_address",
+    "4220297ed1ddef1e6a398d3956f1380fa3600d76e754b09b3e27ebe954a2b210",
   ),
 ];
 
@@ -712,6 +734,23 @@ fn magisat_buying_with_its_own_wallet() {
     *prices.entry(price).or_insert(0) += 1;
   }
   assert_eq!(prices, BTreeMap::from([(930, 13), (1_046, 7), (1_146, 30)]));
+  // With no fee output at all (none is due): still Magisat's sales, at its
+  // records' prices.
+  assert_eq!(
+    sales_of("magisat_buys_with_own_wallet_no_fee")
+      .iter()
+      .map(|sale| (sale.0, sale.2.as_str(), sale.5, sale.7))
+      .collect::<Vec<_>>(),
+    [
+      (8, "magisat", 30_000, 150),
+      (9, "magisat", 30_216, 151),
+      (10, "magisat", 30_216, 151),
+      (11, "magisat", 30_216, 151),
+      (12, "magisat", 30_216, 151),
+      (13, "magisat", 169_546, 847),
+      (14, "magisat", 178_000, 890),
+    ]
+  );
 }
 
 #[test]
@@ -748,6 +787,17 @@ fn magisat_offers() {
       (1, 0),
       (5_200_000, 5_148_000, 52_000)
     )]
+  );
+  // The seller paid at the item's own (input) address: still an offer, at
+  // Magisat's price (Magisat's tools pay their change back instead).
+  let fixture = Fixture::load("magisat_offer_paid_to_the_item_address");
+  assert_eq!(
+    fixture.outputs[1].script_pubkey,
+    fixture.tracked[0].script_pubkey
+  );
+  assert_eq!(
+    sales_of("magisat_offer_paid_to_the_item_address"),
+    [sold(0, Offer, "magisat", (1, 0), (100_000, 85_000, 15_000))]
   );
   // Known deviation: in 2024-03 offers paid a 2.5 % maker fee and no taker
   // fee, so Magisat's price is 2,500,000; half the fee output is added.
@@ -987,6 +1037,23 @@ fn lookalikes_are_not_sales() {
   // A loan: collateral to the lender's vault, the principal to the borrower.
   assert!(pays("liquidium_loan", "liquidium"));
   assert_eq!(sales_of("liquidium_loan"), []);
+  // Magisat's send and transfer tools, in the offer's shape with a Magisat
+  // fee: output 1 is change back to the funder, the item's own address, or
+  // Magisat's tool address.
+  for name in [
+    "magisat_tool_change_back",
+    "magisat_tool_same_address",
+    "magisat_tool_address",
+  ] {
+    assert!(pays(name, "magisat"), "{name}");
+    assert_eq!(sales_of(name), [], "{name}");
+  }
+  let fixture = Fixture::load("magisat_tool_address");
+  assert!(
+    Marketplaces::embedded()
+      .tool_output(&fixture.outputs[1].script_pubkey, fixture.height)
+      .is_some()
+  );
 }
 
 #[test]
@@ -1114,6 +1181,29 @@ fn build() {
         })
         .collect();
       (tracked, "fork".into())
+    } else if let Some(sold) = fork
+      .try_get(&format!("/sales/tx/{txid}"))
+      .map(|json| json["sales"].as_array().cloned().unwrap_or_default())
+      .filter(|sales| !sales.is_empty())
+    {
+      let tracked = sold
+        .iter()
+        .map(|sale| {
+          let vin = sale["vin"].as_u64().unwrap() as usize;
+          let pieces = sale["pieces"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|piece| Piece {
+              offset: piece["offset"].as_u64().unwrap(),
+              start: piece["start"].as_u64().unwrap(),
+              len: piece["len"].as_u64().unwrap(),
+            })
+            .collect();
+          tracked_input(vin, pieces)
+        })
+        .collect();
+      (tracked, "fork_sales".into())
     } else if let Some(records) = magisat.get(&txid.to_string()) {
       let mut tracked: Vec<FixtureTracked> = records
         .iter()
@@ -1237,6 +1327,108 @@ fn build() {
         .collect::<Vec<_>>()
     );
   }
+}
+
+/// Re-runs the detector on transactions the fork recorded sales for, with
+/// the pieces it recorded (ignored: needs bitcoind and the fork):
+/// `REVALIDATE_TXIDS` (a file, one txid per line) to `REVALIDATE_OUT` (one
+/// JSON line per transaction: its height and the sales found now).
+#[test]
+#[ignore]
+fn revalidate() {
+  use std::io::Write;
+  let env = |name: &str| std::env::var(name).unwrap_or_else(|_| panic!("set {name}"));
+  let (rpc, live) = live_source();
+  let fork = Fork::new(env("FORK_URL"));
+  let txids = std::fs::read_to_string(env("REVALIDATE_TXIDS")).unwrap();
+  let mut out = std::io::BufWriter::new(std::fs::File::create(env("REVALIDATE_OUT")).unwrap());
+  let ctx = context();
+  for txid in txids.lines().map(str::trim).filter(|line| !line.is_empty()) {
+    let raw: Value = rpc
+      .call("getrawtransaction", &[txid.into(), 2.into()])
+      .unwrap();
+    let hash = BlockHash::from_str(raw["blockhash"].as_str().unwrap()).unwrap();
+    let header: Value = rpc
+      .call("getblockheader", &[hash.to_string().into()])
+      .unwrap();
+    let height = header["height"].as_u64().unwrap() as u32;
+    let block = live.block(hash, height).unwrap();
+    let txid = Txid::from_str(txid).unwrap();
+    let (tx_index, tx) = block
+      .txs
+      .iter()
+      .enumerate()
+      .find(|(_, tx)| tx.txid == txid)
+      .unwrap();
+    let sold = fork
+      .try_get(&format!("/sales/tx/{txid}"))
+      .map(|json| json["sales"].as_array().cloned().unwrap_or_default())
+      .unwrap_or_default();
+    let tracked = sold
+      .iter()
+      .map(|sale| {
+        let vin = sale["vin"].as_u64().unwrap() as usize;
+        let prevout = &raw["vin"][vin]["prevout"];
+        FixtureTracked {
+          vin: vin as u32,
+          outpoint: tx.inputs[vin].previous_output,
+          value: tx.inputs[vin].value,
+          script_pubkey: ScriptBuf::from_hex(prevout["scriptPubKey"]["hex"].as_str().unwrap())
+            .unwrap(),
+          height: prevout["height"].as_u64().unwrap() as u32,
+          pieces: sale["pieces"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|piece| Piece {
+              offset: piece["offset"].as_u64().unwrap(),
+              start: piece["start"].as_u64().unwrap(),
+              len: piece["len"].as_u64().unwrap(),
+            })
+            .collect(),
+        }
+      })
+      .collect();
+    let FixtureTx {
+      inputs, outputs, ..
+    } = fixture_tx(tx);
+    let fixture = Fixture {
+      name: txid.to_string(),
+      txid,
+      height,
+      tx_index: tx_index as u32,
+      pieces_from: "fork_sales".into(),
+      tracked,
+      inputs,
+      outputs,
+      spender: None,
+    };
+    let (block, delta) = fixture.block_and_delta();
+    let market = analyze(&block, &delta, &ctx);
+    let sales: Vec<Value> = market
+      .sales
+      .iter()
+      .map(|sale| {
+        serde_json::json!({
+          "vin": sale.vin,
+          "kind": sale.kind,
+          "marketplace": sale.marketplace,
+          "price": sale.price,
+          "seller_proceeds": sale.seller_proceeds,
+          "fees": sale.fees,
+          "payment_vout": sale.payment_vout,
+          "buyer_vout": sale.buyer_vout,
+        })
+      })
+      .collect();
+    serde_json::to_writer(
+      &mut out,
+      &serde_json::json!({ "txid": txid, "height": height, "sales": sales }),
+    )
+    .unwrap();
+    writeln!(out).unwrap();
+  }
+  out.flush().unwrap();
 }
 
 fn live_source() -> (crate::source::Rpc, crate::source::LiveSource) {

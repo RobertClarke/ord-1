@@ -28,6 +28,7 @@ const PASSTHROUGH_FEE: u8 = 53;
 const LENDING_FEE: u8 = 54;
 const ANONYMOUS_FEE: u8 = 55;
 const TOOL_FEE: u8 = 56;
+const MAGISAT_TOOL: u8 = 57;
 const BUYER: u8 = 9;
 
 /// Satflow's OP_RETURN "SATFLOW".
@@ -38,7 +39,8 @@ fn marketplaces() -> Marketplaces {
   Marketplaces::from_json(&format!(
     r#"{{ "marketplaces": [
       {{ "id": "magisat", "price_rule": "magisat",
-         "fee_addresses": [{{ "script_pubkey": "{}" }}] }},
+         "fee_addresses": [{{ "script_pubkey": "{}", "buying_wallet": true }}],
+         "tool_addresses": [{{ "script_pubkey": "{}" }}] }},
       {{ "id": "magic_eden",
          "fee_addresses": [{{ "script_pubkey": "{}", "to_height": 900000 }}] }},
       {{ "id": "satflow", "flows": ["secure_purchase_two_tx"],
@@ -54,6 +56,7 @@ fn marketplaces() -> Marketplaces {
          "fee_addresses": [{{ "script_pubkey": "{}" }}] }},
       {{ "id": "unisat" }} ] }}"#,
     fee(MAGISAT_FEE),
+    fee(MAGISAT_TOOL),
     fee(MAGIC_EDEN_FEE),
     fee(SATFLOW_FEE),
     fee(PASSTHROUGH_FEE),
@@ -1440,8 +1443,10 @@ fn magisat_maker_fee_from_block_861287() {
 }
 
 #[test]
-fn magisat_buying_with_its_own_wallet_is_no_fee() {
-  // The fee address receives the bought sats: it is the buyer, not a fee.
+fn magisat_buying_with_its_own_wallet() {
+  // The fee address receives the bought sats: it is the buyer, not a fee,
+  // and a listing Magisat buys with its own wallet is a Magisat sale (by
+  // its price rule: no maker fee before block 861,287).
   let mut market = Market::new();
   let (x, value, _) = market.mine_rare(1);
   let delta = buy_listing(&mut market, (x, value), 30_000, 1_000, MAGISAT_FEE);
@@ -1453,7 +1458,44 @@ fn magisat_buying_with_its_own_wallet_is_no_fee() {
       sale.fees,
       sale.buyer_script.clone()
     ),
-    (UNKNOWN_MARKETPLACE, 30_000, 0, Some(script(MAGISAT_FEE)))
+    ("magisat", 30_000, 0, Some(script(MAGISAT_FEE)))
+  );
+  // From block 861,287 its maker fee is in the price.
+  let mut market = Market::after(MAGISAT_MAKER_FEE_HEIGHT);
+  let (x, value, _) = market.mine_rare(1);
+  let delta = buy_listing(&mut market, (x, value), 487_550, 1_000, MAGISAT_FEE);
+  assert_eq!(
+    delta
+      .sales
+      .iter()
+      .map(|sale| (sale.marketplace.as_str(), sale.price, sale.fees))
+      .collect::<Vec<_>>(),
+    [("magisat", 490_000, 2_450)]
+  );
+  // Another marketplace's fee address buying, with no fee output: no
+  // buying wallet, an unknown buyer.
+  let mut market = Market::new();
+  let (x, value, _) = market.mine_rare(1);
+  let delta = market.apply(vec![tx(
+    txid(62),
+    vec![
+      untracked(63, 600),
+      input(x, value, Some(LISTING_SIGHASH)),
+      untracked(64, 30_000),
+    ],
+    vec![
+      out_to(600 + value, MAGIC_EDEN_FEE),
+      out_to(20_000, 1),
+      out_to(30_000 - 20_000 - 200, BUYER),
+    ],
+  )]);
+  assert_eq!(
+    delta
+      .sales
+      .iter()
+      .map(|sale| (sale.marketplace.as_str(), sale.price))
+      .collect::<Vec<_>>(),
+    [(UNKNOWN_MARKETPLACE, 20_000)]
   );
 }
 
@@ -1538,6 +1580,54 @@ fn magisat_offers() {
     let delta = market.apply(vec![offer_tx((x, value), sighashes, out0, fee)]);
     assert!(delta.sales.is_empty(), "{sighashes:?} {out0} {fee}");
   }
+}
+
+#[test]
+fn magisat_tools_are_not_offers() {
+  // Magisat's send and transfer tools move an item and pay a Magisat fee in
+  // the offer's shape, but output 1 is no payment: change back to a funder,
+  // the item's own address, or Magisat's tool address. A payment to the
+  // seller's own address is a real offer's.
+  let offer = |market: &mut Market, payee: u8, funder: u8| {
+    let (x, value, _) = market.mine_rare(1);
+    market.apply(vec![tx(
+      txid(61),
+      vec![
+        input(x, value, Some(0x01)),
+        owned(input(op(txid(1_000_002), 0), 5_000_000, Some(0x01)), funder),
+      ],
+      vec![
+        out_to(value, BUYER),
+        out_to(3_960_000, payee),
+        out_to(80_000, MAGISAT_FEE),
+        out_to(5_000_000 - 3_960_000 - 80_000 - 1_000, funder),
+      ],
+    )])
+  };
+  for (case, payee, funder) in [
+    ("change back to the funder", 7, 7),
+    ("the item's own address", BUYER, 7),
+    ("Magisat's tool address", MAGISAT_TOOL, 7),
+  ] {
+    let mut market = Market::new();
+    let delta = offer(&mut market, payee, funder);
+    assert!(delta.sales.is_empty(), "{case}: {:?}", delta.sales);
+  }
+  let mut market = Market::new();
+  let delta = offer(&mut market, 1, 7);
+  assert_eq!(
+    summary(&delta.sales),
+    [(
+      0,
+      SaleKind::Offer,
+      "magisat",
+      Some(1),
+      3_960_000,
+      40_000,
+      4_000_000,
+      Some(0)
+    )]
+  );
 }
 
 #[test]
