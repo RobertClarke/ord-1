@@ -137,7 +137,10 @@ fn script_sig_pushes(script: &[u8]) -> impl Iterator<Item = &[u8]> {
 /// * a script that fails to parse anywhere yields no envelopes at all;
 /// * the pointer is the first value of tag 2 before the body, read
 ///   little-endian, `None` if absent or if a byte past the eighth is not
-///   zero.
+///   zero;
+/// * `unrecognized_even_field` is ord's flag of that name (which unbinds the
+///   inscription): a complete field before the body whose tag's first byte
+///   is even, other than the first pointer.
 ///
 /// ord only indexes envelopes from its first inscription height (767,430
 /// on mainnet); this reports them at every height.
@@ -213,6 +216,7 @@ fn parse_envelopes(script: &[u8]) -> Option<Vec<Envelope>> {
         Some(Ok(Instruction::Op(OPCODE_ENDIF))) => {
           envelopes.push(Envelope {
             pointer: payload.pointer,
+            unrecognized_even_field: payload.unrecognized_even_field,
           });
           break;
         }
@@ -230,16 +234,28 @@ fn parse_envelopes(script: &[u8]) -> Option<Vec<Envelope>> {
   Some(envelopes)
 }
 
-/// Streams an envelope's payload, keeping only the pointer: fields are the
+/// Streams an envelope's payload into what `Envelope` needs. Fields are the
 /// (tag, value) pairs before the body, which starts at the first empty push
-/// in a tag position.
+/// in a tag position; a tag without a value is ignored, like ord's
+/// incomplete field.
 #[derive(Default)]
 struct Payload {
   index: usize,
   body: bool,
-  tag_is_pointer: bool,
+  /// The tag at the last even position, awaiting its value.
+  tag: Tag,
   pointer_seen: bool,
   pointer: Option<u64>,
+  unrecognized_even_field: bool,
+}
+
+#[derive(Default, Clone, Copy)]
+enum Tag {
+  #[default]
+  Odd,
+  Pointer,
+  /// Any other tag whose first byte is even.
+  Even,
 }
 
 impl Payload {
@@ -248,15 +264,23 @@ impl Payload {
       return;
     }
     if self.index.is_multiple_of(2) {
-      if item.is_empty() {
-        self.body = true;
-      } else {
-        self.tag_is_pointer = item == [2];
+      match item.first() {
+        None => self.body = true,
+        Some(_) if item == [2] => self.tag = Tag::Pointer,
+        Some(first) if first % 2 == 0 => self.tag = Tag::Even,
+        Some(_) => self.tag = Tag::Odd,
       }
-    } else if self.tag_is_pointer && !self.pointer_seen {
-      // ord takes the first value of a repeated tag.
-      self.pointer_seen = true;
-      self.pointer = pointer(item);
+    } else {
+      match self.tag {
+        // ord takes the first value of a repeated tag...
+        Tag::Pointer if !self.pointer_seen => {
+          self.pointer_seen = true;
+          self.pointer = pointer(item);
+        }
+        // ...and flags what is left with an even tag.
+        Tag::Pointer | Tag::Even => self.unrecognized_even_field = true,
+        Tag::Odd => {}
+      }
     }
     self.index += 1;
   }
@@ -588,11 +612,23 @@ mod tests {
     input_envelopes(&reveal(script))
   }
 
-  const NO_POINTER: Envelope = Envelope { pointer: None };
+  const NO_POINTER: Envelope = Envelope {
+    pointer: None,
+    unrecognized_even_field: false,
+  };
 
   fn at(pointer: u64) -> Envelope {
     Envelope {
       pointer: Some(pointer),
+      unrecognized_even_field: false,
+    }
+  }
+
+  /// ord unbinds these.
+  fn unbound(pointer: Option<u64>) -> Envelope {
+    Envelope {
+      pointer,
+      unrecognized_even_field: true,
     }
   }
 
@@ -701,12 +737,19 @@ mod tests {
     for (value, expected) in cases {
       assert_eq!(
         envelopes(inscription(&[&[2], value, &[1], b"text/plain", &[], b"hi"])),
-        [Envelope { pointer: expected }],
+        [Envelope {
+          pointer: expected,
+          unrecognized_even_field: false
+        }],
         "{value:?}"
       );
     }
-    // The first of duplicate pointer tags wins (ord's `Tag::take`).
-    assert_eq!(envelopes(inscription(&[&[2], &[5], &[2], &[6]])), [at(5)]);
+    // The first of duplicate pointer tags wins (ord's `Tag::take`); the
+    // second is left over, an unrecognized even field.
+    assert_eq!(
+      envelopes(inscription(&[&[2], &[5], &[2], &[6]])),
+      [unbound(Some(5))]
+    );
     assert_eq!(
       envelopes(inscription(&[
         &[2],
@@ -714,15 +757,15 @@ mod tests {
         &[2],
         &[6]
       ])),
-      [NO_POINTER]
+      [unbound(None)]
     );
     // Only before the body, and only as a complete field.
     assert_eq!(envelopes(inscription(&[&[], &[2], &[7]])), [NO_POINTER]);
     assert_eq!(envelopes(inscription(&[&[1], b"a", &[2]])), [NO_POINTER]);
     // An empty push in a value position is a value, not the body.
     assert_eq!(envelopes(inscription(&[&[1], &[], &[2], &[9]])), [at(9)]);
-    // Tag [2, 0] is not tag 2.
-    assert_eq!(envelopes(inscription(&[&[2, 0], &[9]])), [NO_POINTER]);
+    // Tag [2, 0] is not tag 2 but an unknown even tag.
+    assert_eq!(envelopes(inscription(&[&[2, 0], &[9]])), [unbound(None)]);
     // OP_2 is the tag too (a "pushnum" curse, still indexed).
     let pushnum = script::Builder::new()
       .push_opcode(opcodes::OP_FALSE)
@@ -756,8 +799,89 @@ mod tests {
     builder = envelope(builder, &[&[2], &[3]]);
     assert_eq!(
       envelopes(builder.into_script()),
-      [NO_POINTER, at(0x0222), NO_POINTER, at(3)]
+      [NO_POINTER, at(0x0222), unbound(None), at(3)]
     );
+  }
+
+  #[test]
+  fn unrecognized_even_fields() {
+    let flagged: [&[&[u8]]; 7] = [
+      // Unknown even tags, including ord's reserved "unbound" tag 66.
+      &[&[4], &[1]],
+      &[&[66], &[1]],
+      &[&[1], b"text/plain", &[22], &[0], &[], b"body"],
+      // A tag of one zero byte (not the empty body separator).
+      &[&[0], &[1]],
+      // Multi-byte tags count by their first byte.
+      &[&[0x0e, 0x01], &[1]],
+      // A repeated pointer.
+      &[&[2], &[1], &[1], b"x", &[2], &[1]],
+      // An empty value is still a value.
+      &[&[4], &[]],
+    ];
+    for items in flagged {
+      assert!(
+        envelopes(inscription(items))[0].unrecognized_even_field,
+        "{items:?}"
+      );
+    }
+
+    let not_flagged: [&[&[u8]]; 8] = [
+      &[],
+      &[&[1], b"text/plain", &[], b"body"],
+      // Unknown odd tags, multi-byte tags with an odd first byte.
+      &[&[255], &[1], &[0x0f, 0x00], &[1]],
+      // Known tags, repeated: duplicate fields, but odd.
+      &[&[1], b"a", &[1], b"b", &[7], b"m", &[7], b"n"],
+      // Parents, metadata and properties may repeat.
+      &[
+        &[3],
+        &[1; 36],
+        &[3],
+        &[2; 36],
+        &[5],
+        &[0xa0],
+        &[5],
+        &[0xa0],
+        &[17],
+        &[1],
+        &[17],
+        &[2],
+      ],
+      // An even tag without a value (incomplete field).
+      &[&[1], b"a", &[4]],
+      // Even tags in the body.
+      &[&[], &[4], &[1], &[2], &[2]],
+      // A single pointer.
+      &[&[2], &[0x10]],
+    ];
+    for items in not_flagged {
+      assert!(
+        !envelopes(inscription(items))[0].unrecognized_even_field,
+        "{items:?}"
+      );
+    }
+
+    // OP_PUSHNUM tags: OP_4 is even, OP_5 and OP_1NEGATE (0x81) odd.
+    for (op, flagged) in [
+      (OP_PUSHNUM_4, true),
+      (OP_PUSHNUM_5, false),
+      (OP_PUSHNUM_NEG1, false),
+    ] {
+      let script = script::Builder::new()
+        .push_opcode(opcodes::OP_FALSE)
+        .push_opcode(OP_IF)
+        .push_slice(b"ord")
+        .push_opcode(op)
+        .push_opcode(OP_PUSHNUM_1)
+        .push_opcode(OP_ENDIF)
+        .into_script();
+      assert_eq!(
+        envelopes(script)[0].unrecognized_even_field,
+        flagged,
+        "{op:?}"
+      );
+    }
   }
 
   #[test]

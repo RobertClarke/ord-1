@@ -618,7 +618,10 @@ mod witness {
     (ScriptBuf::new(), Witness::from_slice(&[signature]))
   }
 
-  const PLAIN: Envelope = Envelope { pointer: None };
+  const PLAIN: Envelope = Envelope {
+    pointer: None,
+    unrecognized_even_field: false,
+  };
 
   #[test]
   fn sighash_and_envelopes_agree_between_sources() {
@@ -694,7 +697,13 @@ mod witness {
           ScriptBuf::new(),
           reveal_witness(
             schnorr(Some(0x83)),
-            &reveal(&[text, &[&[2], &[0xe8, 0x03], &[], b"x"], &[&[2], &[9; 9]]]),
+            &reveal(&[
+              text,
+              &[&[2], &[0xe8, 0x03], &[], b"x"],
+              &[&[2], &[9; 9]],
+              // ord's reserved "unbound" tag: an unrecognized even field.
+              &[&[66], &[1], &[], b"y"],
+            ]),
           ),
         ),
       ],
@@ -745,9 +754,14 @@ mod witness {
           vec![
             PLAIN,
             Envelope {
-              pointer: Some(1000)
+              pointer: Some(1000),
+              unrecognized_even_field: false
             },
-            PLAIN
+            PLAIN,
+            Envelope {
+              pointer: None,
+              unrecognized_even_field: true
+            },
           ]
         ),
       ]

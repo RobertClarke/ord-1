@@ -26,6 +26,11 @@
 //!
 //! Errors from bitcoind carry an `RpcError` (`error.downcast_ref()`), e.g.
 //! -5 for an unknown block hash, -8 for a height above the tip.
+//!
+//! Every non-coinbase input also carries its signature's sighash flag and
+//! ord's inscription envelopes (`input_sighash`, `input_envelopes`, read the
+//! same way by both sources). ord only indexes envelopes from height
+//! 767,430 on mainnet; they are reported at every height.
 
 use {
   bitcoin::{ScriptBuf, TxOut},
