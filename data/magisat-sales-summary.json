@@ -1,0 +1,2030 @@
+{
+ "source": "GET https://api.magisat.io/activity/tag/{tagId}?type=PURCHASE,OFFER_PURCHASED, every non-virtual tag except 'inscription'",
+ "downloaded": "2026-10-01",
+ "dataset": {
+  "gp": "~/work/magisat/sales.jsonl",
+  "local_copy": "scratchpad/magisat/sales.jsonl (session scratchpad)",
+  "unique_sales": 37749,
+  "dedupe_key": "(data.snapshot.buyerTxId, data.snapshot.utxo); 'tags' lists every tag feed the sale appeared in",
+  "by_type": {
+   "PURCHASE": 37620,
+   "OFFER_PURCHASED": 129
+  },
+  "by_listing_type": {
+   "None": 10957,
+   "OWNER": 23058,
+   "OFFER": 41,
+   "RBF": 2193,
+   "GIVEAWAY": 1500
+  },
+  "purchasedAt_range": [
+   "2023-08-23T14:06:58.000Z",
+   "2026-09-30T21:24:51.000Z"
+  ],
+  "records_without_buyerTxId": 630,
+  "giveaway_records": 1500,
+  "by_year": {
+   "2023": 5188,
+   "2024": 15006,
+   "2025": 11127,
+   "2026": 6428
+  },
+  "by_year_type": {
+   "2023|PURCHASE": 5188,
+   "2024|OFFER_PURCHASED": 22,
+   "2024|PURCHASE": 14984,
+   "2025|OFFER_PURCHASED": 59,
+   "2025|PURCHASE": 11068,
+   "2026|OFFER_PURCHASED": 48,
+   "2026|PURCHASE": 6380
+  }
+ },
+ "tags": {
+  "vintage": {
+   "label": "Vintage",
+   "id": "d7465cf9-b706-4e7c-acaf-0ca42b592625",
+   "unique_sales": 9502,
+   "market_sales": 9419,
+   "market_years": {
+    "2023": 1182,
+    "2024": 3466,
+    "2025": 2569,
+    "2026": 2202
+   },
+   "purchase": 9453,
+   "offer_purchased": 49,
+   "as_main_tag": 273,
+   "years": {
+    "2023": 1182,
+    "2024": 3466,
+    "2025": 2631,
+    "2026": 2223
+   },
+   "years_by_type": {
+    "2023|PURCHASE": 1182,
+    "2024|OFFER_PURCHASED": 13,
+    "2024|PURCHASE": 3453,
+    "2025|OFFER_PURCHASED": 19,
+    "2025|PURCHASE": 2612,
+    "2026|OFFER_PURCHASED": 17,
+    "2026|PURCHASE": 2206
+   },
+   "api_count_at_download": 9518,
+   "rows_downloaded": 9518,
+   "tag_sales_field": "9377"
+  },
+  "pali": {
+   "label": "Palindrome",
+   "id": "33d62df7-f708-42c5-adb7-7d5ed65f889f",
+   "unique_sales": 9275,
+   "market_sales": 9202,
+   "market_years": {
+    "2023": 2042,
+    "2024": 4045,
+    "2025": 2263,
+    "2026": 852
+   },
+   "purchase": 9240,
+   "offer_purchased": 35,
+   "as_main_tag": 3114,
+   "years": {
+    "2023": 2042,
+    "2024": 4045,
+    "2025": 2327,
+    "2026": 861
+   },
+   "years_by_type": {
+    "2023|PURCHASE": 2042,
+    "2024|OFFER_PURCHASED": 12,
+    "2024|PURCHASE": 4033,
+    "2025|OFFER_PURCHASED": 13,
+    "2025|PURCHASE": 2314,
+    "2026|OFFER_PURCHASED": 10,
+    "2026|PURCHASE": 851
+   },
+   "api_count_at_download": 9292,
+   "rows_downloaded": 9292,
+   "tag_sales_field": "9197"
+  },
+  "uncommon": {
+   "label": "Uncommon",
+   "id": "86b46002-9216-4d19-9f3f-46c61c34632f",
+   "unique_sales": 7840,
+   "market_sales": 7714,
+   "market_years": {
+    "2023": 738,
+    "2024": 3441,
+    "2025": 1795,
+    "2026": 1740
+   },
+   "purchase": 7800,
+   "offer_purchased": 40,
+   "as_main_tag": 3601,
+   "years": {
+    "2023": 738,
+    "2024": 3441,
+    "2025": 1905,
+    "2026": 1756
+   },
+   "years_by_type": {
+    "2023|PURCHASE": 738,
+    "2024|OFFER_PURCHASED": 2,
+    "2024|PURCHASE": 3439,
+    "2025|OFFER_PURCHASED": 22,
+    "2025|PURCHASE": 1883,
+    "2026|OFFER_PURCHASED": 16,
+    "2026|PURCHASE": 1740
+   },
+   "api_count_at_download": 7894,
+   "rows_downloaded": 7894,
+   "tag_sales_field": "7776"
+  },
+  "nakamoto": {
+   "label": "Nakamoto",
+   "id": "7aa70d15-aebb-45f4-801d-78cdeba71187",
+   "unique_sales": 6998,
+   "market_sales": 6926,
+   "market_years": {
+    "2023": 810,
+    "2024": 2425,
+    "2025": 1603,
+    "2026": 2088
+   },
+   "purchase": 6971,
+   "offer_purchased": 27,
+   "as_main_tag": 611,
+   "years": {
+    "2023": 810,
+    "2024": 2425,
+    "2025": 1637,
+    "2026": 2126
+   },
+   "years_by_type": {
+    "2023|PURCHASE": 810,
+    "2024|OFFER_PURCHASED": 7,
+    "2024|PURCHASE": 2418,
+    "2025|OFFER_PURCHASED": 13,
+    "2025|PURCHASE": 1624,
+    "2026|OFFER_PURCHASED": 7,
+    "2026|PURCHASE": 2119
+   },
+   "api_count_at_download": 7007,
+   "rows_downloaded": 7007,
+   "tag_sales_field": "6914"
+  },
+  "alpha": {
+   "label": "Alpha",
+   "id": "f5eff054-f8e7-4220-af1f-406866ebbcc6",
+   "unique_sales": 6874,
+   "market_sales": 6753,
+   "market_years": {
+    "2023": 587,
+    "2024": 3109,
+    "2025": 1478,
+    "2026": 1579
+   },
+   "purchase": 6829,
+   "offer_purchased": 45,
+   "as_main_tag": 2340,
+   "years": {
+    "2023": 587,
+    "2024": 3109,
+    "2025": 1591,
+    "2026": 1587
+   },
+   "years_by_type": {
+    "2023|PURCHASE": 587,
+    "2024|OFFER_PURCHASED": 2,
+    "2024|PURCHASE": 3107,
+    "2025|OFFER_PURCHASED": 21,
+    "2025|PURCHASE": 1570,
+    "2026|OFFER_PURCHASED": 22,
+    "2026|PURCHASE": 1565
+   },
+   "api_count_at_download": 6938,
+   "rows_downloaded": 6938,
+   "tag_sales_field": "6817"
+  },
+  "1st-tx": {
+   "label": "1st Tx",
+   "id": "cc845cce-919f-487f-89d1-3e8f8786c6ef",
+   "unique_sales": 5873,
+   "market_sales": 5831,
+   "market_years": {
+    "2023": 542,
+    "2024": 2036,
+    "2025": 1427,
+    "2026": 1826
+   },
+   "purchase": 5854,
+   "offer_purchased": 19,
+   "as_main_tag": 0,
+   "years": {
+    "2023": 542,
+    "2024": 2036,
+    "2025": 1461,
+    "2026": 1834
+   },
+   "years_by_type": {
+    "2023|PURCHASE": 542,
+    "2024|OFFER_PURCHASED": 6,
+    "2024|PURCHASE": 2030,
+    "2025|OFFER_PURCHASED": 9,
+    "2025|PURCHASE": 1452,
+    "2026|OFFER_PURCHASED": 4,
+    "2026|PURCHASE": 1830
+   },
+   "api_count_at_download": 5882,
+   "rows_downloaded": 5882,
+   "tag_sales_field": "5825"
+  },
+  "b9": {
+   "label": "Block 9",
+   "id": "9ef35ca6-6164-40c8-9894-7a82c8d7618c",
+   "unique_sales": 5873,
+   "market_sales": 5831,
+   "market_years": {
+    "2023": 542,
+    "2024": 2036,
+    "2025": 1427,
+    "2026": 1826
+   },
+   "purchase": 5854,
+   "offer_purchased": 19,
+   "as_main_tag": 812,
+   "years": {
+    "2023": 542,
+    "2024": 2036,
+    "2025": 1461,
+    "2026": 1834
+   },
+   "years_by_type": {
+    "2023|PURCHASE": 542,
+    "2024|OFFER_PURCHASED": 6,
+    "2024|PURCHASE": 2030,
+    "2025|OFFER_PURCHASED": 9,
+    "2025|PURCHASE": 1452,
+    "2026|OFFER_PURCHASED": 4,
+    "2026|PURCHASE": 1830
+   },
+   "api_count_at_download": 5882,
+   "rows_downloaded": 5882,
+   "tag_sales_field": "5825"
+  },
+  "b9-450": {
+   "label": "1st Bitcoin Sats (B9 450x)",
+   "id": "a0de61fb-5500-44a6-b701-ae44515b98c0",
+   "unique_sales": 5056,
+   "market_sales": 5017,
+   "market_years": {
+    "2023": 170,
+    "2024": 1916,
+    "2025": 1322,
+    "2026": 1609
+   },
+   "purchase": 5040,
+   "offer_purchased": 16,
+   "as_main_tag": 5041,
+   "years": {
+    "2023": 170,
+    "2024": 1916,
+    "2025": 1353,
+    "2026": 1617
+   },
+   "years_by_type": {
+    "2023|PURCHASE": 170,
+    "2024|OFFER_PURCHASED": 6,
+    "2024|PURCHASE": 1910,
+    "2025|OFFER_PURCHASED": 8,
+    "2025|PURCHASE": 1345,
+    "2026|OFFER_PURCHASED": 2,
+    "2026|PURCHASE": 1615
+   },
+   "api_count_at_download": 5065,
+   "rows_downloaded": 5065,
+   "tag_sales_field": "5013"
+  },
+  "omega": {
+   "label": "Omega",
+   "id": "52074589-f582-4006-a6b6-f16cb226a888",
+   "unique_sales": 4503,
+   "market_sales": 4421,
+   "market_years": {
+    "2023": 477,
+    "2024": 2098,
+    "2025": 900,
+    "2026": 946
+   },
+   "purchase": 4479,
+   "offer_purchased": 24,
+   "as_main_tag": 448,
+   "years": {
+    "2023": 477,
+    "2024": 2098,
+    "2025": 973,
+    "2026": 955
+   },
+   "years_by_type": {
+    "2023|PURCHASE": 477,
+    "2024|OFFER_PURCHASED": 1,
+    "2024|PURCHASE": 2097,
+    "2025|OFFER_PURCHASED": 15,
+    "2025|PURCHASE": 958,
+    "2026|OFFER_PURCHASED": 8,
+    "2026|PURCHASE": 947
+   },
+   "api_count_at_download": 4554,
+   "rows_downloaded": 4554,
+   "tag_sales_field": "4452"
+  },
+  "alpha-uncommon": {
+   "label": "Alpha Uncommon",
+   "id": "df27dd10-eac9-4361-b8e1-2aa9f6256d6b",
+   "unique_sales": 4251,
+   "market_sales": 4164,
+   "market_years": {
+    "2023": 268,
+    "2024": 1987,
+    "2025": 1017,
+    "2026": 892
+   },
+   "purchase": 4216,
+   "offer_purchased": 35,
+   "as_main_tag": 4228,
+   "years": {
+    "2023": 268,
+    "2024": 1987,
+    "2025": 1099,
+    "2026": 897
+   },
+   "years_by_type": {
+    "2023|PURCHASE": 268,
+    "2024|OFFER_PURCHASED": 2,
+    "2024|PURCHASE": 1985,
+    "2025|OFFER_PURCHASED": 18,
+    "2025|PURCHASE": 1081,
+    "2026|OFFER_PURCHASED": 15,
+    "2026|PURCHASE": 882
+   },
+   "api_count_at_download": 4303,
+   "rows_downloaded": 4303,
+   "tag_sales_field": "4162"
+  },
+  "black-uncommon": {
+   "label": "Black Uncommon",
+   "id": "6c2a1e25-6750-422c-9ea6-a8971d97ddcb",
+   "unique_sales": 3809,
+   "market_sales": 3738,
+   "market_years": {
+    "2023": 762,
+    "2024": 1742,
+    "2025": 768,
+    "2026": 466
+   },
+   "purchase": 3791,
+   "offer_purchased": 18,
+   "as_main_tag": 1743,
+   "years": {
+    "2023": 762,
+    "2024": 1742,
+    "2025": 833,
+    "2026": 472
+   },
+   "years_by_type": {
+    "2023|PURCHASE": 762,
+    "2024|OFFER_PURCHASED": 1,
+    "2024|PURCHASE": 1741,
+    "2025|OFFER_PURCHASED": 12,
+    "2025|PURCHASE": 821,
+    "2026|OFFER_PURCHASED": 5,
+    "2026|PURCHASE": 467
+   },
+   "api_count_at_download": 3849,
+   "rows_downloaded": 3849,
+   "tag_sales_field": "3723"
+  },
+  "seq-pali": {
+   "label": "Sequence Pali",
+   "id": "99b8aacb-5118-475d-bd9b-b82edbcdf49e",
+   "unique_sales": 2919,
+   "market_sales": 2891,
+   "market_years": {
+    "2023": 676,
+    "2024": 1180,
+    "2025": 701,
+    "2026": 334
+   },
+   "purchase": 2904,
+   "offer_purchased": 15,
+   "as_main_tag": 1059,
+   "years": {
+    "2023": 676,
+    "2024": 1180,
+    "2025": 727,
+    "2026": 336
+   },
+   "years_by_type": {
+    "2023|PURCHASE": 676,
+    "2024|OFFER_PURCHASED": 6,
+    "2024|PURCHASE": 1174,
+    "2025|OFFER_PURCHASED": 5,
+    "2025|PURCHASE": 722,
+    "2026|OFFER_PURCHASED": 4,
+    "2026|PURCHASE": 332
+   },
+   "api_count_at_download": 2925,
+   "rows_downloaded": 2925,
+   "tag_sales_field": "2870"
+  },
+  "pizza": {
+   "label": "Pizza",
+   "id": "0d62e4d7-66b7-475b-afbd-d41f67557764",
+   "unique_sales": 2689,
+   "market_sales": 2604,
+   "market_years": {
+    "2023": 272,
+    "2024": 1080,
+    "2025": 1014,
+    "2026": 238
+   },
+   "purchase": 2686,
+   "offer_purchased": 3,
+   "as_main_tag": 1940,
+   "years": {
+    "2023": 272,
+    "2024": 1080,
+    "2025": 1083,
+    "2026": 254
+   },
+   "years_by_type": {
+    "2023|PURCHASE": 272,
+    "2024|PURCHASE": 1080,
+    "2025|OFFER_PURCHASED": 2,
+    "2025|PURCHASE": 1081,
+    "2026|OFFER_PURCHASED": 1,
+    "2026|PURCHASE": 253
+   },
+   "api_count_at_download": 2698,
+   "rows_downloaded": 2698,
+   "tag_sales_field": "2577"
+  },
+  "hal-finney": {
+   "label": "Finney",
+   "id": "a538d9e9-32ed-49ef-b968-323c259545d7",
+   "unique_sales": 2457,
+   "market_sales": 2397,
+   "market_years": {
+    "2025": 650,
+    "2026": 1747
+   },
+   "purchase": 2441,
+   "offer_purchased": 16,
+   "as_main_tag": 111,
+   "years": {
+    "2025": 672,
+    "2026": 1785
+   },
+   "years_by_type": {
+    "2025|OFFER_PURCHASED": 7,
+    "2025|PURCHASE": 665,
+    "2026|OFFER_PURCHASED": 9,
+    "2026|PURCHASE": 1776
+   },
+   "api_count_at_download": 2476,
+   "rows_downloaded": 2476,
+   "tag_sales_field": "2365"
+  },
+  "3d-pali": {
+   "label": "3d Pali",
+   "id": "a74a8ee8-fa9d-4e86-9303-7c18a4b73cda",
+   "unique_sales": 2191,
+   "market_sales": 2182,
+   "market_years": {
+    "2023": 447,
+    "2024": 945,
+    "2025": 574,
+    "2026": 216
+   },
+   "purchase": 2180,
+   "offer_purchased": 11,
+   "as_main_tag": 1438,
+   "years": {
+    "2023": 447,
+    "2024": 945,
+    "2025": 583,
+    "2026": 216
+   },
+   "years_by_type": {
+    "2023|PURCHASE": 447,
+    "2024|OFFER_PURCHASED": 3,
+    "2024|PURCHASE": 942,
+    "2025|OFFER_PURCHASED": 5,
+    "2025|PURCHASE": 578,
+    "2026|OFFER_PURCHASED": 3,
+    "2026|PURCHASE": 213
+   },
+   "api_count_at_download": 2194,
+   "rows_downloaded": 2194,
+   "tag_sales_field": "2165"
+  },
+  "omega-black-uncommon": {
+   "label": "Omega Black Uncommon",
+   "id": "122ec9b5-81b5-4d8e-a966-35979bfbd45a",
+   "unique_sales": 2069,
+   "market_sales": 2020,
+   "market_years": {
+    "2023": 245,
+    "2024": 1033,
+    "2025": 451,
+    "2026": 291
+   },
+   "purchase": 2052,
+   "offer_purchased": 17,
+   "as_main_tag": 1773,
+   "years": {
+    "2023": 245,
+    "2024": 1033,
+    "2025": 494,
+    "2026": 297
+   },
+   "years_by_type": {
+    "2023|PURCHASE": 245,
+    "2024|OFFER_PURCHASED": 1,
+    "2024|PURCHASE": 1032,
+    "2025|OFFER_PURCHASED": 12,
+    "2025|PURCHASE": 482,
+    "2026|OFFER_PURCHASED": 4,
+    "2026|PURCHASE": 293
+   },
+   "api_count_at_download": 2108,
+   "rows_downloaded": 2108,
+   "tag_sales_field": "1998"
+  },
+  "trump": {
+   "label": "Trump",
+   "id": "06b546f2-6b38-468f-99eb-dc0549482cf9",
+   "unique_sales": 1759,
+   "market_sales": 258,
+   "market_years": {
+    "2025": 198,
+    "2026": 60
+   },
+   "purchase": 1759,
+   "offer_purchased": 0,
+   "as_main_tag": 1759,
+   "years": {
+    "2025": 1699,
+    "2026": 60
+   },
+   "years_by_type": {
+    "2025|PURCHASE": 1699,
+    "2026|PURCHASE": 60
+   },
+   "api_count_at_download": 1759,
+   "rows_downloaded": 1759,
+   "tag_sales_field": "1759"
+  },
+  "b78": {
+   "label": "Block 78",
+   "id": "ff66c8d5-26f2-4b5e-87b2-67a04abfdb03",
+   "unique_sales": 1352,
+   "market_sales": 1337,
+   "market_years": {
+    "2023": 232,
+    "2024": 447,
+    "2025": 615,
+    "2026": 43
+   },
+   "purchase": 1337,
+   "offer_purchased": 15,
+   "as_main_tag": 1192,
+   "years": {
+    "2023": 232,
+    "2024": 447,
+    "2025": 628,
+    "2026": 45
+   },
+   "years_by_type": {
+    "2023|PURCHASE": 232,
+    "2024|OFFER_PURCHASED": 6,
+    "2024|PURCHASE": 441,
+    "2025|OFFER_PURCHASED": 2,
+    "2025|PURCHASE": 626,
+    "2026|OFFER_PURCHASED": 7,
+    "2026|PURCHASE": 38
+   },
+   "api_count_at_download": 1359,
+   "rows_downloaded": 1359,
+   "tag_sales_field": "1328"
+  },
+  "vintage-pali": {
+   "label": "Vintage Palindrome",
+   "id": "383344d0-00e4-400d-9fd7-6e71ac05008a",
+   "unique_sales": 1206,
+   "market_sales": 1191,
+   "market_years": {
+    "2023": 252,
+    "2024": 580,
+    "2025": 293,
+    "2026": 66
+   },
+   "purchase": 1190,
+   "offer_purchased": 16,
+   "as_main_tag": 970,
+   "years": {
+    "2023": 252,
+    "2024": 580,
+    "2025": 306,
+    "2026": 68
+   },
+   "years_by_type": {
+    "2023|PURCHASE": 252,
+    "2024|OFFER_PURCHASED": 7,
+    "2024|PURCHASE": 573,
+    "2025|OFFER_PURCHASED": 5,
+    "2025|PURCHASE": 301,
+    "2026|OFFER_PURCHASED": 4,
+    "2026|PURCHASE": 64
+   },
+   "api_count_at_download": 1206,
+   "rows_downloaded": 1206,
+   "tag_sales_field": "1171"
+  },
+  "uniform-palinception": {
+   "label": "Uniform Palinception",
+   "id": "ee0640cc-1741-44fc-9bce-3cbc61b62023",
+   "unique_sales": 1056,
+   "market_sales": 1046,
+   "market_years": {
+    "2023": 35,
+    "2024": 509,
+    "2025": 371,
+    "2026": 131
+   },
+   "purchase": 1046,
+   "offer_purchased": 10,
+   "as_main_tag": 936,
+   "years": {
+    "2023": 35,
+    "2024": 509,
+    "2025": 381,
+    "2026": 131
+   },
+   "years_by_type": {
+    "2023|PURCHASE": 35,
+    "2024|OFFER_PURCHASED": 3,
+    "2024|PURCHASE": 506,
+    "2025|OFFER_PURCHASED": 5,
+    "2025|PURCHASE": 376,
+    "2026|OFFER_PURCHASED": 2,
+    "2026|PURCHASE": 129
+   },
+   "api_count_at_download": 1059,
+   "rows_downloaded": 1059,
+   "tag_sales_field": "1039"
+  },
+  "silkroad": {
+   "label": "Silkroad",
+   "id": "06b546f2-6b38-468f-99eb-dc0549482cf8",
+   "unique_sales": 973,
+   "market_sales": 875,
+   "market_years": {
+    "2023": 67,
+    "2024": 394,
+    "2025": 355,
+    "2026": 59
+   },
+   "purchase": 969,
+   "offer_purchased": 4,
+   "as_main_tag": 248,
+   "years": {
+    "2023": 67,
+    "2024": 394,
+    "2025": 371,
+    "2026": 141
+   },
+   "years_by_type": {
+    "2023|PURCHASE": 67,
+    "2024|PURCHASE": 394,
+    "2025|OFFER_PURCHASED": 4,
+    "2025|PURCHASE": 367,
+    "2026|PURCHASE": 141
+   },
+   "api_count_at_download": 990,
+   "rows_downloaded": 990,
+   "tag_sales_field": "868"
+  },
+  "pali-block": {
+   "label": "Paliblock Palindrome",
+   "id": "67b46d30-2a02-44cc-af34-ad750490e472",
+   "unique_sales": 804,
+   "market_sales": 794,
+   "market_years": {
+    "2023": 164,
+    "2024": 254,
+    "2025": 342,
+    "2026": 34
+   },
+   "purchase": 799,
+   "offer_purchased": 5,
+   "as_main_tag": 465,
+   "years": {
+    "2023": 164,
+    "2024": 254,
+    "2025": 351,
+    "2026": 35
+   },
+   "years_by_type": {
+    "2023|PURCHASE": 164,
+    "2024|PURCHASE": 254,
+    "2025|OFFER_PURCHASED": 2,
+    "2025|PURCHASE": 349,
+    "2026|OFFER_PURCHASED": 3,
+    "2026|PURCHASE": 32
+   },
+   "api_count_at_download": 804,
+   "rows_downloaded": 804,
+   "tag_sales_field": "774"
+  },
+  "labitbu-official": {
+   "label": "Labitbu Official",
+   "id": "65290407-5f43-418e-bd9e-e62042499ce9",
+   "unique_sales": 638,
+   "market_sales": 637,
+   "market_years": {
+    "2025": 631,
+    "2026": 6
+   },
+   "purchase": 637,
+   "offer_purchased": 1,
+   "as_main_tag": 455,
+   "years": {
+    "2025": 631,
+    "2026": 7
+   },
+   "years_by_type": {
+    "2025|OFFER_PURCHASED": 1,
+    "2025|PURCHASE": 630,
+    "2026|PURCHASE": 7
+   },
+   "api_count_at_download": 638,
+   "rows_downloaded": 638,
+   "tag_sales_field": "636"
+  },
+  "b286": {
+   "label": "Block 286",
+   "id": "2c5137ad-13de-47e0-95a0-171943ca474b",
+   "unique_sales": 401,
+   "market_sales": 399,
+   "market_years": {
+    "2023": 17,
+    "2024": 114,
+    "2025": 44,
+    "2026": 224
+   },
+   "purchase": 399,
+   "offer_purchased": 2,
+   "as_main_tag": 382,
+   "years": {
+    "2023": 17,
+    "2024": 114,
+    "2025": 44,
+    "2026": 226
+   },
+   "years_by_type": {
+    "2023|PURCHASE": 17,
+    "2024|PURCHASE": 114,
+    "2025|PURCHASE": 44,
+    "2026|OFFER_PURCHASED": 2,
+    "2026|PURCHASE": 224
+   },
+   "api_count_at_download": 401,
+   "rows_downloaded": 401,
+   "tag_sales_field": "397"
+  },
+  "hitman": {
+   "label": "Hitman",
+   "id": "95661a3a-b851-4aa7-8681-fc1ec2668c8b",
+   "unique_sales": 400,
+   "market_sales": 380,
+   "market_years": {
+    "2023": 68,
+    "2024": 188,
+    "2025": 77,
+    "2026": 47
+   },
+   "purchase": 395,
+   "offer_purchased": 5,
+   "as_main_tag": 196,
+   "years": {
+    "2023": 68,
+    "2024": 188,
+    "2025": 95,
+    "2026": 49
+   },
+   "years_by_type": {
+    "2023|PURCHASE": 68,
+    "2024|PURCHASE": 188,
+    "2025|OFFER_PURCHASED": 4,
+    "2025|PURCHASE": 91,
+    "2026|OFFER_PURCHASED": 1,
+    "2026|PURCHASE": 48
+   },
+   "api_count_at_download": 413,
+   "rows_downloaded": 413,
+   "tag_sales_field": "377"
+  },
+  "jpeg": {
+   "label": "JPEG",
+   "id": "2e94b6c0-b49f-4218-b2cf-a80cf32d24d2",
+   "unique_sales": 388,
+   "market_sales": 383,
+   "market_years": {
+    "2023": 31,
+    "2024": 298,
+    "2025": 28,
+    "2026": 26
+   },
+   "purchase": 388,
+   "offer_purchased": 0,
+   "as_main_tag": 323,
+   "years": {
+    "2023": 31,
+    "2024": 298,
+    "2025": 32,
+    "2026": 27
+   },
+   "years_by_type": {
+    "2023|PURCHASE": 31,
+    "2024|PURCHASE": 298,
+    "2025|PURCHASE": 32,
+    "2026|PURCHASE": 27
+   },
+   "api_count_at_download": 390,
+   "rows_downloaded": 390,
+   "tag_sales_field": "388"
+  },
+  "b666": {
+   "label": "Block 666",
+   "id": "4e4ea75f-9ba7-439f-9cb9-9fb0ebd074a6",
+   "unique_sales": 352,
+   "market_sales": 347,
+   "market_years": {
+    "2024": 262,
+    "2025": 52,
+    "2026": 33
+   },
+   "purchase": 351,
+   "offer_purchased": 1,
+   "as_main_tag": 260,
+   "years": {
+    "2024": 262,
+    "2025": 53,
+    "2026": 37
+   },
+   "years_by_type": {
+    "2024|PURCHASE": 262,
+    "2025|PURCHASE": 53,
+    "2026|OFFER_PURCHASED": 1,
+    "2026|PURCHASE": 36
+   },
+   "api_count_at_download": 352,
+   "rows_downloaded": 352,
+   "tag_sales_field": "331"
+  },
+  "silkroad-pali": {
+   "label": "Silkroad Pali",
+   "id": "3427d78f-cfa5-49b1-92d3-c7fd3da046e5",
+   "unique_sales": 330,
+   "market_sales": 329,
+   "market_years": {
+    "2023": 1,
+    "2024": 181,
+    "2025": 126,
+    "2026": 21
+   },
+   "purchase": 330,
+   "offer_purchased": 0,
+   "as_main_tag": 245,
+   "years": {
+    "2023": 1,
+    "2024": 181,
+    "2025": 127,
+    "2026": 21
+   },
+   "years_by_type": {
+    "2023|PURCHASE": 1,
+    "2024|PURCHASE": 181,
+    "2025|PURCHASE": 127,
+    "2026|PURCHASE": 21
+   },
+   "api_count_at_download": 330,
+   "rows_downloaded": 330,
+   "tag_sales_field": "330"
+  },
+  "pizza-pali": {
+   "label": "Pizza Palindrome",
+   "id": "aea23fb2-03f8-415a-9c37-49a11ab5f2df",
+   "unique_sales": 314,
+   "market_sales": 313,
+   "market_years": {
+    "2023": 67,
+    "2024": 128,
+    "2025": 76,
+    "2026": 42
+   },
+   "purchase": 311,
+   "offer_purchased": 3,
+   "as_main_tag": 313,
+   "years": {
+    "2023": 67,
+    "2024": 128,
+    "2025": 77,
+    "2026": 42
+   },
+   "years_by_type": {
+    "2023|PURCHASE": 67,
+    "2024|PURCHASE": 128,
+    "2025|OFFER_PURCHASED": 2,
+    "2025|PURCHASE": 75,
+    "2026|OFFER_PURCHASED": 1,
+    "2026|PURCHASE": 41
+   },
+   "api_count_at_download": 314,
+   "rows_downloaded": 314,
+   "tag_sales_field": "310"
+  },
+  "rodarmor-name": {
+   "label": "Rodarmor Name",
+   "id": "671ce1fb-2dde-41b9-87a8-94b5e4a25008",
+   "unique_sales": 239,
+   "market_sales": 239,
+   "market_years": {
+    "2023": 4,
+    "2024": 162,
+    "2025": 48,
+    "2026": 25
+   },
+   "purchase": 237,
+   "offer_purchased": 2,
+   "as_main_tag": 239,
+   "years": {
+    "2023": 4,
+    "2024": 162,
+    "2025": 48,
+    "2026": 25
+   },
+   "years_by_type": {
+    "2023|PURCHASE": 4,
+    "2024|OFFER_PURCHASED": 1,
+    "2024|PURCHASE": 161,
+    "2025|PURCHASE": 48,
+    "2026|OFFER_PURCHASED": 1,
+    "2026|PURCHASE": 24
+   },
+   "api_count_at_download": 239,
+   "rows_downloaded": 239,
+   "tag_sales_field": "238"
+  },
+  "2d-pali": {
+   "label": "2d Pali",
+   "id": "dd26eeba-52bc-44bc-bc04-1145bd6fc2dc",
+   "unique_sales": 184,
+   "market_sales": 184,
+   "market_years": {
+    "2023": 29,
+    "2024": 128,
+    "2025": 20,
+    "2026": 7
+   },
+   "purchase": 181,
+   "offer_purchased": 3,
+   "as_main_tag": 175,
+   "years": {
+    "2023": 29,
+    "2024": 128,
+    "2025": 20,
+    "2026": 7
+   },
+   "years_by_type": {
+    "2023|PURCHASE": 29,
+    "2024|OFFER_PURCHASED": 2,
+    "2024|PURCHASE": 126,
+    "2025|OFFER_PURCHASED": 1,
+    "2025|PURCHASE": 19,
+    "2026|PURCHASE": 7
+   },
+   "api_count_at_download": 184,
+   "rows_downloaded": 184,
+   "tag_sales_field": "183"
+  },
+  "nakamoto-pali": {
+   "label": "Nakamoto Palindrome",
+   "id": "196fa3e6-9d2c-4ad5-a89a-f15921546d3b",
+   "unique_sales": 130,
+   "market_sales": 130,
+   "market_years": {
+    "2023": 34,
+    "2024": 65,
+    "2025": 22,
+    "2026": 9
+   },
+   "purchase": 126,
+   "offer_purchased": 4,
+   "as_main_tag": 120,
+   "years": {
+    "2023": 34,
+    "2024": 65,
+    "2025": 22,
+    "2026": 9
+   },
+   "years_by_type": {
+    "2023|PURCHASE": 34,
+    "2024|OFFER_PURCHASED": 1,
+    "2024|PURCHASE": 64,
+    "2025|OFFER_PURCHASED": 1,
+    "2025|PURCHASE": 21,
+    "2026|OFFER_PURCHASED": 2,
+    "2026|PURCHASE": 7
+   },
+   "api_count_at_download": 130,
+   "rows_downloaded": 130,
+   "tag_sales_field": "126"
+  },
+  "b78-pali": {
+   "label": "B78 Pali",
+   "id": "8619e56e-e254-4aa8-9601-604ae6626dab",
+   "unique_sales": 123,
+   "market_sales": 121,
+   "market_years": {
+    "2023": 8,
+    "2024": 103,
+    "2025": 4,
+    "2026": 6
+   },
+   "purchase": 116,
+   "offer_purchased": 7,
+   "as_main_tag": 123,
+   "years": {
+    "2023": 8,
+    "2024": 103,
+    "2025": 5,
+    "2026": 7
+   },
+   "years_by_type": {
+    "2023|PURCHASE": 8,
+    "2024|OFFER_PURCHASED": 6,
+    "2024|PURCHASE": 97,
+    "2025|PURCHASE": 5,
+    "2026|OFFER_PURCHASED": 1,
+    "2026|PURCHASE": 6
+   },
+   "api_count_at_download": 123,
+   "rows_downloaded": 123,
+   "tag_sales_field": "123"
+  },
+  "hitman-pali": {
+   "label": "Hitman Pali",
+   "id": "00d507b6-8941-4da8-a2b7-9088126fd06d",
+   "unique_sales": 119,
+   "market_sales": 118,
+   "market_years": {
+    "2023": 12,
+    "2024": 73,
+    "2025": 18,
+    "2026": 15
+   },
+   "purchase": 117,
+   "offer_purchased": 2,
+   "as_main_tag": 100,
+   "years": {
+    "2023": 12,
+    "2024": 73,
+    "2025": 19,
+    "2026": 15
+   },
+   "years_by_type": {
+    "2023|PURCHASE": 12,
+    "2024|PURCHASE": 73,
+    "2025|OFFER_PURCHASED": 1,
+    "2025|PURCHASE": 18,
+    "2026|OFFER_PURCHASED": 1,
+    "2026|PURCHASE": 14
+   },
+   "api_count_at_download": 119,
+   "rows_downloaded": 119,
+   "tag_sales_field": "117"
+  },
+  "silkroad-omega": {
+   "label": "Silkroad Omega",
+   "id": "db97ab16-f4fc-412b-b416-2ad65a9b2e46",
+   "unique_sales": 82,
+   "market_sales": 82,
+   "market_years": {
+    "2023": 2,
+    "2024": 61,
+    "2025": 17,
+    "2026": 2
+   },
+   "purchase": 81,
+   "offer_purchased": 1,
+   "as_main_tag": 4,
+   "years": {
+    "2023": 2,
+    "2024": 61,
+    "2025": 17,
+    "2026": 2
+   },
+   "years_by_type": {
+    "2023|PURCHASE": 2,
+    "2024|PURCHASE": 61,
+    "2025|OFFER_PURCHASED": 1,
+    "2025|PURCHASE": 16,
+    "2026|PURCHASE": 2
+   },
+   "api_count_at_download": 82,
+   "rows_downloaded": 82,
+   "tag_sales_field": "81"
+  },
+  "silkroad-alpha": {
+   "label": "Silkroad Alpha",
+   "id": "f2e3465f-9894-49cd-80d3-069677bb9f60",
+   "unique_sales": 79,
+   "market_sales": 79,
+   "market_years": {
+    "2023": 1,
+    "2024": 63,
+    "2025": 13,
+    "2026": 2
+   },
+   "purchase": 79,
+   "offer_purchased": 0,
+   "as_main_tag": 75,
+   "years": {
+    "2023": 1,
+    "2024": 63,
+    "2025": 13,
+    "2026": 2
+   },
+   "years_by_type": {
+    "2023|PURCHASE": 1,
+    "2024|PURCHASE": 63,
+    "2025|PURCHASE": 13,
+    "2026|PURCHASE": 2
+   },
+   "api_count_at_download": 79,
+   "rows_downloaded": 79,
+   "tag_sales_field": "79"
+  },
+  "perfect-palinception": {
+   "label": "Perfect Palinception",
+   "id": "c1a01c76-d5d2-4bbf-8ce2-3b6bb3f18df1",
+   "unique_sales": 76,
+   "market_sales": 76,
+   "market_years": {
+    "2023": 19,
+    "2024": 39,
+    "2025": 12,
+    "2026": 6
+   },
+   "purchase": 70,
+   "offer_purchased": 6,
+   "as_main_tag": 76,
+   "years": {
+    "2023": 19,
+    "2024": 39,
+    "2025": 12,
+    "2026": 6
+   },
+   "years_by_type": {
+    "2023|PURCHASE": 19,
+    "2024|OFFER_PURCHASED": 1,
+    "2024|PURCHASE": 38,
+    "2025|OFFER_PURCHASED": 3,
+    "2025|PURCHASE": 9,
+    "2026|OFFER_PURCHASED": 2,
+    "2026|PURCHASE": 4
+   },
+   "api_count_at_download": 76,
+   "rows_downloaded": 76,
+   "tag_sales_field": "72"
+  },
+  "vintage-alpha": {
+   "label": "Vintage Alpha",
+   "id": "5ebf22bc-8ffe-4986-9916-a418837023e7",
+   "unique_sales": 68,
+   "market_sales": 67,
+   "market_years": {
+    "2023": 7,
+    "2024": 51,
+    "2025": 3,
+    "2026": 6
+   },
+   "purchase": 64,
+   "offer_purchased": 4,
+   "as_main_tag": 65,
+   "years": {
+    "2023": 7,
+    "2024": 51,
+    "2025": 4,
+    "2026": 6
+   },
+   "years_by_type": {
+    "2023|PURCHASE": 7,
+    "2024|PURCHASE": 51,
+    "2025|OFFER_PURCHASED": 1,
+    "2025|PURCHASE": 3,
+    "2026|OFFER_PURCHASED": 3,
+    "2026|PURCHASE": 3
+   },
+   "api_count_at_download": 68,
+   "rows_downloaded": 68,
+   "tag_sales_field": "63"
+  },
+  "vintage-omega": {
+   "label": "Vintage Omega",
+   "id": "0c84158d-aff7-41e8-85b4-8c73db8b4efc",
+   "unique_sales": 66,
+   "market_sales": 65,
+   "market_years": {
+    "2023": 7,
+    "2024": 50,
+    "2025": 2,
+    "2026": 6
+   },
+   "purchase": 62,
+   "offer_purchased": 4,
+   "as_main_tag": 0,
+   "years": {
+    "2023": 7,
+    "2024": 50,
+    "2025": 3,
+    "2026": 6
+   },
+   "years_by_type": {
+    "2023|PURCHASE": 7,
+    "2024|PURCHASE": 50,
+    "2025|OFFER_PURCHASED": 1,
+    "2025|PURCHASE": 2,
+    "2026|OFFER_PURCHASED": 3,
+    "2026|PURCHASE": 3
+   },
+   "api_count_at_download": 66,
+   "rows_downloaded": 66,
+   "tag_sales_field": "61"
+  },
+  "b666-pali": {
+   "label": "B666 Pali",
+   "id": "55a6a1dc-db11-4661-aa71-5d55419d7e65",
+   "unique_sales": 64,
+   "market_sales": 63,
+   "market_years": {
+    "2024": 36,
+    "2025": 23,
+    "2026": 4
+   },
+   "purchase": 63,
+   "offer_purchased": 1,
+   "as_main_tag": 64,
+   "years": {
+    "2024": 36,
+    "2025": 23,
+    "2026": 5
+   },
+   "years_by_type": {
+    "2024|PURCHASE": 36,
+    "2025|PURCHASE": 23,
+    "2026|OFFER_PURCHASED": 1,
+    "2026|PURCHASE": 4
+   },
+   "api_count_at_download": 64,
+   "rows_downloaded": 64,
+   "tag_sales_field": "47"
+  },
+  "parasite": {
+   "label": "Parasite",
+   "id": "c82ae8c8-a506-45e1-955e-caf14edf8727",
+   "unique_sales": 45,
+   "market_sales": 44,
+   "market_years": {
+    "2026": 44
+   },
+   "purchase": 45,
+   "offer_purchased": 0,
+   "as_main_tag": 45,
+   "years": {
+    "2026": 45
+   },
+   "years_by_type": {
+    "2026|PURCHASE": 45
+   },
+   "api_count_at_download": 45,
+   "rows_downloaded": 45,
+   "tag_sales_field": "44"
+  },
+  "legacy": {
+   "label": "Legacy",
+   "id": "44b9aa88-f20f-4d17-bdaa-9ab12887bb04",
+   "unique_sales": 44,
+   "market_sales": 42,
+   "market_years": {
+    "2024": 39,
+    "2025": 2,
+    "2026": 1
+   },
+   "purchase": 44,
+   "offer_purchased": 0,
+   "as_main_tag": 44,
+   "years": {
+    "2024": 39,
+    "2025": 3,
+    "2026": 2
+   },
+   "years_by_type": {
+    "2024|PURCHASE": 39,
+    "2025|PURCHASE": 3,
+    "2026|PURCHASE": 2
+   },
+   "api_count_at_download": 44,
+   "rows_downloaded": 44,
+   "tag_sales_field": "43"
+  },
+  "alpha-pizza": {
+   "label": "Alpha Pizza",
+   "id": "6ab2b92e-5272-4135-bdb5-0b467ad485cd",
+   "unique_sales": 40,
+   "market_sales": 40,
+   "market_years": {
+    "2023": 5,
+    "2024": 28,
+    "2025": 5,
+    "2026": 2
+   },
+   "purchase": 40,
+   "offer_purchased": 0,
+   "as_main_tag": 37,
+   "years": {
+    "2023": 5,
+    "2024": 28,
+    "2025": 5,
+    "2026": 2
+   },
+   "years_by_type": {
+    "2023|PURCHASE": 5,
+    "2024|PURCHASE": 28,
+    "2025|PURCHASE": 5,
+    "2026|PURCHASE": 2
+   },
+   "api_count_at_download": 40,
+   "rows_downloaded": 40,
+   "tag_sales_field": "40"
+  },
+  "omega-pizza": {
+   "label": "Omega Pizza",
+   "id": "26f7ceab-0e3b-4474-b97b-52c7a895ca2f",
+   "unique_sales": 37,
+   "market_sales": 37,
+   "market_years": {
+    "2023": 6,
+    "2024": 23,
+    "2025": 6,
+    "2026": 2
+   },
+   "purchase": 37,
+   "offer_purchased": 0,
+   "as_main_tag": 2,
+   "years": {
+    "2023": 6,
+    "2024": 23,
+    "2025": 6,
+    "2026": 2
+   },
+   "years_by_type": {
+    "2023|PURCHASE": 6,
+    "2024|PURCHASE": 23,
+    "2025|PURCHASE": 6,
+    "2026|PURCHASE": 2
+   },
+   "api_count_at_download": 37,
+   "rows_downloaded": 37,
+   "tag_sales_field": "37"
+  },
+  "jpeg-pali": {
+   "label": "JPEG Pali",
+   "id": "9165bc38-b2f5-446d-b24f-18dc5eae2a6a",
+   "unique_sales": 30,
+   "market_sales": 30,
+   "market_years": {
+    "2023": 13,
+    "2024": 16,
+    "2025": 1
+   },
+   "purchase": 30,
+   "offer_purchased": 0,
+   "as_main_tag": 29,
+   "years": {
+    "2023": 13,
+    "2024": 16,
+    "2025": 1
+   },
+   "years_by_type": {
+    "2023|PURCHASE": 13,
+    "2024|PURCHASE": 16,
+    "2025|PURCHASE": 1
+   },
+   "api_count_at_download": 30,
+   "rows_downloaded": 30,
+   "tag_sales_field": "30"
+  },
+  "rare": {
+   "label": "Rare",
+   "id": "9362525f-6c93-4b4b-a973-0815e8b00dfd",
+   "unique_sales": 29,
+   "market_sales": 28,
+   "market_years": {
+    "2023": 1,
+    "2024": 5,
+    "2025": 12,
+    "2026": 10
+   },
+   "purchase": 26,
+   "offer_purchased": 3,
+   "as_main_tag": 29,
+   "years": {
+    "2023": 1,
+    "2024": 5,
+    "2025": 13,
+    "2026": 10
+   },
+   "years_by_type": {
+    "2023|PURCHASE": 1,
+    "2024|PURCHASE": 5,
+    "2025|OFFER_PURCHASED": 1,
+    "2025|PURCHASE": 12,
+    "2026|OFFER_PURCHASED": 2,
+    "2026|PURCHASE": 8
+   },
+   "api_count_at_download": 29,
+   "rows_downloaded": 29,
+   "tag_sales_field": "25"
+  },
+  "hitman-omega": {
+   "label": "Hitman Omega",
+   "id": "9605e7ac-ff54-4dcc-81ed-3a6130ff3a85",
+   "unique_sales": 24,
+   "market_sales": 24,
+   "market_years": {
+    "2024": 17,
+    "2025": 5,
+    "2026": 2
+   },
+   "purchase": 23,
+   "offer_purchased": 1,
+   "as_main_tag": 7,
+   "years": {
+    "2024": 17,
+    "2025": 5,
+    "2026": 2
+   },
+   "years_by_type": {
+    "2024|PURCHASE": 17,
+    "2025|OFFER_PURCHASED": 1,
+    "2025|PURCHASE": 4,
+    "2026|PURCHASE": 2
+   },
+   "api_count_at_download": 24,
+   "rows_downloaded": 24,
+   "tag_sales_field": "23"
+  },
+  "hitman-alpha": {
+   "label": "Hitman Alpha",
+   "id": "2e7a68a3-cd69-43e6-be91-f2e1f6b3770b",
+   "unique_sales": 19,
+   "market_sales": 19,
+   "market_years": {
+    "2024": 14,
+    "2025": 3,
+    "2026": 2
+   },
+   "purchase": 19,
+   "offer_purchased": 0,
+   "as_main_tag": 17,
+   "years": {
+    "2024": 14,
+    "2025": 3,
+    "2026": 2
+   },
+   "years_by_type": {
+    "2024|PURCHASE": 14,
+    "2025|PURCHASE": 3,
+    "2026|PURCHASE": 2
+   },
+   "api_count_at_download": 19,
+   "rows_downloaded": 19,
+   "tag_sales_field": "19"
+  },
+  "b9-pali": {
+   "label": "B9 Pali",
+   "id": "fe2bd7df-b2e0-4818-8712-fbc1f00bf431",
+   "unique_sales": 6,
+   "market_sales": 6,
+   "market_years": {
+    "2024": 4,
+    "2025": 1,
+    "2026": 1
+   },
+   "purchase": 5,
+   "offer_purchased": 1,
+   "as_main_tag": 5,
+   "years": {
+    "2024": 4,
+    "2025": 1,
+    "2026": 1
+   },
+   "years_by_type": {
+    "2024|PURCHASE": 4,
+    "2025|PURCHASE": 1,
+    "2026|OFFER_PURCHASED": 1
+   },
+   "api_count_at_download": 6,
+   "rows_downloaded": 6,
+   "tag_sales_field": "5"
+  },
+  "b286-pali": {
+   "label": "B286 Pali",
+   "id": "7547df3d-39d1-4a8b-95fe-e188e327e5fe",
+   "unique_sales": 4,
+   "market_sales": 4,
+   "market_years": {
+    "2023": 2,
+    "2024": 2
+   },
+   "purchase": 4,
+   "offer_purchased": 0,
+   "as_main_tag": 4,
+   "years": {
+    "2023": 2,
+    "2024": 2
+   },
+   "years_by_type": {
+    "2023|PURCHASE": 2,
+    "2024|PURCHASE": 2
+   },
+   "api_count_at_download": 4,
+   "rows_downloaded": 4,
+   "tag_sales_field": "4"
+  },
+  "black-rare": {
+   "label": "Black Rare",
+   "id": "b56e5c21-945a-4b0f-bb6e-87bbf0d59b04",
+   "unique_sales": 4,
+   "market_sales": 4,
+   "market_years": {
+    "2023": 2,
+    "2025": 2
+   },
+   "purchase": 4,
+   "offer_purchased": 0,
+   "as_main_tag": 4,
+   "years": {
+    "2023": 2,
+    "2025": 2
+   },
+   "years_by_type": {
+    "2023|PURCHASE": 2,
+    "2025|PURCHASE": 2
+   },
+   "api_count_at_download": 4,
+   "rows_downloaded": 4,
+   "tag_sales_field": "4"
+  },
+  "nakamoto-alpha": {
+   "label": "Nakamoto Alpha",
+   "id": "894642af-0eb2-4845-bf63-ec99ada7fcbf",
+   "unique_sales": 4,
+   "market_sales": 4,
+   "market_years": {
+    "2024": 1,
+    "2025": 3
+   },
+   "purchase": 3,
+   "offer_purchased": 1,
+   "as_main_tag": 4,
+   "years": {
+    "2024": 1,
+    "2025": 3
+   },
+   "years_by_type": {
+    "2024|PURCHASE": 1,
+    "2025|OFFER_PURCHASED": 1,
+    "2025|PURCHASE": 2
+   },
+   "api_count_at_download": 4,
+   "rows_downloaded": 4,
+   "tag_sales_field": "3"
+  },
+  "nakamoto-omega": {
+   "label": "Nakamoto Omega",
+   "id": "ff4e1666-35bd-4059-9af6-6a10809f8ceb",
+   "unique_sales": 4,
+   "market_sales": 4,
+   "market_years": {
+    "2024": 1,
+    "2025": 3
+   },
+   "purchase": 3,
+   "offer_purchased": 1,
+   "as_main_tag": 0,
+   "years": {
+    "2024": 1,
+    "2025": 3
+   },
+   "years_by_type": {
+    "2024|PURCHASE": 1,
+    "2025|OFFER_PURCHASED": 1,
+    "2025|PURCHASE": 2
+   },
+   "api_count_at_download": 4,
+   "rows_downloaded": 4,
+   "tag_sales_field": "3"
+  },
+  "silkroad-black-uncommon": {
+   "label": "Silkroad Black Uncommon",
+   "id": "f7773b8e-ba7f-4858-8e1a-ad9f8c02322b",
+   "unique_sales": 4,
+   "market_sales": 4,
+   "market_years": {
+    "2023": 1,
+    "2024": 1,
+    "2025": 2
+   },
+   "purchase": 4,
+   "offer_purchased": 0,
+   "as_main_tag": 3,
+   "years": {
+    "2023": 1,
+    "2024": 1,
+    "2025": 2
+   },
+   "years_by_type": {
+    "2023|PURCHASE": 1,
+    "2024|PURCHASE": 1,
+    "2025|PURCHASE": 2
+   },
+   "api_count_at_download": 4,
+   "rows_downloaded": 4,
+   "tag_sales_field": "4"
+  },
+  "pizza-uncommon": {
+   "label": "Pizza Uncommon",
+   "id": "272d3004-fc82-4fb9-95ce-2a03c90a290f",
+   "unique_sales": 3,
+   "market_sales": 3,
+   "market_years": {
+    "2024": 3
+   },
+   "purchase": 3,
+   "offer_purchased": 0,
+   "as_main_tag": 3,
+   "years": {
+    "2024": 3
+   },
+   "years_by_type": {
+    "2024|PURCHASE": 3
+   },
+   "api_count_at_download": 3,
+   "rows_downloaded": 3,
+   "tag_sales_field": "3"
+  },
+  "b78-alpha": {
+   "label": "B78 Alpha",
+   "id": "79df438c-8720-4a56-b6e3-c2d994eaaa01",
+   "unique_sales": 2,
+   "market_sales": 2,
+   "market_years": {
+    "2024": 1,
+    "2026": 1
+   },
+   "purchase": 1,
+   "offer_purchased": 1,
+   "as_main_tag": 2,
+   "years": {
+    "2024": 1,
+    "2026": 1
+   },
+   "years_by_type": {
+    "2024|PURCHASE": 1,
+    "2026|OFFER_PURCHASED": 1
+   },
+   "api_count_at_download": 2,
+   "rows_downloaded": 2,
+   "tag_sales_field": "1"
+  },
+  "b78-omega": {
+   "label": "B78 Omega",
+   "id": "e72ebe7d-a256-4c98-8b08-4e200c4e6374",
+   "unique_sales": 2,
+   "market_sales": 2,
+   "market_years": {
+    "2024": 1,
+    "2026": 1
+   },
+   "purchase": 1,
+   "offer_purchased": 1,
+   "as_main_tag": 0,
+   "years": {
+    "2024": 1,
+    "2026": 1
+   },
+   "years_by_type": {
+    "2024|PURCHASE": 1,
+    "2026|OFFER_PURCHASED": 1
+   },
+   "api_count_at_download": 2,
+   "rows_downloaded": 2,
+   "tag_sales_field": "1"
+  },
+  "silkroad-uncommon": {
+   "label": "Silkroad Uncommon",
+   "id": "45a392fb-bdc0-410b-93bf-b18493f7ae19",
+   "unique_sales": 2,
+   "market_sales": 2,
+   "market_years": {
+    "2024": 2
+   },
+   "purchase": 2,
+   "offer_purchased": 0,
+   "as_main_tag": 2,
+   "years": {
+    "2024": 2
+   },
+   "years_by_type": {
+    "2024|PURCHASE": 2
+   },
+   "api_count_at_download": 2,
+   "rows_downloaded": 2,
+   "tag_sales_field": "2"
+  },
+  "black-uncommon-vintage": {
+   "label": "Black Uncommon Vintage",
+   "id": "34de949e-e7f9-45cc-b54f-83ccf2a03dc3",
+   "unique_sales": 1,
+   "market_sales": 1,
+   "market_years": {
+    "2023": 1
+   },
+   "purchase": 1,
+   "offer_purchased": 0,
+   "as_main_tag": 0,
+   "years": {
+    "2023": 1
+   },
+   "years_by_type": {
+    "2023|PURCHASE": 1
+   },
+   "api_count_at_download": 1,
+   "rows_downloaded": 1,
+   "tag_sales_field": "1"
+  },
+  "pizza-black-uncommon": {
+   "label": "Pizza Black Uncommon",
+   "id": "d1944994-6689-4d51-a8f1-22f3d8a3df57",
+   "unique_sales": 1,
+   "market_sales": 1,
+   "market_years": {
+    "2024": 1
+   },
+   "purchase": 1,
+   "offer_purchased": 0,
+   "as_main_tag": 0,
+   "years": {
+    "2024": 1
+   },
+   "years_by_type": {
+    "2024|PURCHASE": 1
+   },
+   "api_count_at_download": 1,
+   "rows_downloaded": 1,
+   "tag_sales_field": "1"
+  },
+  "vintage-uncommon": {
+   "label": "Vintage Uncommon",
+   "id": "5cfb93dd-590b-4346-bca1-1d9ca9c8b851",
+   "unique_sales": 1,
+   "market_sales": 1,
+   "market_years": {
+    "2024": 1
+   },
+   "purchase": 1,
+   "offer_purchased": 0,
+   "as_main_tag": 0,
+   "years": {
+    "2024": 1
+   },
+   "years_by_type": {
+    "2024|PURCHASE": 1
+   },
+   "api_count_at_download": 1,
+   "rows_downloaded": 1,
+   "tag_sales_field": "1"
+  },
+  "1d-pali": {
+   "label": "1d Pali",
+   "id": "8b7afdb5-ea6e-441c-8282-2fe44766e3b0",
+   "unique_sales": 0,
+   "market_sales": 0,
+   "market_years": {},
+   "purchase": 0,
+   "offer_purchased": 0,
+   "as_main_tag": 0,
+   "years": {},
+   "years_by_type": {},
+   "api_count_at_download": 0,
+   "rows_downloaded": 0,
+   "tag_sales_field": "0"
+  },
+  "b286-alpha": {
+   "label": "B286 Alpha",
+   "id": "22d394a7-9312-434e-939f-68ca34387d23",
+   "unique_sales": 0,
+   "market_sales": 0,
+   "market_years": {},
+   "purchase": 0,
+   "offer_purchased": 0,
+   "as_main_tag": 0,
+   "years": {},
+   "years_by_type": {},
+   "api_count_at_download": 0,
+   "rows_downloaded": 0,
+   "tag_sales_field": "0"
+  },
+  "b286-omega": {
+   "label": "B286 Omega",
+   "id": "dbfcbe0c-f6d5-4b86-9c5e-b3181970f903",
+   "unique_sales": 0,
+   "market_sales": 0,
+   "market_years": {},
+   "purchase": 0,
+   "offer_purchased": 0,
+   "as_main_tag": 0,
+   "years": {},
+   "years_by_type": {},
+   "api_count_at_download": 0,
+   "rows_downloaded": 0,
+   "tag_sales_field": "0"
+  },
+  "b9-alpha": {
+   "label": "B9 Alpha",
+   "id": "1547d793-4bc0-4300-91a8-940d55897ed0",
+   "unique_sales": 0,
+   "market_sales": 0,
+   "market_years": {},
+   "purchase": 0,
+   "offer_purchased": 0,
+   "as_main_tag": 0,
+   "years": {},
+   "years_by_type": {},
+   "api_count_at_download": 0,
+   "rows_downloaded": 0,
+   "tag_sales_field": "0"
+  },
+  "b9-omega": {
+   "label": "B9 Omega",
+   "id": "d5433180-21cf-4595-ad07-1de8bced263d",
+   "unique_sales": 0,
+   "market_sales": 0,
+   "market_years": {},
+   "purchase": 0,
+   "offer_purchased": 0,
+   "as_main_tag": 0,
+   "years": {},
+   "years_by_type": {},
+   "api_count_at_download": 0,
+   "rows_downloaded": 0,
+   "tag_sales_field": "0"
+  },
+  "black-epic": {
+   "label": "Black Epic",
+   "id": "fb03a5ef-d911-42a4-a93c-443898dcc852",
+   "unique_sales": 0,
+   "market_sales": 0,
+   "market_years": {},
+   "purchase": 0,
+   "offer_purchased": 0,
+   "as_main_tag": 0,
+   "years": {},
+   "years_by_type": {},
+   "api_count_at_download": 0,
+   "rows_downloaded": 0,
+   "tag_sales_field": "0"
+  },
+  "epic": {
+   "label": "Epic",
+   "id": "c8d232dc-157e-4f76-a5d5-937c1f004903",
+   "unique_sales": 0,
+   "market_sales": 0,
+   "market_years": {},
+   "purchase": 0,
+   "offer_purchased": 0,
+   "as_main_tag": 0,
+   "years": {},
+   "years_by_type": {},
+   "api_count_at_download": 0,
+   "rows_downloaded": 0,
+   "tag_sales_field": "0"
+  },
+  "fibonacci-sequence": {
+   "label": "Fibonacci Sequence",
+   "id": "4b924711-8995-4596-8941-594c1d22ff56",
+   "unique_sales": 0,
+   "market_sales": 0,
+   "market_years": {},
+   "purchase": 0,
+   "offer_purchased": 0,
+   "as_main_tag": 0,
+   "years": {},
+   "years_by_type": {},
+   "api_count_at_download": 0,
+   "rows_downloaded": 0,
+   "tag_sales_field": "0"
+  },
+  "hitman-black-uncommon": {
+   "label": "Hitman Black Uncommon",
+   "id": "48725336-8d57-4dd7-bbbc-bed72fec9002",
+   "unique_sales": 0,
+   "market_sales": 0,
+   "market_years": {},
+   "purchase": 0,
+   "offer_purchased": 0,
+   "as_main_tag": 0,
+   "years": {},
+   "years_by_type": {},
+   "api_count_at_download": 0,
+   "rows_downloaded": 0,
+   "tag_sales_field": "0"
+  },
+  "hitman-uncommon": {
+   "label": "Hitman Uncommon",
+   "id": "a029697f-bd95-4984-987f-575f9e535c7f",
+   "unique_sales": 0,
+   "market_sales": 0,
+   "market_years": {},
+   "purchase": 0,
+   "offer_purchased": 0,
+   "as_main_tag": 0,
+   "years": {},
+   "years_by_type": {},
+   "api_count_at_download": 0,
+   "rows_downloaded": 0,
+   "tag_sales_field": "0"
+  },
+  "inscription": {
+   "label": "Inscription",
+   "id": "2c6af453-b6c7-4ef5-8acb-8d446a7339e5",
+   "unique_sales": 0,
+   "market_sales": 0,
+   "market_years": {},
+   "purchase": 0,
+   "offer_purchased": 0,
+   "as_main_tag": 0,
+   "years": {},
+   "years_by_type": {},
+   "api_count_at_download": 72148,
+   "rows_downloaded": 2750,
+   "tag_sales_field": "3739"
+  },
+  "nakamoto-black-uncommon": {
+   "label": "Nakamoto Black Uncommon",
+   "id": "3bfe2258-5984-4f86-a88a-7d2aad50bb7c",
+   "unique_sales": 0,
+   "market_sales": 0,
+   "market_years": {},
+   "purchase": 0,
+   "offer_purchased": 0,
+   "as_main_tag": 0,
+   "years": {},
+   "years_by_type": {},
+   "api_count_at_download": 0,
+   "rows_downloaded": 0,
+   "tag_sales_field": "0"
+  },
+  "nakamoto-uncommon": {
+   "label": "Nakamoto Uncommon",
+   "id": "fb822f36-92a3-413c-a5a6-3a674370dc49",
+   "unique_sales": 0,
+   "market_sales": 0,
+   "market_years": {},
+   "purchase": 0,
+   "offer_purchased": 0,
+   "as_main_tag": 0,
+   "years": {},
+   "years_by_type": {},
+   "api_count_at_download": 0,
+   "rows_downloaded": 0,
+   "tag_sales_field": "0"
+  }
+ },
+ "skipped_tags": {
+  "inscription": "not a rare-sat category (inscribed-sat attribute; 72k sales, mostly inscription collections)"
+ }
+}

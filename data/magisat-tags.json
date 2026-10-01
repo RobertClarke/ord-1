@@ -1,0 +1,6264 @@
+{
+ "source": "https://api.magisat.io/tag (74 non-virtual tags; 2,765 virtual tags are inscription collections)",
+ "fetched": "2026-10-01",
+ "magisat_stats_note": "circulatingSupply equals the mined count as of height ~932,293 (2026-01-14): Magisat's tag stats are stale. totalSupply is all-time; sequestered is Magisat's own extraction measure (not our budget rule).",
+ "fork_supply_height": 969444,
+ "tags": [
+  {
+   "id": "06b546f2-6b38-468f-99eb-dc0549482cf9",
+   "slug": "trump",
+   "label": "Trump",
+   "sattributes": [
+    "trump"
+   ],
+   "additionalSattributes": [],
+   "isCategory": true,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": "100000000",
+    "circulatingSupply": "100000000",
+    "sequestered": null,
+    "inscribed": null,
+    "totalHolders": null,
+    "sequesteredHolders": null,
+    "activeInEpoch": "100000000",
+    "activePast365d": "100000000",
+    "sales": "1759",
+    "totalVolume": "23070485",
+    "floorPrice": "999",
+    "itemsCount": "349"
+   },
+   "relation": "out_of_scope",
+   "rows": [],
+   "note": "Casascius coin sats owned by Donald Trump (1e8 sats).",
+   "dataset": {
+    "sales": 1759,
+    "purchase": 1759,
+    "offer": 0,
+    "years": {
+     "2025": 1699,
+     "2026": 60
+    },
+    "main_sat_tracked_by_fork": {
+     "False": 1759
+    }
+   }
+  },
+  {
+   "id": "c8d232dc-157e-4f76-a5d5-937c1f004903",
+   "slug": "epic",
+   "label": "Epic",
+   "sattributes": [
+    "epic"
+   ],
+   "additionalSattributes": [],
+   "isCategory": true,
+   "isVirtual": false,
+   "isRodarmor": true,
+   "magisat_stats": {
+    "totalSupply": "27",
+    "circulatingSupply": "4",
+    "sequestered": "2",
+    "inscribed": "1",
+    "totalHolders": "4",
+    "sequesteredHolders": "2",
+    "activeInEpoch": "4",
+    "activePast365d": "1",
+    "sales": "0",
+    "totalVolume": null,
+    "floorPrice": null,
+    "itemsCount": "0"
+   },
+   "relation": "ours_superset",
+   "rows": [
+    "epic"
+   ],
+   "note": "Magisat excludes the 6 legendary blocks (27 vs 33).",
+   "dataset": null,
+   "ours": {
+    "epic": {
+     "total": 33,
+     "all_of": [
+      "epic"
+     ],
+     "any_of": [],
+     "heights": null,
+     "stats": {
+      "mined": 5,
+      "located": 5,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 2,
+      "holders": 5,
+      "extracted_holders": 2
+     },
+     "stats_at_932293": {
+      "mined": 5,
+      "located": 5,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 2,
+      "holders": 5,
+      "extracted_holders": 2
+     }
+    }
+   }
+  },
+  {
+   "id": "9362525f-6c93-4b4b-a973-0815e8b00dfd",
+   "slug": "rare",
+   "label": "Rare",
+   "sattributes": [
+    "rare"
+   ],
+   "additionalSattributes": [],
+   "isCategory": true,
+   "isVirtual": false,
+   "isRodarmor": true,
+   "magisat_stats": {
+    "totalSupply": "3432",
+    "circulatingSupply": "462",
+    "sequestered": "141",
+    "inscribed": "12",
+    "totalHolders": "357",
+    "sequesteredHolders": "64",
+    "activeInEpoch": "378",
+    "activePast365d": "212",
+    "sales": "25",
+    "totalVolume": "1528423652",
+    "floorPrice": "14500546",
+    "itemsCount": "6"
+   },
+   "relation": "ours_superset",
+   "rows": [
+    "rare"
+   ],
+   "note": "Magisat excludes the 6 legendary blocks (3,432 vs 3,438).",
+   "dataset": {
+    "sales": 29,
+    "purchase": 26,
+    "offer": 3,
+    "years": {
+     "2023": 1,
+     "2024": 5,
+     "2025": 13,
+     "2026": 10
+    },
+    "main_sat_tracked_by_fork": {
+     "True": 29
+    }
+   },
+   "ours": {
+    "rare": {
+     "total": 3438,
+     "all_of": [
+      "rare"
+     ],
+     "any_of": [],
+     "heights": null,
+     "stats": {
+      "mined": 481,
+      "located": 481,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 162,
+      "holders": 374,
+      "extracted_holders": 73
+     },
+     "stats_at_932293": {
+      "mined": 463,
+      "located": 463,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 140,
+      "holders": 371,
+      "extracted_holders": 63
+     }
+    }
+   }
+  },
+  {
+   "id": "1547d793-4bc0-4300-91a8-940d55897ed0",
+   "slug": "b9-alpha",
+   "label": "B9 Alpha",
+   "sattributes": [
+    "b9",
+    "alpha"
+   ],
+   "additionalSattributes": [],
+   "isCategory": false,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": "50",
+    "circulatingSupply": "50",
+    "sequestered": "0",
+    "inscribed": "0",
+    "totalHolders": "8",
+    "sequesteredHolders": "0",
+    "activeInEpoch": "6",
+    "activePast365d": "1",
+    "sales": "0",
+    "totalVolume": null,
+    "floorPrice": "550000",
+    "itemsCount": "0"
+   },
+   "relation": "exact",
+   "rows": [
+    "block9_alpha"
+   ],
+   "note": "",
+   "dataset": null,
+   "ours": {
+    "block9_alpha": {
+     "total": 50,
+     "all_of": [
+      "block9",
+      "alpha"
+     ],
+     "any_of": [],
+     "heights": null,
+     "stats": {
+      "mined": 50,
+      "located": 50,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 1,
+      "holders": 12,
+      "extracted_holders": 1
+     },
+     "stats_at_932293": {
+      "mined": 50,
+      "located": 50,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 1,
+      "holders": 12,
+      "extracted_holders": 1
+     }
+    }
+   }
+  },
+  {
+   "id": "d5433180-21cf-4595-ad07-1de8bced263d",
+   "slug": "b9-omega",
+   "label": "B9 Omega",
+   "sattributes": [
+    "b9",
+    "omega"
+   ],
+   "additionalSattributes": [],
+   "isCategory": false,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": "50",
+    "circulatingSupply": "50",
+    "sequestered": "0",
+    "inscribed": "0",
+    "totalHolders": "8",
+    "sequesteredHolders": "0",
+    "activeInEpoch": "7",
+    "activePast365d": "2",
+    "sales": "0",
+    "totalVolume": null,
+    "floorPrice": "550000",
+    "itemsCount": "0"
+   },
+   "relation": "exact",
+   "rows": [
+    "block9_omega"
+   ],
+   "note": "",
+   "dataset": null,
+   "ours": {
+    "block9_omega": {
+     "total": 50,
+     "all_of": [
+      "block9",
+      "omega"
+     ],
+     "any_of": [],
+     "heights": null,
+     "stats": {
+      "mined": 50,
+      "located": 50,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 1,
+      "holders": 12,
+      "extracted_holders": 1
+     },
+     "stats_at_932293": {
+      "mined": 50,
+      "located": 50,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 1,
+      "holders": 12,
+      "extracted_holders": 1
+     }
+    }
+   }
+  },
+  {
+   "id": "22d394a7-9312-434e-939f-68ca34387d23",
+   "slug": "b286-alpha",
+   "label": "B286 Alpha",
+   "sattributes": [
+    "b286",
+    "alpha"
+   ],
+   "additionalSattributes": [],
+   "isCategory": false,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": "50",
+    "circulatingSupply": "50",
+    "sequestered": "1",
+    "inscribed": "0",
+    "totalHolders": "12",
+    "sequesteredHolders": "1",
+    "activeInEpoch": "17",
+    "activePast365d": "2",
+    "sales": "0",
+    "totalVolume": null,
+    "floorPrice": "58800000",
+    "itemsCount": "1"
+   },
+   "relation": "exact",
+   "rows": [
+    "block286_alpha"
+   ],
+   "note": "",
+   "dataset": null,
+   "ours": {
+    "block286_alpha": {
+     "total": 50,
+     "all_of": [
+      "block286",
+      "alpha"
+     ],
+     "any_of": [],
+     "heights": null,
+     "stats": {
+      "mined": 50,
+      "located": 50,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 1,
+      "holders": 13,
+      "extracted_holders": 1
+     },
+     "stats_at_932293": {
+      "mined": 50,
+      "located": 50,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 1,
+      "holders": 13,
+      "extracted_holders": 1
+     }
+    }
+   }
+  },
+  {
+   "id": "dbfcbe0c-f6d5-4b86-9c5e-b3181970f903",
+   "slug": "b286-omega",
+   "label": "B286 Omega",
+   "sattributes": [
+    "b286",
+    "omega"
+   ],
+   "additionalSattributes": [],
+   "isCategory": false,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": "50",
+    "circulatingSupply": "50",
+    "sequestered": "1",
+    "inscribed": "0",
+    "totalHolders": "12",
+    "sequesteredHolders": "1",
+    "activeInEpoch": "17",
+    "activePast365d": "3",
+    "sales": "0",
+    "totalVolume": null,
+    "floorPrice": "58800000",
+    "itemsCount": "1"
+   },
+   "relation": "exact",
+   "rows": [
+    "block286_omega"
+   ],
+   "note": "",
+   "dataset": null,
+   "ours": {
+    "block286_omega": {
+     "total": 50,
+     "all_of": [
+      "block286",
+      "omega"
+     ],
+     "any_of": [],
+     "heights": null,
+     "stats": {
+      "mined": 50,
+      "located": 50,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 1,
+      "holders": 13,
+      "extracted_holders": 1
+     },
+     "stats_at_932293": {
+      "mined": 50,
+      "located": 50,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 1,
+      "holders": 13,
+      "extracted_holders": 1
+     }
+    }
+   }
+  },
+  {
+   "id": "79df438c-8720-4a56-b6e3-c2d994eaaa01",
+   "slug": "b78-alpha",
+   "label": "B78 Alpha",
+   "sattributes": [
+    "alpha",
+    "b78"
+   ],
+   "additionalSattributes": [],
+   "isCategory": false,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": "50",
+    "circulatingSupply": "50",
+    "sequestered": "16",
+    "inscribed": "0",
+    "totalHolders": "36",
+    "sequesteredHolders": "11",
+    "activeInEpoch": "48",
+    "activePast365d": "29",
+    "sales": "1",
+    "totalVolume": "25100000",
+    "floorPrice": "39000000",
+    "itemsCount": "1"
+   },
+   "relation": "exact",
+   "rows": [
+    "block78_alpha"
+   ],
+   "note": "",
+   "dataset": {
+    "sales": 2,
+    "purchase": 1,
+    "offer": 1,
+    "years": {
+     "2024": 1,
+     "2026": 1
+    },
+    "main_sat_tracked_by_fork": {
+     "True": 2
+    }
+   },
+   "ours": {
+    "block78_alpha": {
+     "total": 50,
+     "all_of": [
+      "block78",
+      "alpha"
+     ],
+     "any_of": [],
+     "heights": null,
+     "stats": {
+      "mined": 50,
+      "located": 50,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 17,
+      "holders": 34,
+      "extracted_holders": 10
+     },
+     "stats_at_932293": {
+      "mined": 50,
+      "located": 50,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 16,
+      "holders": 36,
+      "extracted_holders": 11
+     }
+    }
+   }
+  },
+  {
+   "id": "e72ebe7d-a256-4c98-8b08-4e200c4e6374",
+   "slug": "b78-omega",
+   "label": "B78 Omega",
+   "sattributes": [
+    "b78",
+    "omega"
+   ],
+   "additionalSattributes": [],
+   "isCategory": false,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": "50",
+    "circulatingSupply": "50",
+    "sequestered": "17",
+    "inscribed": "0",
+    "totalHolders": "36",
+    "sequesteredHolders": "12",
+    "activeInEpoch": "48",
+    "activePast365d": "30",
+    "sales": "1",
+    "totalVolume": "25100000",
+    "floorPrice": "39000000",
+    "itemsCount": "1"
+   },
+   "relation": "exact",
+   "rows": [
+    "block78_omega"
+   ],
+   "note": "",
+   "dataset": {
+    "sales": 2,
+    "purchase": 1,
+    "offer": 1,
+    "years": {
+     "2024": 1,
+     "2026": 1
+    },
+    "main_sat_tracked_by_fork": {
+     "True": 2
+    }
+   },
+   "ours": {
+    "block78_omega": {
+     "total": 50,
+     "all_of": [
+      "block78",
+      "omega"
+     ],
+     "any_of": [],
+     "heights": null,
+     "stats": {
+      "mined": 50,
+      "located": 50,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 18,
+      "holders": 34,
+      "extracted_holders": 11
+     },
+     "stats_at_932293": {
+      "mined": 50,
+      "located": 50,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 17,
+      "holders": 36,
+      "extracted_holders": 12
+     }
+    }
+   }
+  },
+  {
+   "id": "5cfb93dd-590b-4346-bca1-1d9ca9c8b851",
+   "slug": "vintage-uncommon",
+   "label": "Vintage Uncommon",
+   "sattributes": [
+    "uncommon",
+    "vintage"
+   ],
+   "additionalSattributes": [
+    "nakamoto"
+   ],
+   "isCategory": false,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": "999",
+    "circulatingSupply": "999",
+    "sequestered": "6",
+    "inscribed": "0",
+    "totalHolders": "76",
+    "sequesteredHolders": "6",
+    "activeInEpoch": "57",
+    "activePast365d": "34",
+    "sales": "1",
+    "totalVolume": "63000000",
+    "floorPrice": "170000000",
+    "itemsCount": "0"
+   },
+   "relation": "exact",
+   "rows": [
+    "vintage_uncommon"
+   ],
+   "note": "Ours also counts sat 0 (mythic): 1,000 vs 999.",
+   "dataset": {
+    "sales": 1,
+    "purchase": 1,
+    "offer": 0,
+    "years": {
+     "2024": 1
+    },
+    "main_sat_tracked_by_fork": {
+     "True": 1
+    }
+   },
+   "ours": {
+    "vintage_uncommon": {
+     "total": 1000,
+     "all_of": [
+      "vintage",
+      "uncommon"
+     ],
+     "any_of": [],
+     "heights": null,
+     "stats": {
+      "mined": 1000,
+      "located": 1000,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 9,
+      "holders": 979,
+      "extracted_holders": 8
+     },
+     "stats_at_932293": {
+      "mined": 1000,
+      "located": 1000,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 6,
+      "holders": 980,
+      "extracted_holders": 6
+     }
+    }
+   }
+  },
+  {
+   "id": "fb822f36-92a3-413c-a5a6-3a674370dc49",
+   "slug": "nakamoto-uncommon",
+   "label": "Nakamoto Uncommon",
+   "sattributes": [
+    "uncommon",
+    "nakamoto"
+   ],
+   "additionalSattributes": [
+    "vintage"
+   ],
+   "isCategory": false,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": "19",
+    "circulatingSupply": "19",
+    "sequestered": "1",
+    "inscribed": "0",
+    "totalHolders": "19",
+    "sequesteredHolders": "1",
+    "activeInEpoch": "8",
+    "activePast365d": "4",
+    "sales": "0",
+    "totalVolume": null,
+    "floorPrice": "11000000",
+    "itemsCount": "0"
+   },
+   "relation": "exact",
+   "rows": [
+    "nakamoto_uncommon"
+   ],
+   "note": "",
+   "dataset": null,
+   "ours": {
+    "nakamoto_uncommon": {
+     "total": 19,
+     "all_of": [
+      "nakamoto",
+      "uncommon"
+     ],
+     "any_of": [],
+     "heights": null,
+     "stats": {
+      "mined": 19,
+      "located": 19,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 1,
+      "holders": 19,
+      "extracted_holders": 1
+     },
+     "stats_at_932293": {
+      "mined": 19,
+      "located": 19,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 1,
+      "holders": 19,
+      "extracted_holders": 1
+     }
+    }
+   }
+  },
+  {
+   "id": "272d3004-fc82-4fb9-95ce-2a03c90a290f",
+   "slug": "pizza-uncommon",
+   "label": "Pizza Uncommon",
+   "sattributes": [
+    "uncommon",
+    "pizza"
+   ],
+   "additionalSattributes": [],
+   "isCategory": false,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": "201",
+    "circulatingSupply": "201",
+    "sequestered": "19",
+    "inscribed": "1",
+    "totalHolders": "93",
+    "sequesteredHolders": "15",
+    "activeInEpoch": "73",
+    "activePast365d": "45",
+    "sales": "3",
+    "totalVolume": "93710000",
+    "floorPrice": "49000000",
+    "itemsCount": "0"
+   },
+   "relation": "ours_superset",
+   "rows": [
+    "pizza_uncommon"
+   ],
+   "note": "Off by one: the JS isInRanges() treats the exported [start, end) pizza ranges as inclusive, so every range that ends at a block boundary adds the next block's uncommon (378 vs 201).",
+   "dataset": {
+    "sales": 3,
+    "purchase": 3,
+    "offer": 0,
+    "years": {
+     "2024": 3
+    },
+    "main_sat_tracked_by_fork": {
+     "True": 3
+    }
+   },
+   "ours": {
+    "pizza_uncommon": {
+     "total": 378,
+     "all_of": [
+      "pizza",
+      "uncommon"
+     ],
+     "any_of": [],
+     "heights": null,
+     "stats": {
+      "mined": 378,
+      "located": 378,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 35,
+      "holders": 243,
+      "extracted_holders": 24
+     },
+     "stats_at_932293": {
+      "mined": 378,
+      "located": 378,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 33,
+      "holders": 243,
+      "extracted_holders": 22
+     }
+    }
+   }
+  },
+  {
+   "id": "a029697f-bd95-4984-987f-575f9e535c7f",
+   "slug": "hitman-uncommon",
+   "label": "Hitman Uncommon",
+   "sattributes": [
+    "uncommon",
+    "hitman"
+   ],
+   "additionalSattributes": [],
+   "isCategory": false,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": "25",
+    "circulatingSupply": "25",
+    "sequestered": "3",
+    "inscribed": "0",
+    "totalHolders": "23",
+    "sequesteredHolders": "3",
+    "activeInEpoch": "21",
+    "activePast365d": "9",
+    "sales": "0",
+    "totalVolume": null,
+    "floorPrice": "100000000",
+    "itemsCount": "1"
+   },
+   "relation": "ours_superset",
+   "rows": [
+    "hitman_uncommon"
+   ],
+   "note": "Off-by-one range ends: 56 vs 25.",
+   "dataset": null,
+   "ours": {
+    "hitman_uncommon": {
+     "total": 56,
+     "all_of": [
+      "hitman",
+      "uncommon"
+     ],
+     "any_of": [],
+     "heights": null,
+     "stats": {
+      "mined": 56,
+      "located": 56,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 9,
+      "holders": 54,
+      "extracted_holders": 9
+     },
+     "stats_at_932293": {
+      "mined": 56,
+      "located": 56,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 7,
+      "holders": 54,
+      "extracted_holders": 7
+     }
+    }
+   }
+  },
+  {
+   "id": "45a392fb-bdc0-410b-93bf-b18493f7ae19",
+   "slug": "silkroad-uncommon",
+   "label": "Silkroad Uncommon",
+   "sattributes": [
+    "uncommon",
+    "silkroad"
+   ],
+   "additionalSattributes": [],
+   "isCategory": false,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": "829",
+    "circulatingSupply": "829",
+    "sequestered": "33",
+    "inscribed": "2",
+    "totalHolders": "187",
+    "sequesteredHolders": "25",
+    "activeInEpoch": "795",
+    "activePast365d": "719",
+    "sales": "2",
+    "totalVolume": "5890000",
+    "floorPrice": "2490330",
+    "itemsCount": "6"
+   },
+   "relation": "ours_superset",
+   "rows": [
+    "sr_uncommon"
+   ],
+   "note": "Off-by-one range ends: 1,699 vs 829.",
+   "dataset": {
+    "sales": 2,
+    "purchase": 2,
+    "offer": 0,
+    "years": {
+     "2024": 2
+    },
+    "main_sat_tracked_by_fork": {
+     "True": 2
+    }
+   },
+   "ours": {
+    "sr_uncommon": {
+     "total": 1699,
+     "all_of": [
+      "sr_1st_auction",
+      "uncommon"
+     ],
+     "any_of": [],
+     "heights": null,
+     "stats": {
+      "mined": 1699,
+      "located": 1699,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 152,
+      "holders": 917,
+      "extracted_holders": 78
+     },
+     "stats_at_932293": {
+      "mined": 1699,
+      "located": 1699,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 128,
+      "holders": 925,
+      "extracted_holders": 78
+     }
+    }
+   }
+  },
+  {
+   "id": "8b7afdb5-ea6e-441c-8282-2fe44766e3b0",
+   "slug": "1d-pali",
+   "label": "1d Pali",
+   "sattributes": [
+    "1d-pali"
+   ],
+   "additionalSattributes": [
+    "b9",
+    "pizza",
+    "b78",
+    "vintage",
+    "nakamoto"
+   ],
+   "isCategory": true,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": "137",
+    "circulatingSupply": "137",
+    "sequestered": "3",
+    "inscribed": "0",
+    "totalHolders": "11",
+    "sequesteredHolders": "3",
+    "activeInEpoch": "9",
+    "activePast365d": "3",
+    "sales": "0",
+    "totalVolume": null,
+    "floorPrice": "1730000000",
+    "itemsCount": "1"
+   },
+   "relation": "exact",
+   "rows": [
+    "palindrome_1d"
+   ],
+   "note": "Magisat counts sat 0 (137 vs 136).",
+   "dataset": null,
+   "ours": {
+    "palindrome_1d": {
+     "total": 136,
+     "all_of": [
+      "palindromes_integer_1d"
+     ],
+     "any_of": [],
+     "heights": null,
+     "stats": {
+      "mined": 136,
+      "located": 136,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 3,
+      "holders": 48,
+      "extracted_holders": 3
+     },
+     "stats_at_932293": {
+      "mined": 136,
+      "located": 136,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 3,
+      "holders": 48,
+      "extracted_holders": 3
+     }
+    }
+   }
+  },
+  {
+   "id": "fb03a5ef-d911-42a4-a93c-443898dcc852",
+   "slug": "black-epic",
+   "label": "Black Epic",
+   "sattributes": [
+    "black-epic"
+   ],
+   "additionalSattributes": [],
+   "isCategory": true,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": "28",
+    "circulatingSupply": "4",
+    "sequestered": "1",
+    "inscribed": "0",
+    "totalHolders": "4",
+    "sequesteredHolders": "1",
+    "activeInEpoch": "4",
+    "activePast365d": "3",
+    "sales": "0",
+    "totalVolume": null,
+    "floorPrice": "69000000",
+    "itemsCount": "0"
+   },
+   "relation": "ours_superset",
+   "rows": [
+    "black_epic"
+   ],
+   "note": "Magisat excludes the 5 black legendary sats: 28 vs 33.",
+   "dataset": null,
+   "ours": {
+    "black_epic": {
+     "total": 33,
+     "all_of": [
+      "black_epic"
+     ],
+     "any_of": [],
+     "heights": null,
+     "stats": {
+      "mined": 4,
+      "located": 4,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 1,
+      "holders": 4,
+      "extracted_holders": 1
+     },
+     "stats_at_932293": {
+      "mined": 4,
+      "located": 4,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 1,
+      "holders": 4,
+      "extracted_holders": 1
+     }
+    }
+   }
+  },
+  {
+   "id": "b56e5c21-945a-4b0f-bb6e-87bbf0d59b04",
+   "slug": "black-rare",
+   "label": "Black Rare",
+   "sattributes": [
+    "black-rare"
+   ],
+   "additionalSattributes": [],
+   "isCategory": true,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": "3432",
+    "circulatingSupply": "462",
+    "sequestered": "105",
+    "inscribed": "2",
+    "totalHolders": "359",
+    "sequesteredHolders": "42",
+    "activeInEpoch": "378",
+    "activePast365d": "223",
+    "sales": "4",
+    "totalVolume": "77300329",
+    "floorPrice": "4950000",
+    "itemsCount": "6"
+   },
+   "relation": "ours_superset",
+   "rows": [
+    "black_rare"
+   ],
+   "note": "Magisat excludes the 5 black legendary sats ((h+1) % 1,260,000 == 0): 3,432 vs 3,437.",
+   "dataset": {
+    "sales": 4,
+    "purchase": 4,
+    "offer": 0,
+    "years": {
+     "2023": 2,
+     "2025": 2
+    },
+    "main_sat_tracked_by_fork": {
+     "True": 4
+    }
+   },
+   "ours": {
+    "black_rare": {
+     "total": 3437,
+     "all_of": [
+      "black_rare"
+     ],
+     "any_of": [],
+     "heights": null,
+     "stats": {
+      "mined": 480,
+      "located": 480,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 118,
+      "holders": 381,
+      "extracted_holders": 46
+     },
+     "stats_at_932293": {
+      "mined": 462,
+      "located": 462,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 106,
+      "holders": 373,
+      "extracted_holders": 42
+     }
+    }
+   }
+  },
+  {
+   "id": "34de949e-e7f9-45cc-b54f-83ccf2a03dc3",
+   "slug": "black-uncommon-vintage",
+   "label": "Black Uncommon Vintage",
+   "sattributes": [
+    "black-uncommon",
+    "vintage"
+   ],
+   "additionalSattributes": [],
+   "isCategory": false,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": "1000",
+    "circulatingSupply": "1000",
+    "sequestered": "11",
+    "inscribed": "1",
+    "totalHolders": "69",
+    "sequesteredHolders": "9",
+    "activeInEpoch": "55",
+    "activePast365d": "32",
+    "sales": "1",
+    "totalVolume": "12500000",
+    "floorPrice": "4900330",
+    "itemsCount": "4"
+   },
+   "relation": "exact",
+   "rows": [
+    "vintage_black"
+   ],
+   "note": "",
+   "dataset": {
+    "sales": 1,
+    "purchase": 1,
+    "offer": 0,
+    "years": {
+     "2023": 1
+    },
+    "main_sat_tracked_by_fork": {
+     "False": 1
+    }
+   },
+   "ours": {
+    "vintage_black": {
+     "total": 1000,
+     "all_of": [
+      "vintage",
+      "black"
+     ],
+     "any_of": [],
+     "heights": null,
+     "stats": {
+      "mined": 1000,
+      "located": 1000,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 14,
+      "holders": 974,
+      "extracted_holders": 10
+     },
+     "stats_at_932293": {
+      "mined": 1000,
+      "located": 1000,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 11,
+      "holders": 976,
+      "extracted_holders": 9
+     }
+    }
+   }
+  },
+  {
+   "id": "3bfe2258-5984-4f86-a88a-7d2aad50bb7c",
+   "slug": "nakamoto-black-uncommon",
+   "label": "Nakamoto Black Uncommon",
+   "sattributes": [
+    "black-uncommon",
+    "nakamoto"
+   ],
+   "additionalSattributes": [],
+   "isCategory": false,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": "19",
+    "circulatingSupply": "19",
+    "sequestered": "1",
+    "inscribed": "0",
+    "totalHolders": "16",
+    "sequesteredHolders": "1",
+    "activeInEpoch": "10",
+    "activePast365d": "6",
+    "sales": "0",
+    "totalVolume": null,
+    "floorPrice": "188600000",
+    "itemsCount": "0"
+   },
+   "relation": "exact",
+   "rows": [
+    "nakamoto_black"
+   ],
+   "note": "",
+   "dataset": null,
+   "ours": {
+    "nakamoto_black": {
+     "total": 19,
+     "all_of": [
+      "nakamoto",
+      "black"
+     ],
+     "any_of": [],
+     "heights": null,
+     "stats": {
+      "mined": 19,
+      "located": 19,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 1,
+      "holders": 19,
+      "extracted_holders": 1
+     },
+     "stats_at_932293": {
+      "mined": 19,
+      "located": 19,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 1,
+      "holders": 19,
+      "extracted_holders": 1
+     }
+    }
+   }
+  },
+  {
+   "id": "d1944994-6689-4d51-a8f1-22f3d8a3df57",
+   "slug": "pizza-black-uncommon",
+   "label": "Pizza Black Uncommon",
+   "sattributes": [
+    "black-uncommon",
+    "pizza"
+   ],
+   "additionalSattributes": [],
+   "isCategory": false,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": "198",
+    "circulatingSupply": "198",
+    "sequestered": "19",
+    "inscribed": "1",
+    "totalHolders": "88",
+    "sequesteredHolders": "13",
+    "activeInEpoch": "69",
+    "activePast365d": "44",
+    "sales": "1",
+    "totalVolume": "49000000",
+    "floorPrice": "4900000",
+    "itemsCount": "0"
+   },
+   "relation": "gap",
+   "rows": [],
+   "note": "No pizza_black row; every black sat is already tracked, so the row is free.",
+   "dataset": {
+    "sales": 1,
+    "purchase": 1,
+    "offer": 0,
+    "years": {
+     "2024": 1
+    },
+    "main_sat_tracked_by_fork": {
+     "True": 1
+    }
+   },
+   "proposal": {
+    "id": "pizza_black",
+    "label": "Pizza black",
+    "all_of": [
+     "pizza",
+     "black"
+    ],
+    "any_of": [],
+    "heights": null,
+    "range": false,
+    "tracking": "none (black sats are all tracked)",
+    "total_note": "198 per Magisat"
+   }
+  },
+  {
+   "id": "48725336-8d57-4dd7-bbbc-bed72fec9002",
+   "slug": "hitman-black-uncommon",
+   "label": "Hitman Black Uncommon",
+   "sattributes": [
+    "black-uncommon",
+    "hitman"
+   ],
+   "additionalSattributes": [],
+   "isCategory": false,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": "31",
+    "circulatingSupply": "31",
+    "sequestered": "5",
+    "inscribed": "0",
+    "totalHolders": "29",
+    "sequesteredHolders": "5",
+    "activeInEpoch": "24",
+    "activePast365d": "15",
+    "sales": "0",
+    "totalVolume": null,
+    "floorPrice": null,
+    "itemsCount": "0"
+   },
+   "relation": "gap",
+   "rows": [],
+   "note": "No hitman_black row; black sats are already tracked.",
+   "dataset": null,
+   "proposal": {
+    "id": "hitman_black",
+    "label": "Hitman black",
+    "all_of": [
+     "hitman",
+     "black"
+    ],
+    "any_of": [],
+    "heights": null,
+    "range": false,
+    "tracking": "none (black sats are all tracked)",
+    "total_note": "31 per Magisat"
+   }
+  },
+  {
+   "id": "f7773b8e-ba7f-4858-8e1a-ad9f8c02322b",
+   "slug": "silkroad-black-uncommon",
+   "label": "Silkroad Black Uncommon",
+   "sattributes": [
+    "black-uncommon",
+    "silkroad"
+   ],
+   "additionalSattributes": [],
+   "isCategory": false,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": "870",
+    "circulatingSupply": "870",
+    "sequestered": "18",
+    "inscribed": "1",
+    "totalHolders": "201",
+    "sequesteredHolders": "16",
+    "activeInEpoch": "842",
+    "activePast365d": "766",
+    "sales": "4",
+    "totalVolume": "7990000",
+    "floorPrice": "1490330",
+    "itemsCount": "10"
+   },
+   "relation": "exact",
+   "rows": [
+    "sr_black"
+   ],
+   "note": "871 vs 870 (one boundary sat).",
+   "dataset": {
+    "sales": 4,
+    "purchase": 4,
+    "offer": 0,
+    "years": {
+     "2023": 1,
+     "2024": 1,
+     "2025": 2
+    },
+    "main_sat_tracked_by_fork": {
+     "True": 4
+    }
+   },
+   "ours": {
+    "sr_black": {
+     "total": 871,
+     "all_of": [
+      "sr_1st_auction",
+      "black"
+     ],
+     "any_of": [],
+     "heights": null,
+     "stats": {
+      "mined": 871,
+      "located": 871,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 30,
+      "holders": 209,
+      "extracted_holders": 17
+     },
+     "stats_at_932293": {
+      "mined": 871,
+      "located": 871,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 16,
+      "holders": 202,
+      "extracted_holders": 14
+     }
+    }
+   }
+  },
+  {
+   "id": "4b924711-8995-4596-8941-594c1d22ff56",
+   "slug": "fibonacci-sequence",
+   "label": "Fibonacci Sequence",
+   "sattributes": [
+    "fibonacci-sequence"
+   ],
+   "additionalSattributes": [],
+   "isCategory": true,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": "17",
+    "circulatingSupply": "17",
+    "sequestered": "0",
+    "inscribed": "0",
+    "totalHolders": "9",
+    "sequesteredHolders": "0",
+    "activeInEpoch": "7",
+    "activePast365d": "5",
+    "sales": "0",
+    "totalVolume": null,
+    "floorPrice": null,
+    "itemsCount": "0"
+   },
+   "relation": "gap",
+   "rows": [],
+   "note": "17 sats, no sales.",
+   "dataset": null
+  },
+  {
+   "id": "fe2bd7df-b2e0-4818-8712-fbc1f00bf431",
+   "slug": "b9-pali",
+   "label": "B9 Pali",
+   "sattributes": [
+    "pali",
+    "b9"
+   ],
+   "additionalSattributes": [],
+   "isCategory": false,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": "50000",
+    "circulatingSupply": "50000",
+    "sequestered": "45",
+    "inscribed": "2",
+    "totalHolders": "287",
+    "sequesteredHolders": "30",
+    "activeInEpoch": "6252",
+    "activePast365d": "2180",
+    "sales": "5",
+    "totalVolume": "407700000",
+    "floorPrice": "1900330",
+    "itemsCount": "9"
+   },
+   "relation": "exact",
+   "rows": [
+    "block9_palindrome"
+   ],
+   "note": "",
+   "dataset": {
+    "sales": 6,
+    "purchase": 5,
+    "offer": 1,
+    "years": {
+     "2024": 4,
+     "2025": 1,
+     "2026": 1
+    },
+    "main_sat_tracked_by_fork": {
+     "True": 6
+    }
+   },
+   "ours": {
+    "block9_palindrome": {
+     "total": 50000,
+     "all_of": [
+      "block9",
+      "palindromes_integer"
+     ],
+     "any_of": [],
+     "heights": null,
+     "stats": {
+      "mined": 50000,
+      "located": 50000,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 671,
+      "holders": 285,
+      "extracted_holders": 68
+     },
+     "stats_at_932293": {
+      "mined": 50000,
+      "located": 50000,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 571,
+      "holders": 290,
+      "extracted_holders": 62
+     }
+    }
+   }
+  },
+  {
+   "id": "671ce1fb-2dde-41b9-87a8-94b5e4a25008",
+   "slug": "rodarmor-name",
+   "label": "Rodarmor Name",
+   "sattributes": [
+    "rodarmor-name"
+   ],
+   "additionalSattributes": [],
+   "isCategory": true,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": "12450",
+    "circulatingSupply": "12450",
+    "sequestered": "1256",
+    "inscribed": "15",
+    "totalHolders": "5033",
+    "sequesteredHolders": "284",
+    "activeInEpoch": "9229",
+    "activePast365d": "5220",
+    "sales": "238",
+    "totalVolume": "112157970",
+    "floorPrice": "138546",
+    "itemsCount": "112"
+   },
+   "relation": "exact",
+   "rows": [
+    "bounty3_name"
+   ],
+   "note": "12,450 names.",
+   "dataset": {
+    "sales": 239,
+    "purchase": 237,
+    "offer": 2,
+    "years": {
+     "2023": 4,
+     "2024": 162,
+     "2025": 48,
+     "2026": 25
+    },
+    "main_sat_tracked_by_fork": {
+     "True": 239
+    }
+   },
+   "ours": {
+    "bounty3_name": {
+     "total": 12450,
+     "all_of": [
+      "bounty3_name"
+     ],
+     "any_of": [],
+     "heights": null,
+     "stats": {
+      "mined": 12450,
+      "located": 12450,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 1409,
+      "holders": 5284,
+      "extracted_holders": 264
+     },
+     "stats_at_932293": {
+      "mined": 12450,
+      "located": 12450,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 1225,
+      "holders": 5370,
+      "extracted_holders": 257
+     }
+    }
+   }
+  },
+  {
+   "id": "7547df3d-39d1-4a8b-95fe-e188e327e5fe",
+   "slug": "b286-pali",
+   "label": "B286 Pali",
+   "sattributes": [
+    "pali",
+    "b286"
+   ],
+   "additionalSattributes": [],
+   "isCategory": false,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": "5000",
+    "circulatingSupply": "5000",
+    "sequestered": "37",
+    "inscribed": "1",
+    "totalHolders": "272",
+    "sequesteredHolders": "20",
+    "activeInEpoch": "1670",
+    "activePast365d": "306",
+    "sales": "4",
+    "totalVolume": "27540000",
+    "floorPrice": "290330",
+    "itemsCount": "12"
+   },
+   "relation": "exact",
+   "rows": [
+    "block286_palindrome"
+   ],
+   "note": "",
+   "dataset": {
+    "sales": 4,
+    "purchase": 4,
+    "offer": 0,
+    "years": {
+     "2023": 2,
+     "2024": 2
+    },
+    "main_sat_tracked_by_fork": {
+     "True": 4
+    }
+   },
+   "ours": {
+    "block286_palindrome": {
+     "total": 5000,
+     "all_of": [
+      "block286",
+      "palindromes_integer"
+     ],
+     "any_of": [],
+     "heights": null,
+     "stats": {
+      "mined": 5000,
+      "located": 5000,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 56,
+      "holders": 263,
+      "extracted_holders": 21
+     },
+     "stats_at_932293": {
+      "mined": 5000,
+      "located": 5000,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 37,
+      "holders": 272,
+      "extracted_holders": 20
+     }
+    }
+   }
+  },
+  {
+   "id": "8619e56e-e254-4aa8-9601-604ae6626dab",
+   "slug": "b78-pali",
+   "label": "B78 Pali",
+   "sattributes": [
+    "pali",
+    "b78"
+   ],
+   "additionalSattributes": [],
+   "isCategory": false,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": "5000",
+    "circulatingSupply": "5000",
+    "sequestered": "1536",
+    "inscribed": "36",
+    "totalHolders": "879",
+    "sequesteredHolders": "220",
+    "activeInEpoch": "4794",
+    "activePast365d": "2373",
+    "sales": "123",
+    "totalVolume": "245483861",
+    "floorPrice": "300546",
+    "itemsCount": "41"
+   },
+   "relation": "exact",
+   "rows": [
+    "block78_palindrome"
+   ],
+   "note": "",
+   "dataset": {
+    "sales": 123,
+    "purchase": 116,
+    "offer": 7,
+    "years": {
+     "2023": 8,
+     "2024": 103,
+     "2025": 5,
+     "2026": 7
+    },
+    "main_sat_tracked_by_fork": {
+     "True": 123
+    }
+   },
+   "ours": {
+    "block78_palindrome": {
+     "total": 5000,
+     "all_of": [
+      "block78",
+      "palindromes_integer"
+     ],
+     "any_of": [],
+     "heights": null,
+     "stats": {
+      "mined": 5000,
+      "located": 5000,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 1569,
+      "holders": 863,
+      "extracted_holders": 214
+     },
+     "stats_at_932293": {
+      "mined": 5000,
+      "located": 5000,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 1524,
+      "holders": 879,
+      "extracted_holders": 213
+     }
+    }
+   }
+  },
+  {
+   "id": "55a6a1dc-db11-4661-aa71-5d55419d7e65",
+   "slug": "b666-pali",
+   "label": "B666 Pali",
+   "sattributes": [
+    "pali",
+    "b666"
+   ],
+   "additionalSattributes": [
+    "alpha",
+    "omega"
+   ],
+   "isCategory": true,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": "5000",
+    "circulatingSupply": "5000",
+    "sequestered": "562",
+    "inscribed": "26",
+    "totalHolders": "1207",
+    "sequesteredHolders": "105",
+    "activeInEpoch": "4487",
+    "activePast365d": "1937",
+    "sales": "47",
+    "totalVolume": "66675982",
+    "floorPrice": "170330",
+    "itemsCount": "24"
+   },
+   "relation": "exact",
+   "rows": [
+    "block_666_palindrome"
+   ],
+   "note": "We also report block_666_alpha/omega, which Magisat folds into this tag's filters.",
+   "dataset": {
+    "sales": 64,
+    "purchase": 63,
+    "offer": 1,
+    "years": {
+     "2024": 36,
+     "2025": 23,
+     "2026": 5
+    },
+    "main_sat_tracked_by_fork": {
+     "True": 64
+    }
+   },
+   "ours": {
+    "block_666_palindrome": {
+     "total": 5000,
+     "all_of": [
+      "block_666",
+      "palindromes_integer"
+     ],
+     "any_of": [],
+     "heights": null,
+     "stats": {
+      "mined": 5000,
+      "located": 5000,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 581,
+      "holders": 1199,
+      "extracted_holders": 101
+     },
+     "stats_at_932293": {
+      "mined": 5000,
+      "located": 5000,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 559,
+      "holders": 1207,
+      "extracted_holders": 102
+     }
+    }
+   }
+  },
+  {
+   "id": "196fa3e6-9d2c-4ad5-a89a-f15921546d3b",
+   "slug": "nakamoto-pali",
+   "label": "Nakamoto Palindrome",
+   "sattributes": [
+    "pali",
+    "nakamoto"
+   ],
+   "additionalSattributes": [
+    "vintage"
+   ],
+   "isCategory": true,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": "77000",
+    "circulatingSupply": "77000",
+    "sequestered": "1500",
+    "inscribed": "81",
+    "totalHolders": "4002",
+    "sequesteredHolders": "298",
+    "activeInEpoch": "19148",
+    "activePast365d": "8349",
+    "sales": "126",
+    "totalVolume": "582888444",
+    "floorPrice": "290330",
+    "itemsCount": "54"
+   },
+   "relation": "exact",
+   "rows": [
+    "nakamoto_palindrome"
+   ],
+   "note": "",
+   "dataset": {
+    "sales": 130,
+    "purchase": 126,
+    "offer": 4,
+    "years": {
+     "2023": 34,
+     "2024": 65,
+     "2025": 22,
+     "2026": 9
+    },
+    "main_sat_tracked_by_fork": {
+     "True": 130
+    }
+   },
+   "ours": {
+    "nakamoto_palindrome": {
+     "total": 77000,
+     "all_of": [
+      "nakamoto",
+      "palindromes_integer"
+     ],
+     "any_of": [],
+     "heights": null,
+     "stats": {
+      "mined": 77000,
+      "located": 76998,
+      "burned": 2,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 2304,
+      "holders": 3945,
+      "extracted_holders": 326
+     },
+     "stats_at_932293": {
+      "mined": 77000,
+      "located": 76998,
+      "burned": 2,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 2022,
+      "holders": 3999,
+      "extracted_holders": 323
+     }
+    }
+   }
+  },
+  {
+   "id": "aea23fb2-03f8-415a-9c37-49a11ab5f2df",
+   "slug": "pizza-pali",
+   "label": "Pizza Palindrome",
+   "sattributes": [
+    "pali",
+    "pizza"
+   ],
+   "additionalSattributes": [],
+   "isCategory": true,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": "100016",
+    "circulatingSupply": "100016",
+    "sequestered": "5593",
+    "inscribed": "282",
+    "totalHolders": "14242",
+    "sequesteredHolders": "777",
+    "activeInEpoch": "38524",
+    "activePast365d": "24017",
+    "sales": "310",
+    "totalVolume": "132717486",
+    "floorPrice": "30546",
+    "itemsCount": "71"
+   },
+   "relation": "exact",
+   "rows": [
+    "pizza_palindrome"
+   ],
+   "note": "",
+   "dataset": {
+    "sales": 314,
+    "purchase": 311,
+    "offer": 3,
+    "years": {
+     "2023": 67,
+     "2024": 128,
+     "2025": 77,
+     "2026": 42
+    },
+    "main_sat_tracked_by_fork": {
+     "True": 314
+    }
+   },
+   "ours": {
+    "pizza_palindrome": {
+     "total": 100016,
+     "all_of": [
+      "pizza",
+      "palindromes_integer"
+     ],
+     "any_of": [],
+     "heights": null,
+     "stats": {
+      "mined": 100016,
+      "located": 100016,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 6132,
+      "holders": 14201,
+      "extracted_holders": 748
+     },
+     "stats_at_932293": {
+      "mined": 100016,
+      "located": 100016,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 5602,
+      "holders": 14241,
+      "extracted_holders": 739
+     }
+    }
+   }
+  },
+  {
+   "id": "383344d0-00e4-400d-9fd7-6e71ac05008a",
+   "slug": "vintage-pali",
+   "label": "Vintage Palindrome",
+   "sattributes": [
+    "pali",
+    "vintage"
+   ],
+   "additionalSattributes": [
+    "nakamoto"
+   ],
+   "isCategory": true,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": "5999999",
+    "circulatingSupply": "5999999",
+    "sequestered": "27087",
+    "inscribed": "811",
+    "totalHolders": "44327",
+    "sequesteredHolders": "2351",
+    "activeInEpoch": "305207",
+    "activePast365d": "176963",
+    "sales": "1171",
+    "totalVolume": "955724869",
+    "floorPrice": "16546",
+    "itemsCount": "415"
+   },
+   "relation": "gap",
+   "rows": [],
+   "note": "Palindromes in blocks 0-999 (~6.0M sats): no row (REQUIRED_COMBINATION_TYPES has no vintage+palindromes_integer).",
+   "dataset": {
+    "sales": 1206,
+    "purchase": 1190,
+    "offer": 16,
+    "years": {
+     "2023": 252,
+     "2024": 580,
+     "2025": 306,
+     "2026": 68
+    },
+    "main_sat_tracked_by_fork": {
+     "False": 966,
+     "True": 240
+    }
+   },
+   "proposal": {
+    "id": "vintage_palindrome",
+    "label": "Vintage palindrome",
+    "all_of": [
+     "vintage",
+     "palindromes_integer"
+    ],
+    "any_of": [],
+    "heights": null,
+    "range": false,
+    "tracking": "+~6M individual sats (doubles the tracked set)",
+    "total_note": "5,999,999 per Magisat"
+   }
+  },
+  {
+   "id": "df27dd10-eac9-4361-b8e1-2aa9f6256d6b",
+   "slug": "alpha-uncommon",
+   "label": "Alpha Uncommon",
+   "sattributes": [
+    "uncommon",
+    "alpha"
+   ],
+   "additionalSattributes": [],
+   "isCategory": false,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": "628419",
+    "circulatingSupply": "588570",
+    "sequestered": "88432",
+    "inscribed": "10492",
+    "totalHolders": "163225",
+    "sequesteredHolders": "11501",
+    "activeInEpoch": "443256",
+    "activePast365d": "250119",
+    "sales": "4162",
+    "totalVolume": "1819483836",
+    "floorPrice": "45546",
+    "itemsCount": "638"
+   },
+   "relation": "ours_superset",
+   "rows": [
+    "uncommon"
+   ],
+   "note": "Combo uncommon+alpha: every one is tracked and counted in our uncommon row, but no row isolates it (proposal uncommon_alpha).",
+   "dataset": {
+    "sales": 4251,
+    "purchase": 4216,
+    "offer": 35,
+    "years": {
+     "2023": 268,
+     "2024": 1987,
+     "2025": 1099,
+     "2026": 897
+    },
+    "main_sat_tracked_by_fork": {
+     "True": 4248,
+     "False": 3
+    }
+   },
+   "ours": {
+    "uncommon": {
+     "total": 6930000,
+     "all_of": [
+      "uncommon"
+     ],
+     "any_of": [],
+     "heights": null,
+     "stats": {
+      "mined": 969445,
+      "located": 969422,
+      "burned": 12,
+      "lost": 9,
+      "overwritten": 2,
+      "extracted": 247590,
+      "holders": 256987,
+      "extracted_holders": 18681
+     },
+     "stats_at_932293": {
+      "mined": 932294,
+      "located": 932272,
+      "burned": 11,
+      "lost": 9,
+      "overwritten": 2,
+      "extracted": 220911,
+      "holders": 256840,
+      "extracted_holders": 18430
+     }
+    }
+   },
+   "proposal": {
+    "id": "uncommon_alpha",
+    "label": "Uncommon alpha",
+    "all_of": [
+     "uncommon",
+     "alpha"
+    ],
+    "any_of": [],
+    "heights": null,
+    "range": false,
+    "tracking": "none (uncommon sats are all tracked)",
+    "total_note": "628,419 per Magisat (excl. rare+); ours would also count rare/epic/legendary alphas"
+   }
+  },
+  {
+   "id": "86b46002-9216-4d19-9f3f-46c61c34632f",
+   "slug": "uncommon",
+   "label": "Uncommon",
+   "sattributes": [
+    "uncommon"
+   ],
+   "additionalSattributes": [
+    "hal-finney",
+    "pizza",
+    "vintage",
+    "nakamoto"
+   ],
+   "isCategory": true,
+   "isVirtual": false,
+   "isRodarmor": true,
+   "magisat_stats": {
+    "totalSupply": "6926535",
+    "circulatingSupply": "931827",
+    "sequestered": "223476",
+    "inscribed": "20877",
+    "totalHolders": "222571",
+    "sequesteredHolders": "19378",
+    "activeInEpoch": "776399",
+    "activePast365d": "459122",
+    "sales": "7776",
+    "totalVolume": "2864367955",
+    "floorPrice": "23546",
+    "itemsCount": "1330"
+   },
+   "relation": "ours_superset",
+   "rows": [
+    "uncommon"
+   ],
+   "note": "Magisat 'uncommon' is ord's rarity uncommon only: it excludes rare/epic/legendary/mythic (6,926,535 = 6,930,000 - 3,465); our row includes them.",
+   "dataset": {
+    "sales": 7840,
+    "purchase": 7800,
+    "offer": 40,
+    "years": {
+     "2023": 738,
+     "2024": 3441,
+     "2025": 1905,
+     "2026": 1756
+    },
+    "main_sat_tracked_by_fork": {
+     "True": 7837,
+     "False": 3
+    }
+   },
+   "ours": {
+    "uncommon": {
+     "total": 6930000,
+     "all_of": [
+      "uncommon"
+     ],
+     "any_of": [],
+     "heights": null,
+     "stats": {
+      "mined": 969445,
+      "located": 969422,
+      "burned": 12,
+      "lost": 9,
+      "overwritten": 2,
+      "extracted": 247590,
+      "holders": 256987,
+      "extracted_holders": 18681
+     },
+     "stats_at_932293": {
+      "mined": 932294,
+      "located": 932272,
+      "burned": 11,
+      "lost": 9,
+      "overwritten": 2,
+      "extracted": 220911,
+      "holders": 256840,
+      "extracted_holders": 18430
+     }
+    }
+   }
+  },
+  {
+   "id": "a0de61fb-5500-44a6-b701-ae44515b98c0",
+   "slug": "b9-450",
+   "label": "1st Bitcoin Sats (B9 450x)",
+   "sattributes": [
+    "b9-450"
+   ],
+   "additionalSattributes": [
+    "pali"
+   ],
+   "isCategory": true,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": "100000000",
+    "circulatingSupply": "100000000",
+    "sequestered": null,
+    "inscribed": "24845",
+    "totalHolders": null,
+    "sequesteredHolders": null,
+    "activeInEpoch": "85582687",
+    "activePast365d": "26849773",
+    "sales": "5013",
+    "totalVolume": "3370673708",
+    "floorPrice": "2063",
+    "itemsCount": "1849"
+   },
+   "relation": "exact",
+   "rows": [
+    "450x"
+   ],
+   "note": "First BTC of block 9: sats [45e9, 45.1e9).",
+   "dataset": {
+    "sales": 5056,
+    "purchase": 5040,
+    "offer": 16,
+    "years": {
+     "2023": 170,
+     "2024": 1916,
+     "2025": 1353,
+     "2026": 1617
+    },
+    "main_sat_tracked_by_fork": {
+     "True": 5055,
+     "False": 1
+    }
+   },
+   "ours": {
+    "450x": {
+     "total": 100000000,
+     "all_of": [
+      "450x"
+     ],
+     "any_of": [],
+     "heights": null,
+     "stats": {
+      "mined": 100000000,
+      "located": 99999921,
+      "burned": 79,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 17438021,
+      "holders": 45585,
+      "extracted_holders": 43605
+     },
+     "stats_at_932293": {
+      "mined": 100000000,
+      "located": 99999941,
+      "burned": 59,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 15532609,
+      "holders": 45582,
+      "extracted_holders": 44227
+     }
+    }
+   }
+  },
+  {
+   "id": "c1a01c76-d5d2-4bbf-8ce2-3b6bb3f18df1",
+   "slug": "perfect-palinception",
+   "label": "Perfect Palinception",
+   "sattributes": [
+    "perfect-palinception"
+   ],
+   "additionalSattributes": [
+    "b9",
+    "pizza",
+    "b78",
+    "vintage",
+    "nakamoto"
+   ],
+   "isCategory": true,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": "13305",
+    "circulatingSupply": "13202",
+    "sequestered": "479",
+    "inscribed": "15",
+    "totalHolders": "2723",
+    "sequesteredHolders": "140",
+    "activeInEpoch": "3001",
+    "activePast365d": "1757",
+    "sales": "72",
+    "totalVolume": "206379688",
+    "floorPrice": "700000",
+    "itemsCount": "77"
+   },
+   "relation": "exact",
+   "rows": [
+    "palindrome_perfect_palinception"
+   ],
+   "note": "Magisat's total and circulating counts are both 137 higher (13,305 vs 13,168), i.e. it also counts the 137 repdigits (1d palindromes incl. 0).",
+   "dataset": {
+    "sales": 76,
+    "purchase": 70,
+    "offer": 6,
+    "years": {
+     "2023": 19,
+     "2024": 39,
+     "2025": 12,
+     "2026": 6
+    },
+    "main_sat_tracked_by_fork": {
+     "True": 76
+    }
+   },
+   "ours": {
+    "palindrome_perfect_palinception": {
+     "total": 13168,
+     "all_of": [
+      "palindromes_perfect_palinception"
+     ],
+     "any_of": [],
+     "heights": null,
+     "stats": {
+      "mined": 13077,
+      "located": 13077,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 559,
+      "holders": 9846,
+      "extracted_holders": 136
+     },
+     "stats_at_932293": {
+      "mined": 13065,
+      "located": 13065,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 477,
+      "holders": 9892,
+      "extracted_holders": 133
+     }
+    }
+   }
+  },
+  {
+   "id": "dd26eeba-52bc-44bc-bc04-1145bd6fc2dc",
+   "slug": "2d-pali",
+   "label": "2d Pali",
+   "sattributes": [
+    "2d-pali"
+   ],
+   "additionalSattributes": [
+    "b9",
+    "pizza",
+    "b78",
+    "vintage",
+    "nakamoto"
+   ],
+   "isCategory": true,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": "30934",
+    "circulatingSupply": "30854",
+    "sequestered": "1210",
+    "inscribed": "28",
+    "totalHolders": "5747",
+    "sequesteredHolders": "243",
+    "activeInEpoch": "8423",
+    "activePast365d": "5004",
+    "sales": "183",
+    "totalVolume": "232434933",
+    "floorPrice": "290330",
+    "itemsCount": "96"
+   },
+   "relation": "exact",
+   "rows": [
+    "palindrome_2d"
+   ],
+   "note": "Exactly two distinct digits on both sides (30,934).",
+   "dataset": {
+    "sales": 184,
+    "purchase": 181,
+    "offer": 3,
+    "years": {
+     "2023": 29,
+     "2024": 128,
+     "2025": 20,
+     "2026": 7
+    },
+    "main_sat_tracked_by_fork": {
+     "True": 184
+    }
+   },
+   "ours": {
+    "palindrome_2d": {
+     "total": 30934,
+     "all_of": [
+      "palindromes_integer_2d"
+     ],
+     "any_of": [],
+     "heights": null,
+     "stats": {
+      "mined": 30902,
+      "located": 30902,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 1410,
+      "holders": 7164,
+      "extracted_holders": 246
+     },
+     "stats_at_932293": {
+      "mined": 30854,
+      "located": 30854,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 1208,
+      "holders": 7217,
+      "extracted_holders": 240
+     }
+    }
+   }
+  },
+  {
+   "id": "122ec9b5-81b5-4d8e-a966-35979bfbd45a",
+   "slug": "omega-black-uncommon",
+   "label": "Omega Black Uncommon",
+   "sattributes": [
+    "black-uncommon",
+    "omega"
+   ],
+   "additionalSattributes": [],
+   "isCategory": false,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": "628419",
+    "circulatingSupply": "588570",
+    "sequestered": "58105",
+    "inscribed": "1932",
+    "totalHolders": "165625",
+    "sequesteredHolders": "5678",
+    "activeInEpoch": "448773",
+    "activePast365d": "266098",
+    "sales": "1998",
+    "totalVolume": "838381763",
+    "floorPrice": "11000",
+    "itemsCount": "883"
+   },
+   "relation": "ours_superset",
+   "rows": [
+    "black"
+   ],
+   "note": "Combo black+omega: every one is tracked and counted in our black row, but no row isolates it (proposal black_omega).",
+   "dataset": {
+    "sales": 2069,
+    "purchase": 2052,
+    "offer": 17,
+    "years": {
+     "2023": 245,
+     "2024": 1033,
+     "2025": 494,
+     "2026": 297
+    },
+    "main_sat_tracked_by_fork": {
+     "True": 2066,
+     "False": 3
+    }
+   },
+   "ours": {
+    "black": {
+     "total": 6930000,
+     "all_of": [
+      "black"
+     ],
+     "any_of": [],
+     "heights": null,
+     "stats": {
+      "mined": 969445,
+      "located": 969399,
+      "burned": 24,
+      "lost": 20,
+      "overwritten": 2,
+      "extracted": 128066,
+      "holders": 271001,
+      "extracted_holders": 8557
+     },
+     "stats_at_932293": {
+      "mined": 932294,
+      "located": 932248,
+      "burned": 24,
+      "lost": 20,
+      "overwritten": 2,
+      "extracted": 111068,
+      "holders": 267157,
+      "extracted_holders": 8520
+     }
+    }
+   },
+   "proposal": {
+    "id": "black_omega",
+    "label": "Black omega",
+    "all_of": [
+     "black",
+     "omega"
+    ],
+    "any_of": [],
+    "heights": null,
+    "range": false,
+    "tracking": "none (black sats are all tracked)",
+    "total_note": "628,419 per Magisat"
+   }
+  },
+  {
+   "id": "6c2a1e25-6750-422c-9ea6-a8971d97ddcb",
+   "slug": "black-uncommon",
+   "label": "Black Uncommon",
+   "sattributes": [
+    "black-uncommon"
+   ],
+   "additionalSattributes": [
+    "pizza",
+    "vintage",
+    "nakamoto"
+   ],
+   "isCategory": true,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": "6926535",
+    "circulatingSupply": "931828",
+    "sequestered": "112167",
+    "inscribed": "5570",
+    "totalHolders": "232919",
+    "sequesteredHolders": "9201",
+    "activeInEpoch": "782554",
+    "activePast365d": "486761",
+    "sales": "3723",
+    "totalVolume": "1012445002",
+    "floorPrice": "8829",
+    "itemsCount": "1658"
+   },
+   "relation": "ours_superset",
+   "rows": [
+    "black"
+   ],
+   "note": "Magisat excludes black rare/epic/legendary (6,926,535 vs 6,930,000).",
+   "dataset": {
+    "sales": 3809,
+    "purchase": 3791,
+    "offer": 18,
+    "years": {
+     "2023": 762,
+     "2024": 1742,
+     "2025": 833,
+     "2026": 472
+    },
+    "main_sat_tracked_by_fork": {
+     "True": 3805,
+     "False": 4
+    }
+   },
+   "ours": {
+    "black": {
+     "total": 6930000,
+     "all_of": [
+      "black"
+     ],
+     "any_of": [],
+     "heights": null,
+     "stats": {
+      "mined": 969445,
+      "located": 969399,
+      "burned": 24,
+      "lost": 20,
+      "overwritten": 2,
+      "extracted": 128066,
+      "holders": 271001,
+      "extracted_holders": 8557
+     },
+     "stats_at_932293": {
+      "mined": 932294,
+      "located": 932248,
+      "burned": 24,
+      "lost": 20,
+      "overwritten": 2,
+      "extracted": 111068,
+      "holders": 267157,
+      "extracted_holders": 8520
+     }
+    }
+   }
+  },
+  {
+   "id": "9ef35ca6-6164-40c8-9894-7a82c8d7618c",
+   "slug": "b9",
+   "label": "Block 9",
+   "sattributes": [
+    "b9"
+   ],
+   "additionalSattributes": [
+    "pali",
+    "b9-450"
+   ],
+   "isCategory": true,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": null,
+    "circulatingSupply": null,
+    "sequestered": null,
+    "inscribed": "0",
+    "totalHolders": "0",
+    "sequesteredHolders": null,
+    "activeInEpoch": null,
+    "activePast365d": null,
+    "sales": "5825",
+    "totalVolume": "3943539637",
+    "floorPrice": "1755",
+    "itemsCount": "2042"
+   },
+   "relation": "exact",
+   "rows": [
+    "block9"
+   ],
+   "note": "Whole block 9 (5e9 sats), range row.",
+   "dataset": {
+    "sales": 5873,
+    "purchase": 5854,
+    "offer": 19,
+    "years": {
+     "2023": 542,
+     "2024": 2036,
+     "2025": 1461,
+     "2026": 1834
+    },
+    "main_sat_tracked_by_fork": {
+     "True": 5872,
+     "False": 1
+    }
+   },
+   "ours": {
+    "block9": {
+     "total": 5000000000,
+     "all_of": [
+      "block9"
+     ],
+     "any_of": [],
+     "heights": null,
+     "stats": {
+      "mined": 5000000000,
+      "located": 4999999862,
+      "burned": 138,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 66324334,
+      "holders": 50435,
+      "extracted_holders": 47773
+     },
+     "stats_at_932293": {
+      "mined": 5000000000,
+      "located": 4999999917,
+      "burned": 83,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 56551079,
+      "holders": 50150,
+      "extracted_holders": 48208
+     }
+    }
+   }
+  },
+  {
+   "id": "894642af-0eb2-4845-bf63-ec99ada7fcbf",
+   "slug": "nakamoto-alpha",
+   "label": "Nakamoto Alpha",
+   "sattributes": [
+    "alpha",
+    "nakamoto"
+   ],
+   "additionalSattributes": [],
+   "isCategory": false,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": "950",
+    "circulatingSupply": "950",
+    "sequestered": "87",
+    "inscribed": "4",
+    "totalHolders": "427",
+    "sequesteredHolders": "28",
+    "activeInEpoch": "532",
+    "activePast365d": "286",
+    "sales": "3",
+    "totalVolume": "2942066",
+    "floorPrice": "790330",
+    "itemsCount": "5"
+   },
+   "relation": "exact",
+   "rows": [
+    "nakamoto_alpha"
+   ],
+   "note": "",
+   "dataset": {
+    "sales": 4,
+    "purchase": 3,
+    "offer": 1,
+    "years": {
+     "2024": 1,
+     "2025": 3
+    },
+    "main_sat_tracked_by_fork": {
+     "True": 4
+    }
+   },
+   "ours": {
+    "nakamoto_alpha": {
+     "total": 950,
+     "all_of": [
+      "nakamoto",
+      "alpha"
+     ],
+     "any_of": [],
+     "heights": null,
+     "stats": {
+      "mined": 950,
+      "located": 950,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 99,
+      "holders": 423,
+      "extracted_holders": 29
+     },
+     "stats_at_932293": {
+      "mined": 950,
+      "located": 950,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 88,
+      "holders": 433,
+      "extracted_holders": 29
+     }
+    }
+   }
+  },
+  {
+   "id": "ff4e1666-35bd-4059-9af6-6a10809f8ceb",
+   "slug": "nakamoto-omega",
+   "label": "Nakamoto Omega",
+   "sattributes": [
+    "nakamoto",
+    "omega"
+   ],
+   "additionalSattributes": [],
+   "isCategory": false,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": "950",
+    "circulatingSupply": "950",
+    "sequestered": "87",
+    "inscribed": "4",
+    "totalHolders": "428",
+    "sequesteredHolders": "30",
+    "activeInEpoch": "536",
+    "activePast365d": "290",
+    "sales": "3",
+    "totalVolume": "2942066",
+    "floorPrice": "790330",
+    "itemsCount": "5"
+   },
+   "relation": "exact",
+   "rows": [
+    "nakamoto_omega"
+   ],
+   "note": "",
+   "dataset": {
+    "sales": 4,
+    "purchase": 3,
+    "offer": 1,
+    "years": {
+     "2024": 1,
+     "2025": 3
+    },
+    "main_sat_tracked_by_fork": {
+     "True": 4
+    }
+   },
+   "ours": {
+    "nakamoto_omega": {
+     "total": 950,
+     "all_of": [
+      "nakamoto",
+      "omega"
+     ],
+     "any_of": [],
+     "heights": null,
+     "stats": {
+      "mined": 950,
+      "located": 950,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 98,
+      "holders": 425,
+      "extracted_holders": 30
+     },
+     "stats_at_932293": {
+      "mined": 950,
+      "located": 950,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 87,
+      "holders": 434,
+      "extracted_holders": 30
+     }
+    }
+   }
+  },
+  {
+   "id": "5ebf22bc-8ffe-4986-9916-a418837023e7",
+   "slug": "vintage-alpha",
+   "label": "Vintage Alpha",
+   "sattributes": [
+    "alpha",
+    "vintage"
+   ],
+   "additionalSattributes": [],
+   "isCategory": false,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": "50000",
+    "circulatingSupply": "50000",
+    "sequestered": "359",
+    "inscribed": "1",
+    "totalHolders": "1929",
+    "sequesteredHolders": "90",
+    "activeInEpoch": "2995",
+    "activePast365d": "1772",
+    "sales": "63",
+    "totalVolume": "130955984",
+    "floorPrice": "279330",
+    "itemsCount": "56"
+   },
+   "relation": "exact",
+   "rows": [
+    "vintage_alpha"
+   ],
+   "note": "",
+   "dataset": {
+    "sales": 68,
+    "purchase": 64,
+    "offer": 4,
+    "years": {
+     "2023": 7,
+     "2024": 51,
+     "2025": 4,
+     "2026": 6
+    },
+    "main_sat_tracked_by_fork": {
+     "True": 68
+    }
+   },
+   "ours": {
+    "vintage_alpha": {
+     "total": 50000,
+     "all_of": [
+      "vintage",
+      "alpha"
+     ],
+     "any_of": [],
+     "heights": null,
+     "stats": {
+      "mined": 50000,
+      "located": 50000,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 425,
+      "holders": 2774,
+      "extracted_holders": 93
+     },
+     "stats_at_932293": {
+      "mined": 50000,
+      "located": 50000,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 357,
+      "holders": 2835,
+      "extracted_holders": 87
+     }
+    }
+   }
+  },
+  {
+   "id": "0c84158d-aff7-41e8-85b4-8c73db8b4efc",
+   "slug": "vintage-omega",
+   "label": "Vintage Omega",
+   "sattributes": [
+    "vintage",
+    "omega"
+   ],
+   "additionalSattributes": [],
+   "isCategory": false,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": "50000",
+    "circulatingSupply": "50000",
+    "sequestered": "357",
+    "inscribed": "2",
+    "totalHolders": "1935",
+    "sequesteredHolders": "94",
+    "activeInEpoch": "2992",
+    "activePast365d": "1772",
+    "sales": "61",
+    "totalVolume": "67605984",
+    "floorPrice": "279330",
+    "itemsCount": "60"
+   },
+   "relation": "exact",
+   "rows": [
+    "vintage_omega"
+   ],
+   "note": "",
+   "dataset": {
+    "sales": 66,
+    "purchase": 62,
+    "offer": 4,
+    "years": {
+     "2023": 7,
+     "2024": 50,
+     "2025": 3,
+     "2026": 6
+    },
+    "main_sat_tracked_by_fork": {
+     "True": 66
+    }
+   },
+   "ours": {
+    "vintage_omega": {
+     "total": 50000,
+     "all_of": [
+      "vintage",
+      "omega"
+     ],
+     "any_of": [],
+     "heights": null,
+     "stats": {
+      "mined": 50000,
+      "located": 50000,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 418,
+      "holders": 2779,
+      "extracted_holders": 91
+     },
+     "stats_at_932293": {
+      "mined": 50000,
+      "located": 50000,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 351,
+      "holders": 2841,
+      "extracted_holders": 89
+     }
+    }
+   }
+  },
+  {
+   "id": "6ab2b92e-5272-4135-bdb5-0b467ad485cd",
+   "slug": "alpha-pizza",
+   "label": "Alpha Pizza",
+   "sattributes": [
+    "alpha",
+    "pizza"
+   ],
+   "additionalSattributes": [],
+   "isCategory": false,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": "10002",
+    "circulatingSupply": "10002",
+    "sequestered": "547",
+    "inscribed": "4",
+    "totalHolders": "2506",
+    "sequesteredHolders": "96",
+    "activeInEpoch": "3859",
+    "activePast365d": "2452",
+    "sales": "40",
+    "totalVolume": "116053055",
+    "floorPrice": "390546",
+    "itemsCount": "10"
+   },
+   "relation": "ours_superset",
+   "rows": [
+    "pizza_alpha"
+   ],
+   "note": "Same off-by-one: +190 boundary alphas (10,192 vs 10,002).",
+   "dataset": {
+    "sales": 40,
+    "purchase": 40,
+    "offer": 0,
+    "years": {
+     "2023": 5,
+     "2024": 28,
+     "2025": 5,
+     "2026": 2
+    },
+    "main_sat_tracked_by_fork": {
+     "True": 40
+    }
+   },
+   "ours": {
+    "pizza_alpha": {
+     "total": 10192,
+     "all_of": [
+      "pizza",
+      "alpha"
+     ],
+     "any_of": [],
+     "heights": null,
+     "stats": {
+      "mined": 10192,
+      "located": 10192,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 617,
+      "holders": 2618,
+      "extracted_holders": 101
+     },
+     "stats_at_932293": {
+      "mined": 10192,
+      "located": 10192,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 564,
+      "holders": 2643,
+      "extracted_holders": 98
+     }
+    }
+   }
+  },
+  {
+   "id": "26f7ceab-0e3b-4474-b97b-52c7a895ca2f",
+   "slug": "omega-pizza",
+   "label": "Omega Pizza",
+   "sattributes": [
+    "pizza",
+    "omega"
+   ],
+   "additionalSattributes": [],
+   "isCategory": false,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": "10000",
+    "circulatingSupply": "10000",
+    "sequestered": "543",
+    "inscribed": "4",
+    "totalHolders": "2509",
+    "sequesteredHolders": "96",
+    "activeInEpoch": "3857",
+    "activePast365d": "2455",
+    "sales": "37",
+    "totalVolume": "69103022",
+    "floorPrice": "179000",
+    "itemsCount": "11"
+   },
+   "relation": "exact",
+   "rows": [
+    "pizza_omega"
+   ],
+   "note": "",
+   "dataset": {
+    "sales": 37,
+    "purchase": 37,
+    "offer": 0,
+    "years": {
+     "2023": 6,
+     "2024": 23,
+     "2025": 6,
+     "2026": 2
+    },
+    "main_sat_tracked_by_fork": {
+     "True": 37
+    }
+   },
+   "ours": {
+    "pizza_omega": {
+     "total": 10000,
+     "all_of": [
+      "pizza",
+      "omega"
+     ],
+     "any_of": [],
+     "heights": null,
+     "stats": {
+      "mined": 10000,
+      "located": 10000,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 593,
+      "holders": 2483,
+      "extracted_holders": 93
+     },
+     "stats_at_932293": {
+      "mined": 10000,
+      "located": 10000,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 543,
+      "holders": 2508,
+      "extracted_holders": 91
+     }
+    }
+   }
+  },
+  {
+   "id": "2e7a68a3-cd69-43e6-be91-f2e1f6b3770b",
+   "slug": "hitman-alpha",
+   "label": "Hitman Alpha",
+   "sattributes": [
+    "alpha",
+    "hitman"
+   ],
+   "additionalSattributes": [],
+   "isCategory": false,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": "1662",
+    "circulatingSupply": "1662",
+    "sequestered": "143",
+    "inscribed": "2",
+    "totalHolders": "1126",
+    "sequesteredHolders": "54",
+    "activeInEpoch": "1373",
+    "activePast365d": "833",
+    "sales": "19",
+    "totalVolume": "50130004",
+    "floorPrice": "1300000",
+    "itemsCount": "6"
+   },
+   "relation": "ours_superset",
+   "rows": [
+    "hitman_alpha"
+   ],
+   "note": "Off-by-one range ends: 1,699 vs 1,662.",
+   "dataset": {
+    "sales": 19,
+    "purchase": 19,
+    "offer": 0,
+    "years": {
+     "2024": 14,
+     "2025": 3,
+     "2026": 2
+    },
+    "main_sat_tracked_by_fork": {
+     "True": 19
+    }
+   },
+   "ours": {
+    "hitman_alpha": {
+     "total": 1699,
+     "all_of": [
+      "hitman",
+      "alpha"
+     ],
+     "any_of": [],
+     "heights": null,
+     "stats": {
+      "mined": 1699,
+      "located": 1699,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 171,
+      "holders": 1140,
+      "extracted_holders": 61
+     },
+     "stats_at_932293": {
+      "mined": 1699,
+      "located": 1699,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 147,
+      "holders": 1153,
+      "extracted_holders": 57
+     }
+    }
+   }
+  },
+  {
+   "id": "9605e7ac-ff54-4dcc-81ed-3a6130ff3a85",
+   "slug": "hitman-omega",
+   "label": "Hitman Omega",
+   "sattributes": [
+    "hitman",
+    "omega"
+   ],
+   "additionalSattributes": [],
+   "isCategory": false,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": "1669",
+    "circulatingSupply": "1669",
+    "sequestered": "142",
+    "inscribed": "0",
+    "totalHolders": "1132",
+    "sequesteredHolders": "50",
+    "activeInEpoch": "1377",
+    "activePast365d": "845",
+    "sales": "23",
+    "totalVolume": "54281154",
+    "floorPrice": "1300000",
+    "itemsCount": "5"
+   },
+   "relation": "exact",
+   "rows": [
+    "hitman_omega"
+   ],
+   "note": "",
+   "dataset": {
+    "sales": 24,
+    "purchase": 23,
+    "offer": 1,
+    "years": {
+     "2024": 17,
+     "2025": 5,
+     "2026": 2
+    },
+    "main_sat_tracked_by_fork": {
+     "True": 24
+    }
+   },
+   "ours": {
+    "hitman_omega": {
+     "total": 1669,
+     "all_of": [
+      "hitman",
+      "omega"
+     ],
+     "any_of": [],
+     "heights": null,
+     "stats": {
+      "mined": 1669,
+      "located": 1669,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 162,
+      "holders": 1115,
+      "extracted_holders": 50
+     },
+     "stats_at_932293": {
+      "mined": 1669,
+      "located": 1669,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 140,
+      "holders": 1130,
+      "extracted_holders": 48
+     }
+    }
+   }
+  },
+  {
+   "id": "f2e3465f-9894-49cd-80d3-069677bb9f60",
+   "slug": "silkroad-alpha",
+   "label": "Silkroad Alpha",
+   "sattributes": [
+    "alpha",
+    "silkroad"
+   ],
+   "additionalSattributes": [],
+   "isCategory": false,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": "29542",
+    "circulatingSupply": "29542",
+    "sequestered": "691",
+    "inscribed": "5",
+    "totalHolders": "5070",
+    "sequesteredHolders": "137",
+    "activeInEpoch": "28168",
+    "activePast365d": "25387",
+    "sales": "79",
+    "totalVolume": "11484654",
+    "floorPrice": "80446",
+    "itemsCount": "31"
+   },
+   "relation": "ours_superset",
+   "rows": [
+    "sr_alpha"
+   ],
+   "note": "Off-by-one range ends: 30,537 vs 29,542.",
+   "dataset": {
+    "sales": 79,
+    "purchase": 79,
+    "offer": 0,
+    "years": {
+     "2023": 1,
+     "2024": 63,
+     "2025": 13,
+     "2026": 2
+    },
+    "main_sat_tracked_by_fork": {
+     "True": 79
+    }
+   },
+   "ours": {
+    "sr_alpha": {
+     "total": 30537,
+     "all_of": [
+      "sr_1st_auction",
+      "alpha"
+     ],
+     "any_of": [],
+     "heights": null,
+     "stats": {
+      "mined": 30537,
+      "located": 30537,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 1115,
+      "holders": 5811,
+      "extracted_holders": 173
+     },
+     "stats_at_932293": {
+      "mined": 30537,
+      "located": 30537,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 773,
+      "holders": 5778,
+      "extracted_holders": 174
+     }
+    }
+   }
+  },
+  {
+   "id": "db97ab16-f4fc-412b-b416-2ad65a9b2e46",
+   "slug": "silkroad-omega",
+   "label": "Silkroad Omega",
+   "sattributes": [
+    "silkroad",
+    "omega"
+   ],
+   "additionalSattributes": [],
+   "isCategory": false,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": "29560",
+    "circulatingSupply": "29560",
+    "sequestered": "665",
+    "inscribed": "4",
+    "totalHolders": "5074",
+    "sequesteredHolders": "132",
+    "activeInEpoch": "28187",
+    "activePast365d": "25421",
+    "sales": "81",
+    "totalVolume": "13838706",
+    "floorPrice": "80446",
+    "itemsCount": "35"
+   },
+   "relation": "exact",
+   "rows": [
+    "sr_omega"
+   ],
+   "note": "29,561 vs 29,560.",
+   "dataset": {
+    "sales": 82,
+    "purchase": 81,
+    "offer": 1,
+    "years": {
+     "2023": 2,
+     "2024": 61,
+     "2025": 17,
+     "2026": 2
+    },
+    "main_sat_tracked_by_fork": {
+     "True": 82
+    }
+   },
+   "ours": {
+    "sr_omega": {
+     "total": 29561,
+     "all_of": [
+      "sr_1st_auction",
+      "omega"
+     ],
+     "any_of": [],
+     "heights": null,
+     "stats": {
+      "mined": 29561,
+      "located": 29561,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 979,
+      "holders": 5125,
+      "extracted_holders": 120
+     },
+     "stats_at_932293": {
+      "mined": 29561,
+      "located": 29561,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 649,
+      "holders": 5079,
+      "extracted_holders": 120
+     }
+    }
+   }
+  },
+  {
+   "id": "c82ae8c8-a506-45e1-955e-caf14edf8727",
+   "slug": "parasite",
+   "label": "Parasite",
+   "sattributes": [
+    "parasite"
+   ],
+   "additionalSattributes": [],
+   "isCategory": true,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": "312500000",
+    "circulatingSupply": "312500000",
+    "sequestered": null,
+    "inscribed": null,
+    "totalHolders": null,
+    "sequesteredHolders": null,
+    "activeInEpoch": "312500000",
+    "activePast365d": "312500000",
+    "sales": "44",
+    "totalVolume": "1951272",
+    "floorPrice": "3630",
+    "itemsCount": "130"
+   },
+   "relation": "out_of_scope",
+   "rows": [],
+   "note": "Subsidy of block 938,713 (first Parasite Pool block).",
+   "dataset": {
+    "sales": 45,
+    "purchase": 45,
+    "offer": 0,
+    "years": {
+     "2026": 45
+    },
+    "main_sat_tracked_by_fork": {
+     "False": 45
+    }
+   }
+  },
+  {
+   "id": "44b9aa88-f20f-4d17-bdaa-9ab12887bb04",
+   "slug": "legacy",
+   "label": "Legacy",
+   "sattributes": [
+    "legacy"
+   ],
+   "additionalSattributes": [],
+   "isCategory": true,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": "410000",
+    "circulatingSupply": "410000",
+    "sequestered": "140465",
+    "inscribed": "10989",
+    "totalHolders": "5249",
+    "sequesteredHolders": "5218",
+    "activeInEpoch": "410000",
+    "activePast365d": "16322",
+    "sales": "43",
+    "totalVolume": "38810153",
+    "floorPrice": "440000",
+    "itemsCount": "33"
+   },
+   "relation": "out_of_scope",
+   "rows": [],
+   "note": "Paper-wallet sats from Casey Rodarmor's June 2022 workshop.",
+   "dataset": {
+    "sales": 44,
+    "purchase": 44,
+    "offer": 0,
+    "years": {
+     "2024": 39,
+     "2025": 3,
+     "2026": 2
+    },
+    "main_sat_tracked_by_fork": {
+     "False": 44
+    }
+   }
+  },
+  {
+   "id": "cc845cce-919f-487f-89d1-3e8f8786c6ef",
+   "slug": "1st-tx",
+   "label": "1st Tx",
+   "sattributes": [
+    "1st-tx"
+   ],
+   "additionalSattributes": [
+    "pali",
+    "b9",
+    "b9-450"
+   ],
+   "isCategory": false,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": null,
+    "circulatingSupply": null,
+    "sequestered": null,
+    "inscribed": null,
+    "totalHolders": null,
+    "sequesteredHolders": null,
+    "activeInEpoch": null,
+    "activePast365d": null,
+    "sales": "5825",
+    "totalVolume": "3943539637",
+    "floorPrice": "1755",
+    "itemsCount": "2042"
+   },
+   "relation": "ours_superset",
+   "rows": [
+    "block9"
+   ],
+   "note": "Sats of the first bitcoin transaction (block 170, 10 BTC to Hal Finney) = block 9 sats [45e9, 46e9); the other 40 BTC of block 9 never moved, so in practice every block 9 sale is a 1st Tx sale (identical sales lists).",
+   "dataset": {
+    "sales": 5873,
+    "purchase": 5854,
+    "offer": 19,
+    "years": {
+     "2023": 542,
+     "2024": 2036,
+     "2025": 1461,
+     "2026": 1834
+    },
+    "main_sat_tracked_by_fork": {
+     "True": 5872,
+     "False": 1
+    }
+   },
+   "ours": {
+    "block9": {
+     "total": 5000000000,
+     "all_of": [
+      "block9"
+     ],
+     "any_of": [],
+     "heights": null,
+     "stats": {
+      "mined": 5000000000,
+      "located": 4999999862,
+      "burned": 138,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 66324334,
+      "holders": 50435,
+      "extracted_holders": 47773
+     },
+     "stats_at_932293": {
+      "mined": 5000000000,
+      "located": 4999999917,
+      "burned": 83,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 56551079,
+      "holders": 50150,
+      "extracted_holders": 48208
+     }
+    }
+   },
+   "proposal": {
+    "id": "block9_1st_tx",
+    "label": "Block 9, 1st tx",
+    "all_of": [
+     "block9"
+    ],
+    "any_of": [],
+    "heights": null,
+    "range": true,
+    "tracking": "none (inside the tracked block 9 range); needs a sub-range [45e9, 46e9)",
+    "total_note": "1e9 sats"
+   }
+  },
+  {
+   "id": "ee0640cc-1741-44fc-9bce-3cbc61b62023",
+   "slug": "uniform-palinception",
+   "label": "Uniform Palinception",
+   "sattributes": [
+    "uniform-palinception"
+   ],
+   "additionalSattributes": [
+    "b9",
+    "pizza",
+    "b78",
+    "vintage",
+    "nakamoto"
+   ],
+   "isCategory": true,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": "1850789",
+    "circulatingSupply": "1850587",
+    "sequestered": "21880",
+    "inscribed": "971",
+    "totalHolders": "244917",
+    "sequesteredHolders": "2606",
+    "activeInEpoch": "1142212",
+    "activePast365d": "690801",
+    "sales": "1039",
+    "totalVolume": "526044432",
+    "floorPrice": "4066",
+    "itemsCount": "523"
+   },
+   "relation": "gap",
+   "rows": [],
+   "note": "New type needed: palindrome made of equal-length palindromic blocks of >=3 digits (1,850,789).",
+   "dataset": {
+    "sales": 1056,
+    "purchase": 1046,
+    "offer": 10,
+    "years": {
+     "2023": 35,
+     "2024": 509,
+     "2025": 381,
+     "2026": 131
+    },
+    "main_sat_tracked_by_fork": {
+     "False": 933,
+     "True": 123
+    }
+   },
+   "proposal": {
+    "id": "palindrome_uniform_palinception",
+    "label": "Uniform palinception",
+    "all_of": [
+     "palindromes_uniform_palinception"
+    ],
+    "any_of": [],
+    "heights": null,
+    "range": false,
+    "tracking": "+~1.85M individual sats; new type palindromes_uniform_palinception",
+    "total_note": "1,850,789 per Magisat"
+   }
+  },
+  {
+   "id": "a74a8ee8-fa9d-4e86-9303-7c18a4b73cda",
+   "slug": "3d-pali",
+   "label": "3d Pali",
+   "sattributes": [
+    "3d-pali"
+   ],
+   "additionalSattributes": [
+    "b9",
+    "pizza",
+    "b78",
+    "vintage",
+    "nakamoto"
+   ],
+   "isCategory": true,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": "1249047",
+    "circulatingSupply": "1243073",
+    "sequestered": "30179",
+    "inscribed": "934",
+    "totalHolders": "150915",
+    "sequesteredHolders": "2289",
+    "activeInEpoch": "493504",
+    "activePast365d": "294440",
+    "sales": "2165",
+    "totalVolume": "770262081",
+    "floorPrice": "6230",
+    "itemsCount": "812"
+   },
+   "relation": "ours_subset",
+   "rows": [
+    "palindrome_1d",
+    "palindrome_2d"
+   ],
+   "note": "Magisat's 3d-pali means at most 3 distinct digits (sold 2d palindromes carry both 2d-pali and 3d-pali): 1,249,047. Our type palindromes_integer_3d (exactly 3) is tracked only inside Silk Road.",
+   "dataset": {
+    "sales": 2191,
+    "purchase": 2180,
+    "offer": 11,
+    "years": {
+     "2023": 447,
+     "2024": 945,
+     "2025": 583,
+     "2026": 216
+    },
+    "main_sat_tracked_by_fork": {
+     "False": 1895,
+     "True": 296
+    }
+   },
+   "ours": {
+    "palindrome_1d": {
+     "total": 136,
+     "all_of": [
+      "palindromes_integer_1d"
+     ],
+     "any_of": [],
+     "heights": null,
+     "stats": {
+      "mined": 136,
+      "located": 136,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 3,
+      "holders": 48,
+      "extracted_holders": 3
+     },
+     "stats_at_932293": {
+      "mined": 136,
+      "located": 136,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 3,
+      "holders": 48,
+      "extracted_holders": 3
+     }
+    },
+    "palindrome_2d": {
+     "total": 30934,
+     "all_of": [
+      "palindromes_integer_2d"
+     ],
+     "any_of": [],
+     "heights": null,
+     "stats": {
+      "mined": 30902,
+      "located": 30902,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 1410,
+      "holders": 7164,
+      "extracted_holders": 246
+     },
+     "stats_at_932293": {
+      "mined": 30854,
+      "located": 30854,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 1208,
+      "holders": 7217,
+      "extracted_holders": 240
+     }
+    }
+   },
+   "proposal": {
+    "id": "palindrome_3d",
+    "label": "3D palindrome (<=3 digits)",
+    "all_of": [],
+    "any_of": [
+     "palindromes_integer_1d",
+     "palindromes_integer_2d",
+     "palindromes_integer_3d"
+    ],
+    "heights": null,
+    "range": false,
+    "tracking": "+~1.22M individual sats (track palindromes_integer_3d standalone)",
+    "total_note": "1,249,047 per Magisat"
+   }
+  },
+  {
+   "id": "67b46d30-2a02-44cc-af34-ad750490e472",
+   "slug": "pali-block",
+   "label": "Paliblock Palindrome",
+   "sattributes": [
+    "pali-block"
+   ],
+   "additionalSattributes": [
+    "b9",
+    "pizza",
+    "b78",
+    "vintage",
+    "nakamoto"
+   ],
+   "isCategory": true,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": null,
+    "circulatingSupply": null,
+    "sequestered": null,
+    "inscribed": null,
+    "totalHolders": null,
+    "sequesteredHolders": null,
+    "activeInEpoch": null,
+    "activePast365d": null,
+    "sales": "774",
+    "totalVolume": "548533920",
+    "floorPrice": "8750",
+    "itemsCount": "428"
+   },
+   "relation": "gap",
+   "rows": [],
+   "note": "A palindromic sat mined in a palindromic block. Not our 'paliblock' (the uncommon/black sat of a palindromic block).",
+   "dataset": {
+    "sales": 804,
+    "purchase": 799,
+    "offer": 5,
+    "years": {
+     "2023": 164,
+     "2024": 254,
+     "2025": 351,
+     "2026": 35
+    },
+    "main_sat_tracked_by_fork": {
+     "False": 716,
+     "True": 88
+    }
+   },
+   "proposal": {
+    "id": "paliblock_palindrome",
+    "label": "Paliblock palindrome",
+    "all_of": [
+     "palindromes_integer",
+     "palindromic_height"
+    ],
+    "any_of": [],
+    "heights": null,
+    "range": false,
+    "tracking": "new type palindromic_height (height reads the same reversed); individual sats",
+    "total_note": "not published by Magisat"
+   }
+  },
+  {
+   "id": "99b8aacb-5118-475d-bd9b-b82edbcdf49e",
+   "slug": "seq-pali",
+   "label": "Sequence Pali",
+   "sattributes": [
+    "seq-pali"
+   ],
+   "additionalSattributes": [
+    "b9",
+    "pizza",
+    "b78",
+    "vintage",
+    "nakamoto"
+   ],
+   "isCategory": true,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": "16796355",
+    "circulatingSupply": "16751354",
+    "sequestered": "29783",
+    "inscribed": "3039",
+    "totalHolders": "174287",
+    "sequesteredHolders": "3476",
+    "activeInEpoch": "727432",
+    "activePast365d": "393350",
+    "sales": "2870",
+    "totalVolume": "1596756991",
+    "floorPrice": "4957",
+    "itemsCount": "862"
+   },
+   "relation": "gap",
+   "rows": [],
+   "note": "New type needed: palindrome containing a run of >=3 identical digits (16,796,355).",
+   "dataset": {
+    "sales": 2919,
+    "purchase": 2904,
+    "offer": 15,
+    "years": {
+     "2023": 676,
+     "2024": 1180,
+     "2025": 727,
+     "2026": 336
+    },
+    "main_sat_tracked_by_fork": {
+     "False": 2566,
+     "True": 353
+    }
+   },
+   "proposal": {
+    "id": "palindrome_sequence",
+    "label": "Sequence palindrome",
+    "all_of": [
+     "palindromes_sequence"
+    ],
+    "any_of": [],
+    "heights": null,
+    "range": false,
+    "tracking": "+~16.8M individual sats; new type palindromes_sequence (run of >=3 identical digits)",
+    "total_note": "16,796,355 per Magisat"
+   }
+  },
+  {
+   "id": "00d507b6-8941-4da8-a2b7-9088126fd06d",
+   "slug": "hitman-pali",
+   "label": "Hitman Pali",
+   "sattributes": [
+    "pali",
+    "hitman"
+   ],
+   "additionalSattributes": [],
+   "isCategory": false,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": "16521",
+    "circulatingSupply": "16521",
+    "sequestered": "1452",
+    "inscribed": "45",
+    "totalHolders": "6597",
+    "sequesteredHolders": "224",
+    "activeInEpoch": "13655",
+    "activePast365d": "8430",
+    "sales": "117",
+    "totalVolume": "62156580",
+    "floorPrice": "60546",
+    "itemsCount": "52"
+   },
+   "relation": "exact",
+   "rows": [
+    "hitman_palindrome"
+   ],
+   "note": "",
+   "dataset": {
+    "sales": 119,
+    "purchase": 117,
+    "offer": 2,
+    "years": {
+     "2023": 12,
+     "2024": 73,
+     "2025": 19,
+     "2026": 15
+    },
+    "main_sat_tracked_by_fork": {
+     "True": 119
+    }
+   },
+   "ours": {
+    "hitman_palindrome": {
+     "total": 16521,
+     "all_of": [
+      "hitman",
+      "palindromes_integer"
+     ],
+     "any_of": [],
+     "heights": null,
+     "stats": {
+      "mined": 16521,
+      "located": 16521,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 1653,
+      "holders": 6543,
+      "extracted_holders": 221
+     },
+     "stats_at_932293": {
+      "mined": 16521,
+      "located": 16521,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 1455,
+      "holders": 6590,
+      "extracted_holders": 219
+     }
+    }
+   }
+  },
+  {
+   "id": "9165bc38-b2f5-446d-b24f-18dc5eae2a6a",
+   "slug": "jpeg-pali",
+   "label": "JPEG Pali",
+   "sattributes": [
+    "jpeg",
+    "pali"
+   ],
+   "additionalSattributes": [],
+   "isCategory": false,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": "5000",
+    "circulatingSupply": "5000",
+    "sequestered": "567",
+    "inscribed": "8",
+    "totalHolders": "2319",
+    "sequesteredHolders": "192",
+    "activeInEpoch": "4193",
+    "activePast365d": "2410",
+    "sales": "30",
+    "totalVolume": "12504057",
+    "floorPrice": "290000",
+    "itemsCount": "12"
+   },
+   "relation": "exact",
+   "rows": [
+    "jpeg_palindrome"
+   ],
+   "note": "Magisat has no jpeg uncommon/alpha/omega tags (our jpeg_uncommon 20 and jpeg_alpha 510 include 10 boundary sats each).",
+   "dataset": {
+    "sales": 30,
+    "purchase": 30,
+    "offer": 0,
+    "years": {
+     "2023": 13,
+     "2024": 16,
+     "2025": 1
+    },
+    "main_sat_tracked_by_fork": {
+     "True": 30
+    }
+   },
+   "ours": {
+    "jpeg_palindrome": {
+     "total": 5000,
+     "all_of": [
+      "jpeg",
+      "palindromes_integer"
+     ],
+     "any_of": [],
+     "heights": null,
+     "stats": {
+      "mined": 5000,
+      "located": 5000,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 623,
+      "holders": 2303,
+      "extracted_holders": 185
+     },
+     "stats_at_932293": {
+      "mined": 5000,
+      "located": 5000,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 561,
+      "holders": 2320,
+      "extracted_holders": 185
+     }
+    }
+   }
+  },
+  {
+   "id": "3427d78f-cfa5-49b1-92d3-c7fd3da046e5",
+   "slug": "silkroad-pali",
+   "label": "Silkroad Pali",
+   "sattributes": [
+    "pali",
+    "silkroad"
+   ],
+   "additionalSattributes": [],
+   "isCategory": false,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": "198593",
+    "circulatingSupply": "198593",
+    "sequestered": "4254",
+    "inscribed": "192",
+    "totalHolders": "22493",
+    "sequesteredHolders": "412",
+    "activeInEpoch": "189148",
+    "activePast365d": "168721",
+    "sales": "330",
+    "totalVolume": "14910462",
+    "floorPrice": "39996",
+    "itemsCount": "48"
+   },
+   "relation": "ours_subset",
+   "rows": [
+    "sr_palindrome_3d"
+   ],
+   "note": "All 198,593 Silk Road palindromes; we track only the 3-digit ones (1,580).",
+   "dataset": {
+    "sales": 330,
+    "purchase": 330,
+    "offer": 0,
+    "years": {
+     "2023": 1,
+     "2024": 181,
+     "2025": 127,
+     "2026": 21
+    },
+    "main_sat_tracked_by_fork": {
+     "False": 325,
+     "True": 5
+    }
+   },
+   "ours": {
+    "sr_palindrome_3d": {
+     "total": 1580,
+     "all_of": [
+      "sr_1st_auction",
+      "palindromes_integer_3d",
+      "palindromes_integer"
+     ],
+     "any_of": [],
+     "heights": null,
+     "stats": {
+      "mined": 1580,
+      "located": 1580,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 50,
+      "holders": 336,
+      "extracted_holders": 26
+     },
+     "stats_at_932293": {
+      "mined": 1580,
+      "located": 1580,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 45,
+      "holders": 326,
+      "extracted_holders": 27
+     }
+    }
+   },
+   "proposal": {
+    "id": "sr_palindrome",
+    "label": "Silk Road palindrome",
+    "all_of": [
+     "sr_1st_auction",
+     "palindromes_integer"
+    ],
+    "any_of": [],
+    "heights": null,
+    "range": false,
+    "tracking": "+197k individual sats (REQUIRED_COMBINATION sr_1st_auction+palindromes_integer)",
+    "total_note": "198,593"
+   }
+  },
+  {
+   "id": "33d62df7-f708-42c5-adb7-7d5ed65f889f",
+   "slug": "pali",
+   "label": "Palindrome",
+   "sattributes": [
+    "pali"
+   ],
+   "additionalSattributes": [
+    "hal-finney",
+    "b9",
+    "pizza",
+    "b78",
+    "vintage",
+    "nakamoto"
+   ],
+   "isCategory": true,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": "121000000",
+    "circulatingSupply": null,
+    "sequestered": null,
+    "inscribed": null,
+    "totalHolders": null,
+    "sequesteredHolders": null,
+    "activeInEpoch": null,
+    "activePast365d": null,
+    "sales": "9197",
+    "totalVolume": "2495140021",
+    "floorPrice": "2376",
+    "itemsCount": "2575"
+   },
+   "relation": "gap",
+   "rows": [],
+   "note": "All ~121M palindromes; we track only 1d/2d/perfect palinception and exotic-range combos.",
+   "dataset": {
+    "sales": 9275,
+    "purchase": 9240,
+    "offer": 35,
+    "years": {
+     "2023": 2042,
+     "2024": 4045,
+     "2025": 2327,
+     "2026": 861
+    },
+    "main_sat_tracked_by_fork": {
+     "False": 8203,
+     "True": 1072
+    }
+   },
+   "proposal": {
+    "id": "palindrome",
+    "label": "Palindrome",
+    "all_of": [
+     "palindromes_integer"
+    ],
+    "any_of": [],
+    "heights": null,
+    "range": false,
+    "tracking": "+~121M individual sats: impractical as individual sats",
+    "total_note": "~121M"
+   }
+  },
+  {
+   "id": "2c5137ad-13de-47e0-95a0-171943ca474b",
+   "slug": "b286",
+   "label": "Block 286",
+   "sattributes": [
+    "b286"
+   ],
+   "additionalSattributes": [
+    "pali"
+   ],
+   "isCategory": true,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": null,
+    "circulatingSupply": null,
+    "sequestered": null,
+    "inscribed": "0",
+    "totalHolders": "0",
+    "sequesteredHolders": null,
+    "activeInEpoch": null,
+    "activePast365d": null,
+    "sales": "397",
+    "totalVolume": "78287315",
+    "floorPrice": "2174",
+    "itemsCount": "749"
+   },
+   "relation": "gap",
+   "rows": [],
+   "note": "Whole block 286 (5e9 sats): we track only its alphas/omegas/palindromes.",
+   "dataset": {
+    "sales": 401,
+    "purchase": 399,
+    "offer": 2,
+    "years": {
+     "2023": 17,
+     "2024": 114,
+     "2025": 44,
+     "2026": 226
+    },
+    "main_sat_tracked_by_fork": {
+     "False": 383,
+     "True": 18
+    }
+   },
+   "proposal": {
+    "id": "block286",
+    "label": "Block 286",
+    "all_of": [
+     "block286"
+    ],
+    "any_of": [],
+    "heights": null,
+    "range": true,
+    "tracking": "add [1430e9, 1435e9) to TrackerConfig::ranges (reindex)",
+    "total_note": "5e9 sats"
+   }
+  },
+  {
+   "id": "ff66c8d5-26f2-4b5e-87b2-67a04abfdb03",
+   "slug": "b78",
+   "label": "Block 78",
+   "sattributes": [
+    "b78"
+   ],
+   "additionalSattributes": [
+    "pali"
+   ],
+   "isCategory": true,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": null,
+    "circulatingSupply": null,
+    "sequestered": null,
+    "inscribed": "0",
+    "totalHolders": "0",
+    "sequesteredHolders": null,
+    "activeInEpoch": null,
+    "activePast365d": null,
+    "sales": "1328",
+    "totalVolume": "566261422",
+    "floorPrice": "1905",
+    "itemsCount": "1174"
+   },
+   "relation": "gap",
+   "rows": [],
+   "note": "Whole block 78 (Hal Finney, 5e9 sats): we track only its alphas/omegas/palindromes.",
+   "dataset": {
+    "sales": 1352,
+    "purchase": 1337,
+    "offer": 15,
+    "years": {
+     "2023": 232,
+     "2024": 447,
+     "2025": 628,
+     "2026": 45
+    },
+    "main_sat_tracked_by_fork": {
+     "False": 1197,
+     "True": 155
+    }
+   },
+   "proposal": {
+    "id": "block78",
+    "label": "Block 78",
+    "all_of": [
+     "block78"
+    ],
+    "any_of": [],
+    "heights": null,
+    "range": true,
+    "tracking": "add [390e9, 395e9) to TrackerConfig::ranges (reindex)",
+    "total_note": "5e9 sats"
+   }
+  },
+  {
+   "id": "4e4ea75f-9ba7-439f-9cb9-9fb0ebd074a6",
+   "slug": "b666",
+   "label": "Block 666",
+   "sattributes": [
+    "b666"
+   ],
+   "additionalSattributes": [
+    "pali",
+    "alpha",
+    "omega"
+   ],
+   "isCategory": true,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": null,
+    "circulatingSupply": null,
+    "sequestered": null,
+    "inscribed": "0",
+    "totalHolders": "0",
+    "sequesteredHolders": null,
+    "activeInEpoch": null,
+    "activePast365d": null,
+    "sales": "331",
+    "totalVolume": "91079618",
+    "floorPrice": "2165",
+    "itemsCount": "435"
+   },
+   "relation": "gap",
+   "rows": [],
+   "note": "Whole block 666 (5e9 sats): we track only its alphas/omegas/palindromes.",
+   "dataset": {
+    "sales": 352,
+    "purchase": 351,
+    "offer": 1,
+    "years": {
+     "2024": 262,
+     "2025": 53,
+     "2026": 37
+    },
+    "main_sat_tracked_by_fork": {
+     "True": 91,
+     "False": 261
+    }
+   },
+   "proposal": {
+    "id": "block_666",
+    "label": "Block 666",
+    "all_of": [
+     "block_666"
+    ],
+    "any_of": [],
+    "heights": null,
+    "range": true,
+    "tracking": "add [3330e9, 3335e9) to TrackerConfig::ranges (reindex)",
+    "total_note": "5e9 sats"
+   }
+  },
+  {
+   "id": "7aa70d15-aebb-45f4-801d-78cdeba71187",
+   "slug": "nakamoto",
+   "label": "Nakamoto",
+   "sattributes": [
+    "nakamoto"
+   ],
+   "additionalSattributes": [
+    "pali",
+    "uncommon",
+    "vintage"
+   ],
+   "isCategory": true,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": "95000000000",
+    "circulatingSupply": "95000000000",
+    "sequestered": null,
+    "inscribed": null,
+    "totalHolders": null,
+    "sequesteredHolders": null,
+    "activeInEpoch": null,
+    "activePast365d": null,
+    "sales": "6914",
+    "totalVolume": "4437022979",
+    "floorPrice": "987",
+    "itemsCount": "3170"
+   },
+   "relation": "ours_subset",
+   "rows": [
+    "block9"
+   ],
+   "note": "19 Nakamoto blocks (9.5e10 sats). Block 9 (a Nakamoto block) is tracked whole; the other 18 blocks only through their special sats.",
+   "dataset": {
+    "sales": 6998,
+    "purchase": 6971,
+    "offer": 27,
+    "years": {
+     "2023": 810,
+     "2024": 2425,
+     "2025": 1637,
+     "2026": 2126
+    },
+    "main_sat_tracked_by_fork": {
+     "False": 996,
+     "True": 6002
+    }
+   },
+   "ours": {
+    "block9": {
+     "total": 5000000000,
+     "all_of": [
+      "block9"
+     ],
+     "any_of": [],
+     "heights": null,
+     "stats": {
+      "mined": 5000000000,
+      "located": 4999999862,
+      "burned": 138,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 66324334,
+      "holders": 50435,
+      "extracted_holders": 47773
+     },
+     "stats_at_932293": {
+      "mined": 5000000000,
+      "located": 4999999917,
+      "burned": 83,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 56551079,
+      "holders": 50150,
+      "extracted_holders": 48208
+     }
+    }
+   },
+   "proposal": {
+    "id": "nakamoto",
+    "label": "Nakamoto",
+    "all_of": [
+     "nakamoto"
+    ],
+    "any_of": [],
+    "heights": null,
+    "range": true,
+    "tracking": "add the 19 Nakamoto blocks to TrackerConfig::ranges (reindex)",
+    "total_note": "9.5e10 sats"
+   }
+  },
+  {
+   "id": "a538d9e9-32ed-49ef-b968-323c259545d7",
+   "slug": "hal-finney",
+   "label": "Finney",
+   "sattributes": [
+    "hal-finney"
+   ],
+   "additionalSattributes": [],
+   "isCategory": true,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": "635000000000",
+    "circulatingSupply": "635000000000",
+    "sequestered": null,
+    "inscribed": null,
+    "totalHolders": null,
+    "sequesteredHolders": null,
+    "activeInEpoch": null,
+    "activePast365d": null,
+    "sales": "2365",
+    "totalVolume": "70833909",
+    "floorPrice": "1400",
+    "itemsCount": "1970"
+   },
+   "relation": "gap",
+   "rows": [],
+   "note": "Sats mined by Hal Finney (6.35e11 sats = 127 blocks, incl. block 78); needs Magisat's block list.",
+   "dataset": {
+    "sales": 2457,
+    "purchase": 2441,
+    "offer": 16,
+    "years": {
+     "2025": 672,
+     "2026": 1785
+    },
+    "main_sat_tracked_by_fork": {
+     "False": 898,
+     "True": 1559
+    }
+   },
+   "proposal": {
+    "id": "finney",
+    "label": "Finney",
+    "all_of": [
+     "finney"
+    ],
+    "any_of": [],
+    "heights": null,
+    "range": true,
+    "tracking": "needs the list of Hal Finney's 127 blocks (new exotic range type)",
+    "total_note": "6.35e11 sats"
+   }
+  },
+  {
+   "id": "f5eff054-f8e7-4220-af1f-406866ebbcc6",
+   "slug": "alpha",
+   "label": "Alpha",
+   "sattributes": [
+    "alpha"
+   ],
+   "additionalSattributes": [
+    "b9",
+    "uncommon",
+    "pizza",
+    "b78",
+    "vintage"
+   ],
+   "isCategory": true,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": "21000000",
+    "circulatingSupply": null,
+    "sequestered": null,
+    "inscribed": null,
+    "totalHolders": null,
+    "sequesteredHolders": null,
+    "activeInEpoch": null,
+    "activePast365d": null,
+    "sales": "6817",
+    "totalVolume": "3423572716",
+    "floorPrice": "3600",
+    "itemsCount": "1444"
+   },
+   "relation": "ours_subset",
+   "rows": [
+    "alpha_jan_feb_2009",
+    "kilosat_alpha",
+    "decasat_alpha",
+    "centasat_alpha",
+    "megasat_alpha",
+    "vintage_alpha",
+    "uncommon"
+   ],
+   "note": "All 21M alphas; we track only uncommon alphas, milestone tiers, Jan-Feb 2009 alphas and exotic combos.",
+   "dataset": {
+    "sales": 6874,
+    "purchase": 6829,
+    "offer": 45,
+    "years": {
+     "2023": 587,
+     "2024": 3109,
+     "2025": 1591,
+     "2026": 1587
+    },
+    "main_sat_tracked_by_fork": {
+     "False": 2299,
+     "True": 4575
+    }
+   },
+   "ours": {
+    "alpha_jan_feb_2009": {
+     "total": 296200,
+     "all_of": [
+      "alpha_jan_feb_2009"
+     ],
+     "any_of": [],
+     "heights": null,
+     "stats": {
+      "mined": 296200,
+      "located": 296200,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 2000,
+      "holders": 24740,
+      "extracted_holders": 268
+     },
+     "stats_at_932293": {
+      "mined": 296200,
+      "located": 296200,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 1523,
+      "holders": 24657,
+      "extracted_holders": 235
+     }
+    },
+    "kilosat_alpha": {
+     "total": 18900,
+     "all_of": [
+      "kilosat_alpha"
+     ],
+     "any_of": [],
+     "heights": null,
+     "stats": {
+      "mined": 18083,
+      "located": 18082,
+      "burned": 0,
+      "lost": 1,
+      "overwritten": 0,
+      "extracted": 2699,
+      "holders": 11620,
+      "extracted_holders": 718
+     },
+     "stats_at_932293": {
+      "mined": 17978,
+      "located": 17977,
+      "burned": 0,
+      "lost": 1,
+      "overwritten": 0,
+      "extracted": 2429,
+      "holders": 11743,
+      "extracted_holders": 707
+     }
+    },
+    "decasat_alpha": {
+     "total": 1890,
+     "all_of": [
+      "decasat_alpha"
+     ],
+     "any_of": [],
+     "heights": null,
+     "stats": {
+      "mined": 1809,
+      "located": 1809,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 256,
+      "holders": 1451,
+      "extracted_holders": 112
+     },
+     "stats_at_932293": {
+      "mined": 1798,
+      "located": 1798,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 228,
+      "holders": 1466,
+      "extracted_holders": 106
+     }
+    },
+    "centasat_alpha": {
+     "total": 189,
+     "all_of": [
+      "centasat_alpha"
+     ],
+     "any_of": [],
+     "heights": null,
+     "stats": {
+      "mined": 180,
+      "located": 180,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 22,
+      "holders": 167,
+      "extracted_holders": 18
+     },
+     "stats_at_932293": {
+      "mined": 180,
+      "located": 180,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 19,
+      "holders": 169,
+      "extracted_holders": 17
+     }
+    },
+    "megasat_alpha": {
+     "total": 21,
+     "all_of": [
+      "megasat_alpha"
+     ],
+     "any_of": [],
+     "heights": null,
+     "stats": {
+      "mined": 21,
+      "located": 21,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 3,
+      "holders": 21,
+      "extracted_holders": 3
+     },
+     "stats_at_932293": {
+      "mined": 20,
+      "located": 20,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 3,
+      "holders": 20,
+      "extracted_holders": 3
+     }
+    },
+    "vintage_alpha": {
+     "total": 50000,
+     "all_of": [
+      "vintage",
+      "alpha"
+     ],
+     "any_of": [],
+     "heights": null,
+     "stats": {
+      "mined": 50000,
+      "located": 50000,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 425,
+      "holders": 2774,
+      "extracted_holders": 93
+     },
+     "stats_at_932293": {
+      "mined": 50000,
+      "located": 50000,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 357,
+      "holders": 2835,
+      "extracted_holders": 87
+     }
+    },
+    "uncommon": {
+     "total": 6930000,
+     "all_of": [
+      "uncommon"
+     ],
+     "any_of": [],
+     "heights": null,
+     "stats": {
+      "mined": 969445,
+      "located": 969422,
+      "burned": 12,
+      "lost": 9,
+      "overwritten": 2,
+      "extracted": 247590,
+      "holders": 256987,
+      "extracted_holders": 18681
+     },
+     "stats_at_932293": {
+      "mined": 932294,
+      "located": 932272,
+      "burned": 11,
+      "lost": 9,
+      "overwritten": 2,
+      "extracted": 220911,
+      "holders": 256840,
+      "extracted_holders": 18430
+     }
+    }
+   },
+   "proposal": {
+    "id": "alpha",
+    "label": "Alpha",
+    "all_of": [
+     "alpha"
+    ],
+    "any_of": [],
+    "heights": null,
+    "range": false,
+    "tracking": "+~20M individual sats (every whole-BTC boundary)",
+    "total_note": "21,000,000"
+   }
+  },
+  {
+   "id": "52074589-f582-4006-a6b6-f16cb226a888",
+   "slug": "omega",
+   "label": "Omega",
+   "sattributes": [
+    "omega"
+   ],
+   "additionalSattributes": [
+    "b9",
+    "black-uncommon",
+    "pizza",
+    "b78",
+    "vintage"
+   ],
+   "isCategory": true,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": "21000000",
+    "circulatingSupply": null,
+    "sequestered": null,
+    "inscribed": null,
+    "totalHolders": null,
+    "sequesteredHolders": null,
+    "activeInEpoch": null,
+    "activePast365d": null,
+    "sales": "4452",
+    "totalVolume": "1064114770",
+    "floorPrice": "3600",
+    "itemsCount": "1640"
+   },
+   "relation": "ours_subset",
+   "rows": [
+    "kilosat_omega",
+    "decasat_omega",
+    "centasat_omega",
+    "megasat_omega",
+    "vintage_omega",
+    "black"
+   ],
+   "note": "All 21M omegas; we track only black omegas, milestone tiers and exotic combos.",
+   "dataset": {
+    "sales": 4503,
+    "purchase": 4479,
+    "offer": 24,
+    "years": {
+     "2023": 477,
+     "2024": 2098,
+     "2025": 973,
+     "2026": 955
+    },
+    "main_sat_tracked_by_fork": {
+     "True": 2367,
+     "False": 2136
+    }
+   },
+   "ours": {
+    "kilosat_omega": {
+     "total": 18900,
+     "all_of": [
+      "kilosat_omega"
+     ],
+     "any_of": [],
+     "heights": null,
+     "stats": {
+      "mined": 18083,
+      "located": 18082,
+      "burned": 0,
+      "lost": 1,
+      "overwritten": 0,
+      "extracted": 1879,
+      "holders": 11817,
+      "extracted_holders": 421
+     },
+     "stats_at_932293": {
+      "mined": 17978,
+      "located": 17977,
+      "burned": 0,
+      "lost": 1,
+      "overwritten": 0,
+      "extracted": 1625,
+      "holders": 11932,
+      "extracted_holders": 420
+     }
+    },
+    "decasat_omega": {
+     "total": 1890,
+     "all_of": [
+      "decasat_omega"
+     ],
+     "any_of": [],
+     "heights": null,
+     "stats": {
+      "mined": 1809,
+      "located": 1809,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 195,
+      "holders": 1473,
+      "extracted_holders": 82
+     },
+     "stats_at_932293": {
+      "mined": 1798,
+      "located": 1798,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 172,
+      "holders": 1482,
+      "extracted_holders": 80
+     }
+    },
+    "centasat_omega": {
+     "total": 189,
+     "all_of": [
+      "centasat_omega"
+     ],
+     "any_of": [],
+     "heights": null,
+     "stats": {
+      "mined": 180,
+      "located": 180,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 20,
+      "holders": 173,
+      "extracted_holders": 17
+     },
+     "stats_at_932293": {
+      "mined": 180,
+      "located": 180,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 17,
+      "holders": 175,
+      "extracted_holders": 16
+     }
+    },
+    "megasat_omega": {
+     "total": 20,
+     "all_of": [
+      "megasat_omega"
+     ],
+     "any_of": [],
+     "heights": null,
+     "stats": {
+      "mined": 20,
+      "located": 20,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 3,
+      "holders": 20,
+      "extracted_holders": 3
+     },
+     "stats_at_932293": {
+      "mined": 19,
+      "located": 19,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 2,
+      "holders": 19,
+      "extracted_holders": 2
+     }
+    },
+    "vintage_omega": {
+     "total": 50000,
+     "all_of": [
+      "vintage",
+      "omega"
+     ],
+     "any_of": [],
+     "heights": null,
+     "stats": {
+      "mined": 50000,
+      "located": 50000,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 418,
+      "holders": 2779,
+      "extracted_holders": 91
+     },
+     "stats_at_932293": {
+      "mined": 50000,
+      "located": 50000,
+      "burned": 0,
+      "lost": 0,
+      "overwritten": 0,
+      "extracted": 351,
+      "holders": 2841,
+      "extracted_holders": 89
+     }
+    },
+    "black": {
+     "total": 6930000,
+     "all_of": [
+      "black"
+     ],
+     "any_of": [],
+     "heights": null,
+     "stats": {
+      "mined": 969445,
+      "located": 969399,
+      "burned": 24,
+      "lost": 20,
+      "overwritten": 2,
+      "extracted": 128066,
+      "holders": 271001,
+      "extracted_holders": 8557
+     },
+     "stats_at_932293": {
+      "mined": 932294,
+      "located": 932248,
+      "burned": 24,
+      "lost": 20,
+      "overwritten": 2,
+      "extracted": 111068,
+      "holders": 267157,
+      "extracted_holders": 8520
+     }
+    }
+   },
+   "proposal": {
+    "id": "omega",
+    "label": "Omega",
+    "all_of": [
+     "omega"
+    ],
+    "any_of": [],
+    "heights": null,
+    "range": false,
+    "tracking": "+~20M individual sats",
+    "total_note": "21,000,000"
+   }
+  },
+  {
+   "id": "d7465cf9-b706-4e7c-acaf-0ca42b592625",
+   "slug": "vintage",
+   "label": "Vintage",
+   "sattributes": [
+    "vintage"
+   ],
+   "additionalSattributes": [
+    "pali",
+    "hal-finney",
+    "nakamoto"
+   ],
+   "isCategory": true,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": "5999999",
+    "circulatingSupply": "5999999",
+    "sequestered": null,
+    "inscribed": null,
+    "totalHolders": null,
+    "sequesteredHolders": null,
+    "activeInEpoch": null,
+    "activePast365d": null,
+    "sales": "9377",
+    "totalVolume": "4999350162",
+    "floorPrice": "990",
+    "itemsCount": "5299"
+   },
+   "relation": "gap",
+   "rows": [],
+   "note": "Whole first 1,000 blocks (5e12 sats): only special sats inside are tracked.",
+   "dataset": {
+    "sales": 9502,
+    "purchase": 9453,
+    "offer": 49,
+    "years": {
+     "2023": 1182,
+     "2024": 3466,
+     "2025": 2631,
+     "2026": 2223
+    },
+    "main_sat_tracked_by_fork": {
+     "False": 3326,
+     "True": 6176
+    }
+   },
+   "proposal": {
+    "id": "vintage",
+    "label": "Vintage",
+    "all_of": [
+     "vintage"
+    ],
+    "any_of": [],
+    "heights": null,
+    "range": true,
+    "tracking": "add [0, 5e12) to TrackerConfig::ranges (reindex); most of it never moved",
+    "total_note": "5e12 sats"
+   }
+  },
+  {
+   "id": "0d62e4d7-66b7-475b-afbd-d41f67557764",
+   "slug": "pizza",
+   "label": "Pizza",
+   "sattributes": [
+    "pizza"
+   ],
+   "additionalSattributes": [
+    "pali",
+    "uncommon"
+   ],
+   "isCategory": true,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": "1000000000000",
+    "circulatingSupply": "1000000000000",
+    "sequestered": null,
+    "inscribed": null,
+    "totalHolders": null,
+    "sequesteredHolders": null,
+    "activeInEpoch": null,
+    "activePast365d": null,
+    "sales": "2577",
+    "totalVolume": "727246338",
+    "floorPrice": "915",
+    "itemsCount": "1356"
+   },
+   "relation": "gap",
+   "rows": [],
+   "note": "The 10,000 BTC pizza payment (1e12 sats, 825 ranges).",
+   "dataset": {
+    "sales": 2689,
+    "purchase": 2686,
+    "offer": 3,
+    "years": {
+     "2023": 272,
+     "2024": 1080,
+     "2025": 1083,
+     "2026": 254
+    },
+    "main_sat_tracked_by_fork": {
+     "False": 1994,
+     "True": 695
+    }
+   },
+   "proposal": {
+    "id": "pizza",
+    "label": "Pizza",
+    "all_of": [
+     "pizza"
+    ],
+    "any_of": [],
+    "heights": null,
+    "range": true,
+    "tracking": "add the 825 pizza ranges to TrackerConfig::ranges (reindex); fix the off-by-one first",
+    "total_note": "1e12 sats"
+   }
+  },
+  {
+   "id": "95661a3a-b851-4aa7-8681-fc1ec2668c8b",
+   "slug": "hitman",
+   "label": "Hitman",
+   "sattributes": [
+    "hitman"
+   ],
+   "additionalSattributes": [
+    "pali"
+   ],
+   "isCategory": true,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": "167000000000",
+    "circulatingSupply": "167000000000",
+    "sequestered": null,
+    "inscribed": null,
+    "totalHolders": null,
+    "sequesteredHolders": null,
+    "activeInEpoch": null,
+    "activePast365d": null,
+    "sales": "377",
+    "totalVolume": "111841008",
+    "floorPrice": "1957",
+    "itemsCount": "588"
+   },
+   "relation": "gap",
+   "rows": [],
+   "note": "The hitman payment sats (1.67e11 sats).",
+   "dataset": {
+    "sales": 400,
+    "purchase": 395,
+    "offer": 5,
+    "years": {
+     "2023": 68,
+     "2024": 188,
+     "2025": 95,
+     "2026": 49
+    },
+    "main_sat_tracked_by_fork": {
+     "False": 226,
+     "True": 174
+    }
+   },
+   "proposal": {
+    "id": "hitman",
+    "label": "Hitman",
+    "all_of": [
+     "hitman"
+    ],
+    "any_of": [],
+    "heights": null,
+    "range": true,
+    "tracking": "add the hitman ranges (5,914 merged) to TrackerConfig::ranges (reindex)",
+    "total_note": "1.67e11 sats"
+   }
+  },
+  {
+   "id": "2e94b6c0-b49f-4218-b2cf-a80cf32d24d2",
+   "slug": "jpeg",
+   "label": "JPEG",
+   "sattributes": [
+    "jpeg"
+   ],
+   "additionalSattributes": [
+    "pali"
+   ],
+   "isCategory": true,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": "50000000000",
+    "circulatingSupply": "50000000000",
+    "sequestered": null,
+    "inscribed": null,
+    "totalHolders": null,
+    "sequesteredHolders": null,
+    "activeInEpoch": null,
+    "activePast365d": null,
+    "sales": "388",
+    "totalVolume": "199469969",
+    "floorPrice": "1921",
+    "itemsCount": "517"
+   },
+   "relation": "gap",
+   "rows": [],
+   "note": "The JPEG trade sats (5e10 sats, 10 ranges).",
+   "dataset": {
+    "sales": 388,
+    "purchase": 388,
+    "offer": 0,
+    "years": {
+     "2023": 31,
+     "2024": 298,
+     "2025": 32,
+     "2026": 27
+    },
+    "main_sat_tracked_by_fork": {
+     "False": 324,
+     "True": 64
+    }
+   },
+   "proposal": {
+    "id": "jpeg",
+    "label": "JPEG",
+    "all_of": [
+     "jpeg"
+    ],
+    "any_of": [],
+    "heights": null,
+    "range": true,
+    "tracking": "add the 10 JPEG ranges to TrackerConfig::ranges (reindex)",
+    "total_note": "5e10 sats"
+   }
+  },
+  {
+   "id": "06b546f2-6b38-468f-99eb-dc0549482cf8",
+   "slug": "silkroad",
+   "label": "Silkroad",
+   "sattributes": [
+    "silkroad"
+   ],
+   "additionalSattributes": [
+    "pali"
+   ],
+   "isCategory": true,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": "2965651306529",
+    "circulatingSupply": "2965651306529",
+    "sequestered": null,
+    "inscribed": null,
+    "totalHolders": null,
+    "sequesteredHolders": null,
+    "activeInEpoch": null,
+    "activePast365d": null,
+    "sales": "868",
+    "totalVolume": "116380662",
+    "floorPrice": "1284",
+    "itemsCount": "718"
+   },
+   "relation": "gap",
+   "rows": [],
+   "note": "Silk Road first-auction sats (2.97e12 sats, 405,534 ranges).",
+   "dataset": {
+    "sales": 973,
+    "purchase": 969,
+    "offer": 4,
+    "years": {
+     "2023": 67,
+     "2024": 394,
+     "2025": 371,
+     "2026": 141
+    },
+    "main_sat_tracked_by_fork": {
+     "False": 802,
+     "True": 171
+    }
+   },
+   "proposal": {
+    "id": "sr_1st_auction",
+    "label": "Silk Road",
+    "all_of": [
+     "sr_1st_auction"
+    ],
+    "any_of": [],
+    "heights": null,
+    "range": true,
+    "tracking": "add 405k Silk Road ranges to TrackerConfig::ranges (reindex)",
+    "total_note": "2.97e12 sats"
+   }
+  },
+  {
+   "id": "65290407-5f43-418e-bd9e-e62042499ce9",
+   "slug": "labitbu-official",
+   "label": "Labitbu Official",
+   "sattributes": [
+    "labitbu-official"
+   ],
+   "additionalSattributes": [],
+   "isCategory": true,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": "10000",
+    "circulatingSupply": null,
+    "sequestered": null,
+    "inscribed": null,
+    "totalHolders": null,
+    "sequesteredHolders": null,
+    "activeInEpoch": null,
+    "activePast365d": null,
+    "sales": "636",
+    "totalVolume": "21385035",
+    "floorPrice": "14000",
+    "itemsCount": "114"
+   },
+   "relation": "out_of_scope",
+   "rows": [],
+   "note": "Inscription collection (10k sats).",
+   "dataset": {
+    "sales": 638,
+    "purchase": 637,
+    "offer": 1,
+    "years": {
+     "2025": 631,
+     "2026": 7
+    },
+    "main_sat_tracked_by_fork": {
+     "False": 638
+    }
+   }
+  },
+  {
+   "id": "2c6af453-b6c7-4ef5-8acb-8d446a7339e5",
+   "slug": "inscription",
+   "label": "Inscription",
+   "sattributes": [
+    "inscription"
+   ],
+   "additionalSattributes": [],
+   "isCategory": false,
+   "isVirtual": false,
+   "isRodarmor": false,
+   "magisat_stats": {
+    "totalSupply": null,
+    "circulatingSupply": null,
+    "sequestered": null,
+    "inscribed": null,
+    "totalHolders": null,
+    "sequesteredHolders": null,
+    "activeInEpoch": null,
+    "activePast365d": null,
+    "sales": "3739",
+    "totalVolume": "2873880191",
+    "floorPrice": "1718592",
+    "itemsCount": "2760"
+   },
+   "relation": "out_of_scope",
+   "rows": [],
+   "note": "Inscribed sats of any kind (activity is mostly inscription collections: 72k sales). Not downloaded.",
+   "dataset": null
+  }
+ ],
+ "gap_ranking": [
+  {
+   "slug": "vintage",
+   "label": "Vintage",
+   "relation": "gap",
+   "sales": 9502,
+   "sales_main_sat_untracked": 3326,
+   "proposal": "vintage"
+  },
+  {
+   "slug": "pali",
+   "label": "Palindrome",
+   "relation": "gap",
+   "sales": 9275,
+   "sales_main_sat_untracked": 8203,
+   "proposal": "palindrome"
+  },
+  {
+   "slug": "nakamoto",
+   "label": "Nakamoto",
+   "relation": "ours_subset",
+   "sales": 6998,
+   "sales_main_sat_untracked": 996,
+   "proposal": "nakamoto"
+  },
+  {
+   "slug": "alpha",
+   "label": "Alpha",
+   "relation": "ours_subset",
+   "sales": 6874,
+   "sales_main_sat_untracked": 2299,
+   "proposal": "alpha"
+  },
+  {
+   "slug": "1st-tx",
+   "label": "1st Tx",
+   "relation": "ours_superset",
+   "sales": 5873,
+   "sales_main_sat_untracked": 1,
+   "proposal": "block9_1st_tx"
+  },
+  {
+   "slug": "omega",
+   "label": "Omega",
+   "relation": "ours_subset",
+   "sales": 4503,
+   "sales_main_sat_untracked": 2136,
+   "proposal": "omega"
+  },
+  {
+   "slug": "alpha-uncommon",
+   "label": "Alpha Uncommon",
+   "relation": "ours_superset",
+   "sales": 4251,
+   "sales_main_sat_untracked": 3,
+   "proposal": "uncommon_alpha"
+  },
+  {
+   "slug": "seq-pali",
+   "label": "Sequence Pali",
+   "relation": "gap",
+   "sales": 2919,
+   "sales_main_sat_untracked": 2566,
+   "proposal": "palindrome_sequence"
+  },
+  {
+   "slug": "pizza",
+   "label": "Pizza",
+   "relation": "gap",
+   "sales": 2689,
+   "sales_main_sat_untracked": 1994,
+   "proposal": "pizza"
+  },
+  {
+   "slug": "hal-finney",
+   "label": "Finney",
+   "relation": "gap",
+   "sales": 2457,
+   "sales_main_sat_untracked": 898,
+   "proposal": "finney"
+  },
+  {
+   "slug": "3d-pali",
+   "label": "3d Pali",
+   "relation": "ours_subset",
+   "sales": 2191,
+   "sales_main_sat_untracked": 1895,
+   "proposal": "palindrome_3d"
+  },
+  {
+   "slug": "omega-black-uncommon",
+   "label": "Omega Black Uncommon",
+   "relation": "ours_superset",
+   "sales": 2069,
+   "sales_main_sat_untracked": 3,
+   "proposal": "black_omega"
+  },
+  {
+   "slug": "b78",
+   "label": "Block 78",
+   "relation": "gap",
+   "sales": 1352,
+   "sales_main_sat_untracked": 1197,
+   "proposal": "block78"
+  },
+  {
+   "slug": "vintage-pali",
+   "label": "Vintage Palindrome",
+   "relation": "gap",
+   "sales": 1206,
+   "sales_main_sat_untracked": 966,
+   "proposal": "vintage_palindrome"
+  },
+  {
+   "slug": "uniform-palinception",
+   "label": "Uniform Palinception",
+   "relation": "gap",
+   "sales": 1056,
+   "sales_main_sat_untracked": 933,
+   "proposal": "palindrome_uniform_palinception"
+  },
+  {
+   "slug": "silkroad",
+   "label": "Silkroad",
+   "relation": "gap",
+   "sales": 973,
+   "sales_main_sat_untracked": 802,
+   "proposal": "sr_1st_auction"
+  },
+  {
+   "slug": "pali-block",
+   "label": "Paliblock Palindrome",
+   "relation": "gap",
+   "sales": 804,
+   "sales_main_sat_untracked": 716,
+   "proposal": "paliblock_palindrome"
+  },
+  {
+   "slug": "b286",
+   "label": "Block 286",
+   "relation": "gap",
+   "sales": 401,
+   "sales_main_sat_untracked": 383,
+   "proposal": "block286"
+  },
+  {
+   "slug": "hitman",
+   "label": "Hitman",
+   "relation": "gap",
+   "sales": 400,
+   "sales_main_sat_untracked": 226,
+   "proposal": "hitman"
+  },
+  {
+   "slug": "jpeg",
+   "label": "JPEG",
+   "relation": "gap",
+   "sales": 388,
+   "sales_main_sat_untracked": 324,
+   "proposal": "jpeg"
+  },
+  {
+   "slug": "b666",
+   "label": "Block 666",
+   "relation": "gap",
+   "sales": 352,
+   "sales_main_sat_untracked": 261,
+   "proposal": "block_666"
+  },
+  {
+   "slug": "silkroad-pali",
+   "label": "Silkroad Pali",
+   "relation": "ours_subset",
+   "sales": 330,
+   "sales_main_sat_untracked": 325,
+   "proposal": "sr_palindrome"
+  },
+  {
+   "slug": "pizza-black-uncommon",
+   "label": "Pizza Black Uncommon",
+   "relation": "gap",
+   "sales": 1,
+   "sales_main_sat_untracked": 0,
+   "proposal": "pizza_black"
+  },
+  {
+   "slug": "hitman-black-uncommon",
+   "label": "Hitman Black Uncommon",
+   "relation": "gap",
+   "sales": null,
+   "sales_main_sat_untracked": 0,
+   "proposal": "hitman_black"
+  },
+  {
+   "slug": "fibonacci-sequence",
+   "label": "Fibonacci Sequence",
+   "relation": "gap",
+   "sales": null,
+   "sales_main_sat_untracked": 0,
+   "proposal": null
+  }
+ ],
+ "coverage_of_sales_by_fork": {
+  "note": "Market sales (no giveaways, with a buyerTxId) classified by whether the fork tracks the listing's main sat (GET /sat/{mainSatoshi.rangeStart}).",
+  "market_sales_with_main_sat": 35462,
+  "main_sat_tracked": 18578,
+  "out_of_scope_trump_labitbu_legacy_parasite": 825,
+  "untracked_rare_sat_sales": 16059,
+  "standalone_coverage_of_untracked": {
+   "palindrome (all, ~121M sats)": 8133,
+   "vintage range": 3279,
+   "seq palindrome": 2541,
+   "alpha (all)": 2219,
+   "3d palindrome": 1883,
+   "pizza range": 1862,
+   "block78 range": 1179,
+   "uniform palinception": 991,
+   "nakamoto range": 963,
+   "vintage palindrome": 952,
+   "paliblock palindrome": 717,
+   "silkroad range": 705,
+   "finney (Magisat list)": 673,
+   "omega (all)": 465,
+   "block286 range": 402,
+   "silkroad palindrome": 324,
+   "jpeg range": 318,
+   "block_666 range": 264,
+   "hitman range": 202
+  },
+  "greedy_marginal_all": [
+   [
+    "palindrome (all)",
+    8133
+   ],
+   [
+    "vintage range",
+    2327
+   ],
+   [
+    "alpha (all)",
+    2219
+   ],
+   [
+    "pizza range",
+    1862
+   ],
+   [
+    "omega (all)",
+    465
+   ],
+   [
+    "nakamoto range",
+    394
+   ],
+   [
+    "jpeg range",
+    318
+   ],
+   [
+    "hitman range",
+    177
+   ],
+   [
+    "silkroad range",
+    155
+   ],
+   [
+    "finney",
+    3
+   ]
+  ],
+  "greedy_marginal_practical (no all-palindrome/alpha/omega rows)": [
+   [
+    "vintage range",
+    3279
+   ],
+   [
+    "seq palindrome",
+    2346
+   ],
+   [
+    "pizza range",
+    1862
+   ],
+   [
+    "3d palindrome",
+    730
+   ],
+   [
+    "silkroad range",
+    471
+   ],
+   [
+    "paliblock palindrome",
+    438
+   ],
+   [
+    "nakamoto range",
+    393
+   ],
+   [
+    "uniform palinception",
+    335
+   ],
+   [
+    "jpeg range",
+    285
+   ],
+   [
+    "hitman range",
+    156
+   ],
+   [
+    "finney",
+    23
+   ]
+  ],
+  "left_uncovered_by_practical_set": {
+   "plain palindromes": 3067,
+   "plain alphas": 2219,
+   "plain omegas": 448,
+   "other": 7
+  }
+ },
+ "palindrome_definitions_verified": {
+  "method": "Every sold palindromic main sat (8,596 distinct) checked against Magisat's per-sat sattributes, counting only sales after the tag first appears in the feed (tags were added during 2023, older snapshots lack them).",
+  "1d-pali": {
+   "definition": "exactly 1 distinct digit",
+   "agree": "8596/8596",
+   "total_ours": 136,
+   "total_magisat": 137,
+   "note": "Magisat counts sat 0"
+  },
+  "2d-pali": {
+   "definition": "exactly 2 distinct digits",
+   "agree": "8596/8596",
+   "total_ours": 30934,
+   "total_magisat": 30934
+  },
+  "3d-pali": {
+   "definition": "2 or 3 distinct digits (sold 2d palindromes carry 3d-pali too)",
+   "agree": "8562/8562",
+   "total_exactly_3": 1249047,
+   "total_magisat": 1249047,
+   "note": "Magisat's totalSupply equals the exactly-3 count, its per-sat tag includes 2-digit ones"
+  },
+  "seq-pali": {
+   "definition": "a run of >= 3 identical consecutive digits",
+   "agree": "8591/8591",
+   "total_ours": 16896268,
+   "total_magisat": 16796355,
+   "note": "totals differ by 0.6%: an edge case of Magisat's rule is unknown"
+  },
+  "uniform-palinception": {
+   "definition": "the digits split into >= 2 equal-length blocks of length >= 3, each a palindrome",
+   "agree": "6879/6880",
+   "total_ours": 1830989,
+   "total_magisat": 1850789,
+   "note": "totals differ by 1.1%"
+  },
+  "perfect-palinception": {
+   "definition": "ours (palindromes_perfect_palinception)",
+   "agree": "7428/7428",
+   "total_ours": 13168,
+   "total_magisat": 13305,
+   "note": "Magisat's total and circulating counts are both 137 higher (it apparently also counts repdigits)"
+  },
+  "pali-block": {
+   "definition": "palindromic sat number mined in a block whose height is a palindrome",
+   "agree": "7927/7927",
+   "total_ours": 1740987,
+   "total_magisat": null
+  },
+  "pali": {
+   "total_ours": 120999997,
+   "total_magisat": 121000000
+  }
+ },
+ "sales_by_our_row": {
+  "note": "Market sales (no giveaways, with a buyerTxId) whose main sat falls in each fork row, by purchase year. A sale counts once per row of its main sat.",
+  "rows": {
+   "uncommon": {
+    "sales": 7737,
+    "years": {
+     "2023": 739,
+     "2024": 3444,
+     "2025": 1804,
+     "2026": 1750
+    }
+   },
+   "block9": {
+    "sales": 5818,
+    "years": {
+     "2023": 540,
+     "2024": 2027,
+     "2025": 1425,
+     "2026": 1826
+    }
+   },
+   "450x": {
+    "sales": 5209,
+    "years": {
+     "2023": 373,
+     "2024": 1907,
+     "2025": 1320,
+     "2026": 1609
+    }
+   },
+   "black": {
+    "sales": 3455,
+    "years": {
+     "2023": 747,
+     "2024": 1586,
+     "2025": 665,
+     "2026": 457
+    }
+   },
+   "pizza_palindrome": {
+    "sales": 312,
+    "years": {
+     "2023": 67,
+     "2024": 128,
+     "2025": 75,
+     "2026": 42
+    }
+   },
+   "bounty3_name": {
+    "sales": 239,
+    "years": {
+     "2023": 4,
+     "2024": 162,
+     "2025": 48,
+     "2026": 25
+    }
+   },
+   "palindrome_2d": {
+    "sales": 184,
+    "years": {
+     "2023": 29,
+     "2024": 128,
+     "2025": 20,
+     "2026": 7
+    }
+   },
+   "kilosat_alpha": {
+    "sales": 182,
+    "years": {
+     "2023": 14,
+     "2024": 77,
+     "2025": 67,
+     "2026": 24
+    }
+   },
+   "alpha_jan_feb_2009": {
+    "sales": 166,
+    "years": {
+     "2023": 9,
+     "2024": 94,
+     "2025": 36,
+     "2026": 27
+    }
+   },
+   "nakamoto_palindrome": {
+    "sales": 129,
+    "years": {
+     "2023": 34,
+     "2024": 64,
+     "2025": 22,
+     "2026": 9
+    }
+   },
+   "block78_palindrome": {
+    "sales": 121,
+    "years": {
+     "2023": 8,
+     "2024": 103,
+     "2025": 4,
+     "2026": 6
+    }
+   },
+   "hitman_palindrome": {
+    "sales": 117,
+    "years": {
+     "2023": 12,
+     "2024": 73,
+     "2025": 17,
+     "2026": 15
+    }
+   },
+   "uncommon_2009": {
+    "sales": 113,
+    "years": {
+     "2023": 6,
+     "2024": 55,
+     "2025": 34,
+     "2026": 18
+    }
+   },
+   "sr_alpha": {
+    "sales": 86,
+    "years": {
+     "2023": 1,
+     "2024": 64,
+     "2025": 18,
+     "2026": 3
+    }
+   },
+   "palindrome_perfect_palinception": {
+    "sales": 77,
+    "years": {
+     "2023": 20,
+     "2024": 39,
+     "2025": 12,
+     "2026": 6
+    }
+   },
+   "block_666_palindrome": {
+    "sales": 68,
+    "years": {
+     "2023": 5,
+     "2024": 36,
+     "2025": 23,
+     "2026": 4
+    }
+   },
+   "vintage_alpha": {
+    "sales": 66,
+    "years": {
+     "2023": 7,
+     "2024": 50,
+     "2025": 3,
+     "2026": 6
+    }
+   },
+   "kilosat_omega": {
+    "sales": 53,
+    "years": {
+     "2023": 14,
+     "2024": 22,
+     "2025": 14,
+     "2026": 3
+    }
+   },
+   "black_2009": {
+    "sales": 50,
+    "years": {
+     "2023": 6,
+     "2024": 17,
+     "2025": 9,
+     "2026": 18
+    }
+   },
+   "palindrome_2d_2009": {
+    "sales": 41,
+    "years": {
+     "2023": 12,
+     "2024": 25,
+     "2025": 1,
+     "2026": 3
+    }
+   },
+   "pizza_alpha": {
+    "sales": 41,
+    "years": {
+     "2023": 6,
+     "2024": 28,
+     "2025": 5,
+     "2026": 2
+    }
+   },
+   "paliblock": {
+    "sales": 39,
+    "years": {
+     "2023": 2,
+     "2024": 2,
+     "2025": 16,
+     "2026": 19
+    }
+   },
+   "jpeg_palindrome": {
+    "sales": 30,
+    "years": {
+     "2023": 13,
+     "2024": 16,
+     "2025": 1
+    }
+   },
+   "rare": {
+    "sales": 28,
+    "years": {
+     "2023": 1,
+     "2024": 5,
+     "2025": 12,
+     "2026": 10
+    }
+   },
+   "decasat_alpha": {
+    "sales": 25,
+    "years": {
+     "2023": 4,
+     "2024": 6,
+     "2025": 13,
+     "2026": 2
+    }
+   },
+   "hitman_alpha": {
+    "sales": 19,
+    "years": {
+     "2024": 14,
+     "2025": 2,
+     "2026": 3
+    }
+   },
+   "sr_omega": {
+    "sales": 9,
+    "years": {
+     "2023": 1,
+     "2024": 4,
+     "2025": 4
+    }
+   },
+   "sr_uncommon": {
+    "sales": 9,
+    "years": {
+     "2024": 3,
+     "2025": 5,
+     "2026": 1
+    }
+   },
+   "block286_palindrome": {
+    "sales": 7,
+    "years": {
+     "2023": 5,
+     "2024": 2
+    }
+   },
+   "hitman_omega": {
+    "sales": 7,
+    "years": {
+     "2024": 5,
+     "2025": 2
+    }
+   },
+   "black_rare": {
+    "sales": 5,
+    "years": {
+     "2023": 3,
+     "2025": 2
+    }
+   },
+   "decasat_omega": {
+    "sales": 5,
+    "years": {
+     "2024": 4,
+     "2025": 1
+    }
+   },
+   "block9_palindrome": {
+    "sales": 5,
+    "years": {
+     "2024": 3,
+     "2025": 1,
+     "2026": 1
+    }
+   },
+   "jpeg_alpha": {
+    "sales": 4,
+    "years": {
+     "2023": 1,
+     "2024": 3
+    }
+   },
+   "sr_black": {
+    "sales": 4,
+    "years": {
+     "2023": 1,
+     "2024": 1,
+     "2025": 2
+    }
+   },
+   "centasat_alpha": {
+    "sales": 4,
+    "years": {
+     "2023": 1,
+     "2024": 2,
+     "2025": 1
+    }
+   },
+   "pizza_uncommon": {
+    "sales": 4,
+    "years": {
+     "2023": 1,
+     "2024": 3
+    }
+   },
+   "nakamoto_alpha": {
+    "sales": 4,
+    "years": {
+     "2024": 1,
+     "2025": 3
+    }
+   },
+   "pizza_omega": {
+    "sales": 2,
+    "years": {
+     "2023": 1,
+     "2025": 1
+    }
+   },
+   "block78_alpha": {
+    "sales": 2,
+    "years": {
+     "2024": 1,
+     "2026": 1
+    }
+   },
+   "sr_palindrome_3d": {
+    "sales": 2,
+    "years": {
+     "2025": 2
+    }
+   },
+   "jpeg_uncommon": {
+    "sales": 1,
+    "years": {
+     "2024": 1
+    }
+   },
+   "hitman_uncommon": {
+    "sales": 1,
+    "years": {
+     "2026": 1
+    }
+   }
+  }
+ },
+ "off_by_one_evidence": {
+  "note": "Sold sats that our types put in an exotic range only because of the inclusive range end (Magisat tags them plain uncommon/alpha).",
+  "count": 6,
+  "example": {
+   "sat": 282610000000000,
+   "height": 56522,
+   "ours": [
+    "uncommon",
+    "alpha",
+    "pizza"
+   ],
+   "magisat": [
+    "alpha",
+    "uncommon"
+   ],
+   "txid": "8ee7bd8152bedc4b783714d556bd43215b7aae9835a958f0e4ed04698ccf284e",
+   "previous_sat": {
+    "sat": 282609999999999,
+    "ours": [
+     "black",
+     "omega",
+     "pizza"
+    ],
+    "note": "the real last pizza sat of this range"
+   }
+  }
+ }
+}
