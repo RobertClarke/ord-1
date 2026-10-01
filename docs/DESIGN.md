@@ -112,6 +112,16 @@ old supply script used, so it wins.
 `tools/export-monitoring-data.js <bitcoin-monitoring checkout>` (`--check`
 reports drift) and embedded with `include_bytes!`.
 
+The JS holds inclusive `[start, end]` ranges; the export writes half-open
+`[start, end + 1)` ones. The pizza, jpeg, hitman and Silk Road lists are
+copies of published half-open lists, which the JS read as inclusive until it
+converted them at load: each range also claimed the sat after it, an
+uncommon or alpha whenever the range ended on a block or BTC (pizza 378
+uncommons instead of 201). Since rules version 3 they hold exactly 1e12,
+5e10, 1.67e11 and 2,965,651,306,529 sats; the manifest's `special` counts
+(uncommon, black, alpha, omega per type, by the JS's own block math) are
+what the row tests check against.
+
 ### 2.3 Required combinations (from `REQUIRED_COMBINATION_TYPES`)
 
 ```

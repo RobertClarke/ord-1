@@ -26,8 +26,9 @@
  *     name_len u8, name (ASCII)
  *     count    u32
  *     count x (start u64, end u64): half-open [start, end) sat ranges, sorted,
- *              overlapping and adjacent source ranges merged. The JS reads
- *              its ranges' ends as inclusive today, so end here is the JS
+ *              overlapping and adjacent source ranges merged. The JS holds
+ *              inclusive ends (it converts its half-open pizza, jpeg, hitman
+ *              and sr_1st_auction lists at load), so end here is the JS
  *              end + 1; the export probes the JS (INCLUSIVE_ENDS) and
  *              follows it if that changes.
  * data/exotic-ranges.json: manifest (per-type source/merged range counts and
@@ -179,12 +180,13 @@ function mergeRanges(ranges) {
 
 const exoticTypes = Object.keys(EXOTIC_RANGES);
 
-// Whether the JS counts a range's end sat as inside it. Its ranges were
-// written half-open, but isInRanges (`value <= end`) and the scanner's
-// point-sat sweep read them as inclusive, so each range also claims the sat
-// after it. Asked of the JS itself (findExoticTypes, at an end no other range
-// of the type covers), so that a fix on either side, the comparison or the
-// data, exports without changes here.
+// Whether the JS counts a range's end sat as inside it: isInRanges
+// (`value <= end`) and the scanner's point-sat sweep read every end as
+// inclusive, and the lists copied half-open from published sources (pizza,
+// jpeg, hitman, sr_1st_auction) are converted to inclusive ends when the
+// module loads. Asked of the JS itself (findExoticTypes, at an end no other
+// range of the type covers), so that a change on either side, the
+// comparison or the data, exports without changes here.
 function probeInclusiveEnds() {
   const verdicts = {};
   for (const name of exoticTypes) {

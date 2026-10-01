@@ -77,7 +77,10 @@ pub use rows::{BLOCK9_FIRST_TX, HEIGHTS_2009, default_rows};
 /// * 1: the scanner's types, the tracked set and rows.
 /// * 2: extraction by budget (`model::is_extracted`, DESIGN.md §5) instead
 ///   of `value ≤ extracted_max_value || row_count == value` per row.
-pub const RULES_VERSION: &str = "2";
+/// * 3: the pizza, jpeg, hitman and sr_1st_auction ranges end on their last
+///   sat (DESIGN.md §2.2): the sat after each range, an uncommon or alpha
+///   when the range ends on a block or BTC, is no longer of the type.
+pub const RULES_VERSION: &str = "3";
 
 /// `psbtBuilder.js` → `SPECIAL_SAT_TYPES`, verbatim and in order (a test
 /// compares it with the array parsed from the JS).

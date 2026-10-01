@@ -3,14 +3,14 @@
   "generated_by": "tools/export-monitoring-data.js",
   "source": {
     "file": "src/services/exoticSatRanges.js",
-    "sha256": "48f27a81ed95709e6eafd5861e622c5308f475fcddd86e0b8bed58e7d11e85ac"
+    "sha256": "d911c2157f3aec50befb8810b3042d43eab93d02003534e3fa6acdadf9f8d1ad"
   },
   "bin": {
     "file": "data/exotic-ranges.bin",
-    "bytes": 6596498,
-    "sha256": "c1d92116d294131ad609353cb25503f30bdbdc60fd74457bc980c17c97e74638"
+    "bytes": 6597154,
+    "sha256": "a2be8a1804d271bdaec93aef1c300976f4d332003cb498540cbd70a9f19e084d"
   },
-  "total_sats": 9297751718816,
+  "total_sats": 9297751306529,
   "types": [
     {
       "name": "vintage",
@@ -114,13 +114,13 @@
       "name": "jpeg",
       "source_ranges": 10,
       "ranges": 10,
-      "sats": 50000000010,
+      "sats": 50000000000,
       "first": 151700000000000,
-      "end": 164765000000001,
+      "end": 164765000000000,
       "special": {
-        "uncommon": 20,
+        "uncommon": 10,
         "black": 10,
-        "alpha": 510,
+        "alpha": 500,
         "omega": 500
       }
     },
@@ -128,42 +128,42 @@
       "name": "pizza",
       "source_ranges": 825,
       "ranges": 825,
-      "sats": 1000000000825,
+      "sats": 1000000000000,
       "first": 120485000000000,
-      "end": 283940000000001,
+      "end": 283940000000000,
       "special": {
-        "uncommon": 378,
+        "uncommon": 201,
         "black": 199,
-        "alpha": 10192,
+        "alpha": 10002,
         "omega": 10000
       }
     },
     {
       "name": "hitman",
       "source_ranges": 6200,
-      "ranges": 5914,
-      "sats": 167000005918,
+      "ranges": 5918,
+      "sats": 167000000000,
       "first": 4045240644369,
-      "end": 1004243898150001,
+      "end": 1004243898150000,
       "special": {
-        "uncommon": 56,
+        "uncommon": 25,
         "black": 31,
-        "alpha": 1699,
+        "alpha": 1662,
         "omega": 1669
       }
     },
     {
       "name": "sr_1st_auction",
       "source_ranges": 405534,
-      "ranges": 405497,
-      "sats": 2965651712063,
+      "ranges": 405534,
+      "sats": 2965651306529,
       "first": 390039123225,
-      "end": 1264166615137433,
+      "end": 1264166615137432,
       "special": {
-        "uncommon": 1699,
-        "black": 871,
-        "alpha": 30537,
-        "omega": 29561
+        "uncommon": 842,
+        "black": 870,
+        "alpha": 29559,
+        "omega": 29560
       }
     },
     {

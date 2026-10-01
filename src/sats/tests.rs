@@ -717,8 +717,7 @@ fn js_special_count(t: SatType, kind: &str) -> u64 {
 
 #[test]
 fn combination_row_totals_match_the_js_counts() {
-  // E.g. today: pizza 378 uncommon, 199 black, 10,192 alpha, 10,000 omega
-  // (the JS reads EXOTIC_RANGES' ends as inclusive).
+  // E.g. pizza: 201 uncommon, 199 black, 10,002 alpha, 10,000 omega.
   use SatType::*;
   let catalog = default_catalog();
   let mut checked = 0;
