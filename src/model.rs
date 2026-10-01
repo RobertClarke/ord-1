@@ -32,11 +32,28 @@ pub struct ResolvedTx {
   pub outputs: Vec<TxOut>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResolvedInput {
   pub previous_output: OutPoint,
   /// Value, in sats, of the output being spent.
   pub value: u64,
+  /// Sighash flag of the input's (first) signature, as signed: `0x00` taproot
+  /// default, `0x01` ALL, `0x02` NONE, `0x03` SINGLE, `| 0x80` ANYONECANPAY.
+  /// `None` when no signature was recognized (or the source does not read
+  /// witnesses). Marketplace listings sign SINGLE|ANYONECANPAY (`0x83`).
+  pub sighash: Option<u8>,
+  /// Inscription envelopes this input reveals (ord's envelope in a taproot
+  /// script-path spend), in envelope order. Usually empty.
+  pub envelopes: Vec<Envelope>,
+}
+
+/// One inscription envelope revealed by an input. Per ord, it inscribes the
+/// sat at `pointer` (an offset into the transaction's input sats) when the
+/// pointer tag is present and points inside the outputs, otherwise the first
+/// sat of the input that reveals it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Envelope {
+  pub pointer: Option<u64>,
 }
 
 /// A run of consecutive tracked sats at consecutive offsets: sat `start + i`

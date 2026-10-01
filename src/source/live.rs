@@ -342,6 +342,8 @@ fn resolve_tx(index: usize, tx: &VerboseTx) -> anyhow::Result<ResolvedTx> {
           previous_output: OutPoint { txid, vout },
           value: parse_btc(prevout.value.get())
             .with_context(|| format!("value of the output spent by input {vin}"))?,
+          sighash: None,
+          envelopes: Vec::new(),
         })
       })
       .collect::<anyhow::Result<Vec<ResolvedInput>>>()?

@@ -554,6 +554,8 @@ fn prepare(
           ResolvedInput {
             previous_output: outpoint,
             value,
+            sighash: None,
+            envelopes: Vec::new(),
           }
         })
         .collect()

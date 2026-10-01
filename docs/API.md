@@ -214,3 +214,56 @@ up to tens of thousands of pieces, which every line would repeat); add
 
 ### `GET /blocks?from=&to=`
 `[{ "height": …, "hash": "…", "time": … }]`, `to - from` ≤ 10,000.
+
+## Sales and inscriptions (provisional — being implemented)
+
+Field names below are the contract with the dashboard; the price semantics
+(`price` / `seller_proceeds` / `fees`) are being calibrated against Magisat's
+sales history and may gain fields, not lose them.
+
+**Sale** — one tracked-sat sale: a seller's input carrying tracked sats, paid
+for in the same transaction (a marketplace listing signed
+SINGLE|ANYONECANPAY, an accepted offer, a legacy Magic Eden trade, …).
+```json
+{
+  "txid": "…", "height": 968899, "time": 1790000000, "tx_index": 12, "vin": 0,
+  "marketplace": "magisat" | "magic_eden" | "okx" | "unisat" | "satflow" | "ordinals_wallet" | "unknown",
+  "kind": "listing" | "offer" | "unknown",
+  "seller": { "address": "bc1p…", "script_pubkey": "…", "outpoint": "txid:vout", "value": 546 },
+  "buyer": { "address": "bc1p…", "script_pubkey": "…", "outpoint": "txid:vout", "value": 546 },
+  "price": 45546,
+  "seller_proceeds": 45319,
+  "fees": 227,
+  "premium": 45000,
+  "pieces": [Piece],
+  "sats": [{ "sat": 1150805000000000, "height": 250322, "time": 1375694270, "inscribed": false }],
+  "rows": { "uncommon": 1 },
+  "unit": { "row": "uncommon", "count": 1, "price": 45000 },
+  "inscribed": false
+}
+```
+* `price`: what the buyer paid for this listing (seller proceeds plus the
+  marketplace fees attributable to it); `premium` = `price` − the sold
+  output's own value (`seller.value`), i.e. what was paid for the sats
+  themselves; `unit.price` = `premium` / `unit.count` for the sale's primary
+  row (its rarest row by catalog rank; for block 9 / 450x chunks a per-sat
+  price).
+* `sats`: the individually special sats sold (up to 100; range pieces are in
+  `pieces`), each with the height and time of the block that mined it.
+* `inscribed`: any sold tracked sat carries an inscription (outlier for
+  rare-sat pricing; the fork tracks inscriptions only on tracked sats).
+
+### `GET /sales?row=&from=&to=` (NDJSON)
+Sales oldest first, heights `from..=to` (default: all), optionally only those
+whose pieces include sats of `row`. One `Sale` per line.
+
+### `GET /sales/tx/{txid}`
+`{ "txid": "…", "sales": [Sale] }` (404 when the transaction sold nothing tracked).
+
+### Additions to existing objects
+* `/sat/{n}`: `"inscribed": bool`, `"inscriptions": n` (envelopes that landed
+  on the sat, counting reinscriptions), `"sales": [Sale]` (sales that sold it,
+  oldest first).
+* `Output`: `"inscribed_sats": [n, …]` (tracked sats in the output that carry
+  inscriptions).
+* `RowStats`: `"inscribed"` — located sats of the row that carry inscriptions.

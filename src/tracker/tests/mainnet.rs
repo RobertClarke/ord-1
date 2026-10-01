@@ -109,6 +109,8 @@ fn block(rpc: &Rpc, height: u32) -> ResolvedBlock {
             vout: vin["vout"].as_u64().unwrap() as u32,
           },
           value: sats(&vin["prevout"]["value"]),
+          sighash: None,
+          envelopes: Vec::new(),
         })
         .collect(),
       outputs: tx["vout"]
