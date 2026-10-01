@@ -529,3 +529,234 @@ fn mockcore_serves_core_shaped_json() {
     .unwrap_err();
   assert!(error.downcast_ref::<RpcError>().is_some(), "{error:#}");
 }
+
+mod witness {
+  use {
+    super::*,
+    bitcoin::{
+      opcodes::{self, all::*},
+      script::{self, PushBytesBuf},
+      secp256k1::{Message, PublicKey, Secp256k1, SecretKey},
+    },
+    ord::model::Envelope,
+  };
+
+  fn push(bytes: &[u8]) -> PushBytesBuf {
+    PushBytesBuf::try_from(bytes.to_vec()).unwrap()
+  }
+
+  fn der(flag: u8) -> Vec<u8> {
+    let secp = Secp256k1::new();
+    let key = SecretKey::from_slice(&[0x42; 32]).unwrap();
+    let mut sig = secp
+      .sign_ecdsa(&Message::from_digest([flag; 32]), &key)
+      .serialize_der()
+      .to_vec();
+    sig.push(flag);
+    sig
+  }
+
+  fn pubkey() -> Vec<u8> {
+    let secp = Secp256k1::new();
+    PublicKey::from_secret_key(&secp, &SecretKey::from_slice(&[0x42; 32]).unwrap())
+      .serialize()
+      .to_vec()
+  }
+
+  fn schnorr(flag: Option<u8>) -> Vec<u8> {
+    let mut sig = vec![0x77; 64];
+    sig.extend(flag);
+    sig
+  }
+
+  fn control_block() -> Vec<u8> {
+    let mut control = vec![0xc1];
+    control.extend([0x55; 64]);
+    control
+  }
+
+  /// A reveal script: `<key> OP_CHECKSIG` and one envelope per item list.
+  fn reveal(envelopes: &[&[&[u8]]]) -> ScriptBuf {
+    let mut builder = script::Builder::new()
+      .push_slice([0x20; 32])
+      .push_opcode(OP_CHECKSIG);
+    for items in envelopes {
+      builder = builder
+        .push_opcode(opcodes::OP_FALSE)
+        .push_opcode(OP_IF)
+        .push_slice(b"ord");
+      for item in *items {
+        builder = builder.push_slice(push(item));
+      }
+      builder = builder.push_opcode(OP_ENDIF);
+    }
+    builder.into_script()
+  }
+
+  fn reveal_witness(signature: Vec<u8>, script: &ScriptBuf) -> Witness {
+    Witness::from_slice(&[signature, script.to_bytes(), control_block()])
+  }
+
+  fn spend(inputs: Vec<(OutPoint, ScriptBuf, Witness)>, outputs: Vec<TxOut>) -> Transaction {
+    Transaction {
+      version: Version::TWO,
+      lock_time: LockTime::ZERO,
+      input: inputs
+        .into_iter()
+        .map(|(previous_output, script_sig, witness)| TxIn {
+          previous_output,
+          script_sig,
+          sequence: Sequence::MAX,
+          witness,
+        })
+        .collect(),
+      output: outputs,
+    }
+  }
+
+  fn key_path(signature: Vec<u8>) -> (ScriptBuf, Witness) {
+    (ScriptBuf::new(), Witness::from_slice(&[signature]))
+  }
+
+  const PLAIN: Envelope = Envelope { pointer: None };
+
+  #[test]
+  fn sighash_and_envelopes_agree_between_sources() {
+    let core = mockcore::builder().network(Network::Regtest).build();
+    core.mine_blocks(6);
+    let cb = |height| outpoint(coinbase_txid(&core, height), 0);
+
+    let text: &[&[u8]] = &[&[1], b"text/plain;charset=utf-8", &[], b"hello"];
+
+    // Block 7.
+    let (s, w) = key_path(schnorr(None));
+    let t1 = core.broadcast_raw_tx(spend(vec![(cb(1), s, w)], vec![out(50 * COIN)]));
+    let (s, w) = key_path(schnorr(Some(0x83)));
+    let t2 = core.broadcast_raw_tx(spend(vec![(cb(2), s, w)], vec![out(50 * COIN)]));
+    let t3 = core.broadcast_raw_tx(spend(
+      vec![(
+        cb(3),
+        ScriptBuf::new(),
+        Witness::from_slice(&[der(0x83), pubkey()]),
+      )],
+      vec![out(50 * COIN)],
+    ));
+    let legacy = script::Builder::new()
+      .push_slice(push(&der(0x01)))
+      .push_slice(push(&pubkey()))
+      .into_script();
+    core.broadcast_raw_tx(spend(
+      vec![(cb(4), legacy, Witness::new())],
+      vec![out(50 * COIN)],
+    ));
+    let multisig = script::Builder::new()
+      .push_opcode(opcodes::OP_0)
+      .push_slice(push(&der(0x02)))
+      .push_slice(push(&der(0x01)))
+      .push_slice(push(&[0x52; 71]))
+      .into_script();
+    let nested = script::Builder::new()
+      .push_slice(push(
+        ScriptBuf::new_p2wpkh(&WPubkeyHash::from_byte_array([3; 20])).as_bytes(),
+      ))
+      .into_script();
+    core.broadcast_raw_tx(spend(
+      vec![
+        (cb(5), multisig, Witness::new()),
+        (cb(6), nested, Witness::from_slice(&[der(0x81), pubkey()])),
+      ],
+      vec![out(60 * COIN), out(40 * COIN)],
+    ));
+    // Reveals an inscription spending t1's output in the same block.
+    core.broadcast_raw_tx(spend(
+      vec![(
+        outpoint(t1, 0),
+        ScriptBuf::new(),
+        reveal_witness(schnorr(None), &reveal(&[text])),
+      )],
+      vec![out(50 * COIN)],
+    ));
+    core.mine_blocks(1);
+
+    // Block 8: envelopes in a second input, several per input, pointers,
+    // and a script that does not parse.
+    let mut truncated = reveal(&[text]).into_bytes();
+    truncated.push(0x02);
+    core.broadcast_raw_tx(spend(
+      vec![
+        (
+          outpoint(t2, 0),
+          ScriptBuf::new(),
+          Witness::from_slice(&[schnorr(Some(0x01))]),
+        ),
+        (
+          outpoint(t3, 0),
+          ScriptBuf::new(),
+          reveal_witness(
+            schnorr(Some(0x83)),
+            &reveal(&[text, &[&[2], &[0xe8, 0x03], &[], b"x"], &[&[2], &[9; 9]]]),
+          ),
+        ),
+      ],
+      vec![out(100 * COIN)],
+    ));
+    core.mine_blocks(1);
+    let block8 = core.block_hash(8);
+    let malformed_input = outpoint(core.tx(8, 1).compute_txid(), 0);
+    core.broadcast_raw_tx(spend(
+      vec![(
+        malformed_input,
+        ScriptBuf::new(),
+        reveal_witness(schnorr(None), &ScriptBuf::from_bytes(truncated)),
+      )],
+      vec![out(100 * COIN)],
+    ));
+    core.mine_blocks(1);
+
+    let rpc = connect(&core);
+    let tip = core.height() as u32;
+    let (fast, _) = fast_blocks(&rpc, options(tip, 3, 4));
+    let live = LiveSource::new(rpc.clone());
+    for block in &fast {
+      assert_eq!(&live.block(block.hash, block.height).unwrap(), block);
+    }
+
+    let inputs = |height: usize, tx: usize| {
+      fast[height].txs[tx]
+        .inputs
+        .iter()
+        .map(|input| (input.sighash, input.envelopes.clone()))
+        .collect::<Vec<_>>()
+    };
+
+    assert_eq!(inputs(7, 1), [(Some(0x00), vec![])]);
+    assert_eq!(inputs(7, 2), [(Some(0x83), vec![])]);
+    assert_eq!(inputs(7, 3), [(Some(0x83), vec![])]);
+    assert_eq!(inputs(7, 4), [(Some(0x01), vec![])]);
+    assert_eq!(inputs(7, 5), [(Some(0x02), vec![]), (Some(0x81), vec![])]);
+    assert_eq!(inputs(7, 6), [(Some(0x00), vec![PLAIN])]);
+    assert_eq!(fast[8].hash, block8);
+    assert_eq!(
+      inputs(8, 1),
+      [
+        (Some(0x01), vec![]),
+        (
+          Some(0x83),
+          vec![
+            PLAIN,
+            Envelope {
+              pointer: Some(1000)
+            },
+            PLAIN
+          ]
+        ),
+      ]
+    );
+    assert_eq!(inputs(9, 1), [(Some(0x00), vec![])]);
+
+    // Coinbases and plain mockcore spends carry nothing.
+    for block in &fast {
+      assert!(block.txs[0].inputs.is_empty());
+    }
+  }
+}

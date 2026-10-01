@@ -33,9 +33,10 @@ use {
 };
 
 pub use {
-  fast::{FastSource, FastSourceDiagnostics, FastSourceStats, FastSyncOptions},
+  fast::{FastSource, FastSourceDiagnostics, FastSourceStats, FastSyncOptions, decode_block},
   live::LiveSource,
   rpc::{RetryPolicy, Rpc, RpcError},
+  witness::{input_envelopes, input_sighash, is_der_signature},
 };
 
 mod fast;
@@ -43,6 +44,7 @@ mod hex;
 mod live;
 mod rpc;
 mod utxo;
+mod witness;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RpcAuth {
