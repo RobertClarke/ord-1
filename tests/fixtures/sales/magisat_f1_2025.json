@@ -1,0 +1,75 @@
+{
+  "name": "magisat_f1_2025",
+  "txid": "d52437e0272fe3fcb91b8bae542c93836aa3e9b7cfed170363996690a6c5508c",
+  "height": 911344,
+  "tx_index": 2674,
+  "pieces_from": "magisat",
+  "tracked": [
+    {
+      "vin": 2,
+      "outpoint": "a0451c326b148a2eb6264273d5245d0545e24353c68d7f6217dd222126647aba:1",
+      "value": 330,
+      "script_pubkey": "5120b653ad9a99123bf23cf46021aac5d75c2ddd485900741d486aae2dc8e71ed4b6",
+      "height": 911327,
+      "pieces": [
+        {
+          "offset": 0,
+          "start": 1892179015365273,
+          "len": 1
+        }
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "outpoint": "225b895bec4ed17b8cff9a5e4722481b9e5014bfb10ab27e82891e8477bf5944:0",
+      "value": 600,
+      "sighash": 1
+    },
+    {
+      "outpoint": "225b895bec4ed17b8cff9a5e4722481b9e5014bfb10ab27e82891e8477bf5944:1",
+      "value": 600,
+      "sighash": 1
+    },
+    {
+      "outpoint": "a0451c326b148a2eb6264273d5245d0545e24353c68d7f6217dd222126647aba:1",
+      "value": 330,
+      "sighash": 131
+    },
+    {
+      "outpoint": "225b895bec4ed17b8cff9a5e4722481b9e5014bfb10ab27e82891e8477bf5944:10",
+      "value": 36893,
+      "sighash": 1
+    }
+  ],
+  "outputs": [
+    {
+      "value": 1200,
+      "script_pubkey": "5120f81ee10d1249e16e02ce76e506a41b450e32765614163770776c2f22fcbd0065"
+    },
+    {
+      "value": 330,
+      "script_pubkey": "5120f81ee10d1249e16e02ce76e506a41b450e32765614163770776c2f22fcbd0065"
+    },
+    {
+      "value": 31343,
+      "script_pubkey": "a914dcde746a4e423687caa326c6fabc3f7a963f823d87"
+    },
+    {
+      "value": 2957,
+      "script_pubkey": "5120ece3eb44846067d15ea280947ade046407cc18524428b69eea50f280a457470b"
+    },
+    {
+      "value": 600,
+      "script_pubkey": "a9141d8a606e1117f1da4b9bf364e69600402a1c003787"
+    },
+    {
+      "value": 600,
+      "script_pubkey": "a9141d8a606e1117f1da4b9bf364e69600402a1c003787"
+    },
+    {
+      "value": 794,
+      "script_pubkey": "a9141d8a606e1117f1da4b9bf364e69600402a1c003787"
+    }
+  ]
+}

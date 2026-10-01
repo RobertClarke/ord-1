@@ -1,0 +1,75 @@
+{
+  "name": "magisat_maker_fee_f2",
+  "txid": "72cb8faa3f6806fad40fff7e2bfadfc701d1d320796d5b67932d7adb67c1b954",
+  "height": 865137,
+  "tx_index": 340,
+  "pieces_from": "magisat",
+  "tracked": [
+    {
+      "vin": 2,
+      "outpoint": "a81fb17f144fa13bd6eb47366772e51204b399ef9f05ad6751f3a783cadff9f5:993",
+      "value": 546,
+      "script_pubkey": "5120553f9e4fd8d7b0ef8d25e2cb07d59d9eb8286a31ad54f888f5e917f4c205972a",
+      "height": 829888,
+      "pieces": [
+        {
+          "offset": 1,
+          "start": 2036200000000,
+          "len": 1
+        }
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "outpoint": "1258115d77adcdc796e3b95bbdbdc6ed27d20b7a8b3112d6fe6fc247ea9a1055:14",
+      "value": 600,
+      "sighash": 1
+    },
+    {
+      "outpoint": "1258115d77adcdc796e3b95bbdbdc6ed27d20b7a8b3112d6fe6fc247ea9a1055:13",
+      "value": 600,
+      "sighash": 1
+    },
+    {
+      "outpoint": "a81fb17f144fa13bd6eb47366772e51204b399ef9f05ad6751f3a783cadff9f5:993",
+      "value": 546,
+      "sighash": 131
+    },
+    {
+      "outpoint": "826adee708db6e05a321a112878a7ce674c2d46ea57e0508e7fcb904fbb27907:0",
+      "value": 1660113,
+      "sighash": 1
+    }
+  ],
+  "outputs": [
+    {
+      "value": 1200,
+      "script_pubkey": "51209170209bd48dc27b4132496b3e9ebb9292ac2a1ca1670cc18cbf973c6570c4aa"
+    },
+    {
+      "value": 546,
+      "script_pubkey": "51209170209bd48dc27b4132496b3e9ebb9292ac2a1ca1670cc18cbf973c6570c4aa"
+    },
+    {
+      "value": 487550,
+      "script_pubkey": "a914f92ce75b084f26c8966df8e4655a2fd517d5d09287"
+    },
+    {
+      "value": 12950,
+      "script_pubkey": "a914c4e1178d6dc8426ebd9cd7ee64f3181b6a03bac187"
+    },
+    {
+      "value": 600,
+      "script_pubkey": "a914a5bf82b9ba573b8af56f41f7d5eca9e227a199ed87"
+    },
+    {
+      "value": 600,
+      "script_pubkey": "a914a5bf82b9ba573b8af56f41f7d5eca9e227a199ed87"
+    },
+    {
+      "value": 1140803,
+      "script_pubkey": "a914a5bf82b9ba573b8af56f41f7d5eca9e227a199ed87"
+    }
+  ]
+}

@@ -1,0 +1,75 @@
+{
+  "name": "magisat_single_2023",
+  "txid": "3854c0ba0ea36ac5993be75f366395a21bc77c5621887f0a9e59a77d07e5c500",
+  "height": 812460,
+  "tx_index": 1886,
+  "pieces_from": "magisat",
+  "tracked": [
+    {
+      "vin": 2,
+      "outpoint": "fb8099f23ecef0d69035daf26d901ebb8c39bf8efc473049ff0e25df97a6d9b0:11",
+      "value": 546,
+      "script_pubkey": "5120539a7895940f2edae6e1e937bd53817e0c9f527b0753b6d64438a7079275c435",
+      "height": 811893,
+      "pieces": [
+        {
+          "offset": 0,
+          "start": 4729318139274,
+          "len": 1
+        }
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "outpoint": "a7250cac420a8c7da2748e9983564457655ad5b03ec0734b7950b567b8dfb306:5",
+      "value": 600,
+      "sighash": 1
+    },
+    {
+      "outpoint": "a7250cac420a8c7da2748e9983564457655ad5b03ec0734b7950b567b8dfb306:4",
+      "value": 600,
+      "sighash": 1
+    },
+    {
+      "outpoint": "fb8099f23ecef0d69035daf26d901ebb8c39bf8efc473049ff0e25df97a6d9b0:11",
+      "value": 546,
+      "sighash": 131
+    },
+    {
+      "outpoint": "a7250cac420a8c7da2748e9983564457655ad5b03ec0734b7950b567b8dfb306:6",
+      "value": 309905,
+      "sighash": 1
+    }
+  ],
+  "outputs": [
+    {
+      "value": 1200,
+      "script_pubkey": "a9141290edf4b0002770e1f815ffd79d901d9b1d792787"
+    },
+    {
+      "value": 546,
+      "script_pubkey": "5120ce58112e78c03e4962bd97d2e3059351138a926a759ab398a07cec198f380e6e"
+    },
+    {
+      "value": 35000,
+      "script_pubkey": "5120539a7895940f2edae6e1e937bd53817e0c9f527b0753b6d64438a7079275c435"
+    },
+    {
+      "value": 875,
+      "script_pubkey": "5120ece3eb44846067d15ea280947ade046407cc18524428b69eea50f280a457470b"
+    },
+    {
+      "value": 600,
+      "script_pubkey": "a9141290edf4b0002770e1f815ffd79d901d9b1d792787"
+    },
+    {
+      "value": 600,
+      "script_pubkey": "a9141290edf4b0002770e1f815ffd79d901d9b1d792787"
+    },
+    {
+      "value": 264696,
+      "script_pubkey": "a9141290edf4b0002770e1f815ffd79d901d9b1d792787"
+    }
+  ]
+}

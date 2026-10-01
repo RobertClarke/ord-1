@@ -1,0 +1,95 @@
+{
+  "name": "listing_tx_dev_fill",
+  "txid": "f1c500f81c331d31415902755278e2a599311d8121ac9582bc63ad981efa48fb",
+  "height": 969211,
+  "tx_index": 609,
+  "pieces_from": "fork",
+  "tracked": [
+    {
+      "vin": 2,
+      "outpoint": "0ff177b70d07da3ad994c8cc5dd6a618240f0424939bd12ac2c3f36c95bfe16b:0",
+      "value": 2430,
+      "script_pubkey": "5120a9573902c7a144298657f70cb2b2089bcb996ac1b59b946bcb6f775e94c2a710",
+      "height": 969202,
+      "pieces": [
+        {
+          "offset": 0,
+          "start": 1994598750000000,
+          "len": 1
+        },
+        {
+          "offset": 546,
+          "start": 1993369375000000,
+          "len": 1
+        },
+        {
+          "offset": 1092,
+          "start": 1992889375000000,
+          "len": 1
+        },
+        {
+          "offset": 1638,
+          "start": 1991114375000000,
+          "len": 1
+        },
+        {
+          "offset": 2184,
+          "start": 1987737812500000,
+          "len": 1
+        }
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "outpoint": "33523f4524b2698f8983ab26562471084dcb54431e3ace1f69279bda935601b0:4",
+      "value": 600,
+      "sighash": 1
+    },
+    {
+      "outpoint": "308bdf3be85d43e3a19a207c7a5432660a45ffb33a10f5944d1f2047c3f3d168:3",
+      "value": 600,
+      "sighash": 1
+    },
+    {
+      "outpoint": "0ff177b70d07da3ad994c8cc5dd6a618240f0424939bd12ac2c3f36c95bfe16b:0",
+      "value": 2430,
+      "sighash": 131
+    },
+    {
+      "outpoint": "308bdf3be85d43e3a19a207c7a5432660a45ffb33a10f5944d1f2047c3f3d168:5",
+      "value": 7109381,
+      "sighash": 1
+    }
+  ],
+  "outputs": [
+    {
+      "value": 1200,
+      "script_pubkey": "0014fcbaf9c2aaa793a3f9f4ea5fe07ff7997b6cf169"
+    },
+    {
+      "value": 2430,
+      "script_pubkey": "51200ba43f037438df4eadcf3b6f4195cd7182d5c4aca2cb6716f92394b104532fd2"
+    },
+    {
+      "value": 67093,
+      "script_pubkey": "5120a9573902c7a144298657f70cb2b2089bcb996ac1b59b946bcb6f775e94c2a710"
+    },
+    {
+      "value": 600,
+      "script_pubkey": "0014fcbaf9c2aaa793a3f9f4ea5fe07ff7997b6cf169"
+    },
+    {
+      "value": 600,
+      "script_pubkey": "0014fcbaf9c2aaa793a3f9f4ea5fe07ff7997b6cf169"
+    },
+    {
+      "value": 7029806,
+      "script_pubkey": "0014fcbaf9c2aaa793a3f9f4ea5fe07ff7997b6cf169"
+    },
+    {
+      "value": 10000,
+      "script_pubkey": "001436faa6bb7c5dd756189fd7225a43f9753385a433"
+    }
+  ]
+}

@@ -1,0 +1,75 @@
+{
+  "name": "magisat_f2_period_2024",
+  "txid": "d2d35be449ec5b76f451f8c4ac4f8902473e5013fdc36aff0901ed1b3a3485bd",
+  "height": 835662,
+  "tx_index": 637,
+  "pieces_from": "magisat",
+  "tracked": [
+    {
+      "vin": 2,
+      "outpoint": "5a1ce8bac10b4397d96b12929eecac5fcc882eec65785470fbf556ae370625ce:1",
+      "value": 546,
+      "script_pubkey": "51201047b4bdb0bbf2eae334216bea9ae23c3c186b241a8f5957551d6a21a3e52215",
+      "height": 835451,
+      "pieces": [
+        {
+          "offset": 0,
+          "start": 3331665303580,
+          "len": 1
+        }
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "outpoint": "e1a378f98c53ae0f17e31ab672b67439b7618f7ecc403d97ceb03ac36935397c:38",
+      "value": 600,
+      "sighash": 1
+    },
+    {
+      "outpoint": "e1a378f98c53ae0f17e31ab672b67439b7618f7ecc403d97ceb03ac36935397c:37",
+      "value": 600,
+      "sighash": 1
+    },
+    {
+      "outpoint": "5a1ce8bac10b4397d96b12929eecac5fcc882eec65785470fbf556ae370625ce:1",
+      "value": 546,
+      "sighash": 131
+    },
+    {
+      "outpoint": "30757ab82d6f26e98b1a6d5f0843a7640bce00fddeb657360021c335a8836d67:0",
+      "value": 520000,
+      "sighash": 1
+    }
+  ],
+  "outputs": [
+    {
+      "value": 1200,
+      "script_pubkey": "a9149f7c28e78b4ee80df82bd19b625e59fe051fb09087"
+    },
+    {
+      "value": 546,
+      "script_pubkey": "512043aa4b47e2ecfa1664e2a9eeb95df7ffa50b3a52ba5a606abfb5bc973cf83fc1"
+    },
+    {
+      "value": 30000,
+      "script_pubkey": "a914cc5aa3cbec2909e62ab82281b412d3c591664d0487"
+    },
+    {
+      "value": 15000,
+      "script_pubkey": "a914c4e1178d6dc8426ebd9cd7ee64f3181b6a03bac187"
+    },
+    {
+      "value": 600,
+      "script_pubkey": "a9149f7c28e78b4ee80df82bd19b625e59fe051fb09087"
+    },
+    {
+      "value": 600,
+      "script_pubkey": "a9149f7c28e78b4ee80df82bd19b625e59fe051fb09087"
+    },
+    {
+      "value": 456520,
+      "script_pubkey": "a9149f7c28e78b4ee80df82bd19b625e59fe051fb09087"
+    }
+  ]
+}

@@ -1,0 +1,146 @@
+{
+  "name": "magisat_bulk_variant_2024",
+  "txid": "844265bdfba89e3fc21058807c778ec0ab5d227b35b94927a82043f26212b746",
+  "height": 839508,
+  "tx_index": 642,
+  "pieces_from": "magisat",
+  "tracked": [
+    {
+      "vin": 1,
+      "outpoint": "0a7b5bcc6c064f84efa133b0fb36bef0bc5ca44f0d2f10ba950b9b7bc067835e:1",
+      "value": 546,
+      "script_pubkey": "5120d416608892a5843d0641e1da8871bb8a8b45502338a0054e1ad8c92eaceb07e2",
+      "height": 828472,
+      "pieces": [
+        {
+          "offset": 0,
+          "start": 1739092500000000,
+          "len": 1
+        }
+      ]
+    },
+    {
+      "vin": 2,
+      "outpoint": "faf1be1c7173a2dd7f925f27aa3b2c926febd24bc1f611932f13924d3276eb50:1",
+      "value": 546,
+      "script_pubkey": "512067f5ac82f892eac225ac88fb5209e80bf11e9be8c779d9b7c2e627a1e1c30abf",
+      "height": 839485,
+      "pieces": [
+        {
+          "offset": 0,
+          "start": 1921296875000000,
+          "len": 1
+        }
+      ]
+    },
+    {
+      "vin": 3,
+      "outpoint": "b36c12ab783c114ad0c0d669feac06c6f29641442691d84bcf7b49bb50077df7:3",
+      "value": 546,
+      "script_pubkey": "5120d416608892a5843d0641e1da8871bb8a8b45502338a0054e1ad8c92eaceb07e2",
+      "height": 834568,
+      "pieces": [
+        {
+          "offset": 0,
+          "start": 1169740000000000,
+          "len": 1
+        }
+      ]
+    },
+    {
+      "vin": 4,
+      "outpoint": "67ec9e6932b55ef98c53ce9581ceca17cfb17ddf0623d46ecc6c71355c605225:3",
+      "value": 546,
+      "script_pubkey": "512067f5ac82f892eac225ac88fb5209e80bf11e9be8c779d9b7c2e627a1e1c30abf",
+      "height": 838497,
+      "pieces": [
+        {
+          "offset": 0,
+          "start": 1914973750000000,
+          "len": 1
+        }
+      ]
+    },
+    {
+      "vin": 5,
+      "outpoint": "abeba6b389d2862cf014558f7a6336a60f7f0fd818082cc01aa0e0d29b8ce12a:7",
+      "value": 546,
+      "script_pubkey": "512067f5ac82f892eac225ac88fb5209e80bf11e9be8c779d9b7c2e627a1e1c30abf",
+      "height": 839175,
+      "pieces": [
+        {
+          "offset": 0,
+          "start": 1730422500000000,
+          "len": 1
+        }
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "outpoint": "26962dce207969ca1c8886e1387c89a077d1cc5d631c90df7b4c91a456c56976:5",
+      "value": 600,
+      "sighash": 1
+    },
+    {
+      "outpoint": "0a7b5bcc6c064f84efa133b0fb36bef0bc5ca44f0d2f10ba950b9b7bc067835e:1",
+      "value": 546,
+      "sighash": 131
+    },
+    {
+      "outpoint": "faf1be1c7173a2dd7f925f27aa3b2c926febd24bc1f611932f13924d3276eb50:1",
+      "value": 546,
+      "sighash": 131
+    },
+    {
+      "outpoint": "b36c12ab783c114ad0c0d669feac06c6f29641442691d84bcf7b49bb50077df7:3",
+      "value": 546,
+      "sighash": 131
+    },
+    {
+      "outpoint": "67ec9e6932b55ef98c53ce9581ceca17cfb17ddf0623d46ecc6c71355c605225:3",
+      "value": 546,
+      "sighash": 131
+    },
+    {
+      "outpoint": "abeba6b389d2862cf014558f7a6336a60f7f0fd818082cc01aa0e0d29b8ce12a:7",
+      "value": 546,
+      "sighash": 131
+    },
+    {
+      "outpoint": "35380f0287d9fc74a199083a22ee1a0b07cc96252a7c98657b49d2654b860618:8",
+      "value": 1000000,
+      "sighash": 1
+    }
+  ],
+  "outputs": [
+    {
+      "value": 256130,
+      "script_pubkey": "512028b5ad26ebeb15bf0b8b984718ccec0ab2607a2370b01d77c8ff861d2643755b"
+    },
+    {
+      "value": 122000,
+      "script_pubkey": "5120e6238d17df738fbe2ffbe06fca459db1a1f8fa533376101de64d9512f3d74f3f"
+    },
+    {
+      "value": 122000,
+      "script_pubkey": "5120e6238d17df738fbe2ffbe06fca459db1a1f8fa533376101de64d9512f3d74f3f"
+    },
+    {
+      "value": 122000,
+      "script_pubkey": "5120e6238d17df738fbe2ffbe06fca459db1a1f8fa533376101de64d9512f3d74f3f"
+    },
+    {
+      "value": 122000,
+      "script_pubkey": "5120e6238d17df738fbe2ffbe06fca459db1a1f8fa533376101de64d9512f3d74f3f"
+    },
+    {
+      "value": 122000,
+      "script_pubkey": "5120e6238d17df738fbe2ffbe06fca459db1a1f8fa533376101de64d9512f3d74f3f"
+    },
+    {
+      "value": 75000,
+      "script_pubkey": "a914c4e1178d6dc8426ebd9cd7ee64f3181b6a03bac187"
+    }
+  ]
+}

@@ -1,0 +1,57 @@
+{
+  "name": "magisat_isolation",
+  "txid": "6de0f2f080d5a7b97c4262c00e78b09aa7a2e408899195eb2ca438aad920b2d4",
+  "height": 967884,
+  "tx_index": 2398,
+  "pieces_from": "fork",
+  "tracked": [
+    {
+      "vin": 0,
+      "outpoint": "a45782597d3f1d104d71994f48952fd6ddf547178563b4916f56e68df77c2bc9:0",
+      "value": 58093,
+      "script_pubkey": "512091a44031147ff53c163a6ea2540412569d8362f8667c01cd456943d64a0f75cf",
+      "height": 967878,
+      "pieces": [
+        {
+          "offset": 57997,
+          "start": 45544455750,
+          "len": 1
+        }
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "outpoint": "a45782597d3f1d104d71994f48952fd6ddf547178563b4916f56e68df77c2bc9:0",
+      "value": 58093,
+      "sighash": 1
+    },
+    {
+      "outpoint": "8c0989877cd217475ffb726e54365cfc7a8090ca42e8833231176f405129a1bf:0",
+      "value": 10599,
+      "sighash": 1
+    }
+  ],
+  "outputs": [
+    {
+      "value": 56918,
+      "script_pubkey": "a914930d835cdf55f64074cf9686c56bef8e555dce5a87"
+    },
+    {
+      "value": 587,
+      "script_pubkey": "512091a44031147ff53c163a6ea2540412569d8362f8667c01cd456943d64a0f75cf"
+    },
+    {
+      "value": 588,
+      "script_pubkey": "512091a44031147ff53c163a6ea2540412569d8362f8667c01cd456943d64a0f75cf"
+    },
+    {
+      "value": 2246,
+      "script_pubkey": "a914930d835cdf55f64074cf9686c56bef8e555dce5a87"
+    },
+    {
+      "value": 8000,
+      "script_pubkey": "5120ece3eb44846067d15ea280947ade046407cc18524428b69eea50f280a457470b"
+    }
+  ]
+}

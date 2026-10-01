@@ -1,0 +1,45 @@
+{
+  "name": "psbt_0x81_sale",
+  "txid": "0c47e0acc1b4f2de35cab4a8deaf278fe47f0d9a707135dd8e2488a228a8ec86",
+  "height": 965433,
+  "tx_index": 2213,
+  "pieces_from": "fork",
+  "tracked": [
+    {
+      "vin": 0,
+      "outpoint": "b5de1cbd382e53a52a04adebc15886ac3109edf21bab55fe79abcf13f88b2318:0",
+      "value": 999,
+      "script_pubkey": "00147c6b1a05f2c509bd75b06732f5fbdfa83558093a",
+      "height": 964812,
+      "pieces": [
+        {
+          "offset": 0,
+          "start": 45015194375,
+          "len": 1
+        }
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "outpoint": "b5de1cbd382e53a52a04adebc15886ac3109edf21bab55fe79abcf13f88b2318:0",
+      "value": 999,
+      "sighash": 129
+    },
+    {
+      "outpoint": "e6cf3b355289e3034b472dbfe40df3ff84d8657ba4ddc3b9044e42c370008539:0",
+      "value": 1971420,
+      "sighash": 0
+    }
+  ],
+  "outputs": [
+    {
+      "value": 999,
+      "script_pubkey": "002058cda302aca90e200c8607ca6465c1c95fea4aebdc5779ba84f81498d83b01d8"
+    },
+    {
+      "value": 1970999,
+      "script_pubkey": "00147c6b1a05f2c509bd75b06732f5fbdfa83558093a"
+    }
+  ]
+}

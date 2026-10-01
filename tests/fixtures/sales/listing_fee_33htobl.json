@@ -1,0 +1,58 @@
+{
+  "name": "listing_fee_33htobl",
+  "txid": "4496989b62716ff0df954a29b43fe9ac96a153658801392f5ff25fe2d705aa21",
+  "height": 965573,
+  "tx_index": 681,
+  "pieces_from": "fork",
+  "tracked": [
+    {
+      "vin": 1,
+      "outpoint": "ed1525b9a2f705a0ecd3b73e5eca6483b1470568dd059380ea1e5b960400d507:7",
+      "value": 330,
+      "script_pubkey": "51207b684f1ccc0f387a699660ecdcfa86bd235ff47af7812353025275fd3f705f7f",
+      "height": 959148,
+      "pieces": [
+        {
+          "offset": 0,
+          "start": 45097638768,
+          "len": 1
+        }
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "outpoint": "a5701a0591838331d84025222e7fb5a58819282b956583297ec5b40a3b684052:8",
+      "value": 600,
+      "sighash": 1
+    },
+    {
+      "outpoint": "ed1525b9a2f705a0ecd3b73e5eca6483b1470568dd059380ea1e5b960400d507:7",
+      "value": 330,
+      "sighash": 131
+    },
+    {
+      "outpoint": "3dd95aad5a71dc7dc1ba10999b606bc4e2b7f0d3256bf883d48983fb6a74fc04:1",
+      "value": 10417,
+      "sighash": 1
+    }
+  ],
+  "outputs": [
+    {
+      "value": 930,
+      "script_pubkey": "5120525fd1bfa6cc8b501ec285297e0cf97a2b8fdc8c6bec50209a0d659e5bc41d4c"
+    },
+    {
+      "value": 3000,
+      "script_pubkey": "001477fedacc4fe2a4ddd92a2f7a97343897335b4652"
+    },
+    {
+      "value": 1000,
+      "script_pubkey": "a914117bddbf066e146f9255d323f794e67b5c5a0aac87"
+    },
+    {
+      "value": 5950,
+      "script_pubkey": "a914c09cd066969c52c35ba94681e5a14cdf7d02f38e87"
+    }
+  ]
+}

@@ -1,0 +1,72 @@
+{
+  "name": "magisat_safe_transfer",
+  "txid": "c421d418dc00729c7f0dad77dcbf36b222771014b7f72b55c5d862e633f23471",
+  "height": 966355,
+  "tx_index": 2811,
+  "pieces_from": "fork",
+  "tracked": [
+    {
+      "vin": 0,
+      "outpoint": "98efb148a1c6a3180f3f945e24ca8071bec7afc80d16f4806bf01df8b3fafa28:1",
+      "value": 330,
+      "script_pubkey": "51207efd94ec4746a0aaf4abeba2d8b6448a085d99cc6c22f41dcdcb577783e9ceb6",
+      "height": 966243,
+      "pieces": [
+        {
+          "offset": 0,
+          "start": 1111335000000000,
+          "len": 1
+        }
+      ]
+    },
+    {
+      "vin": 1,
+      "outpoint": "a8242ec8f0dd3d657aa96b4fc47e058512cfcba5f513c84a13806ceb20f90d9e:1",
+      "value": 330,
+      "script_pubkey": "51207efd94ec4746a0aaf4abeba2d8b6448a085d99cc6c22f41dcdcb577783e9ceb6",
+      "height": 965148,
+      "pieces": [
+        {
+          "offset": 0,
+          "start": 886435000000000,
+          "len": 1
+        }
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "outpoint": "98efb148a1c6a3180f3f945e24ca8071bec7afc80d16f4806bf01df8b3fafa28:1",
+      "value": 330,
+      "sighash": 0
+    },
+    {
+      "outpoint": "a8242ec8f0dd3d657aa96b4fc47e058512cfcba5f513c84a13806ceb20f90d9e:1",
+      "value": 330,
+      "sighash": 0
+    },
+    {
+      "outpoint": "52d44a6381779a54723c2af43ce44feb7b768254f9ae6443b2fa615791d30167:6",
+      "value": 13813,
+      "sighash": 0
+    }
+  ],
+  "outputs": [
+    {
+      "value": 330,
+      "script_pubkey": "51202f2675d1ea202f8a81e51ecb8fa353112262003c691b8ff44c222da4d4a8a3ef"
+    },
+    {
+      "value": 330,
+      "script_pubkey": "51202f2675d1ea202f8a81e51ecb8fa353112262003c691b8ff44c222da4d4a8a3ef"
+    },
+    {
+      "value": 6456,
+      "script_pubkey": "51207efd94ec4746a0aaf4abeba2d8b6448a085d99cc6c22f41dcdcb577783e9ceb6"
+    },
+    {
+      "value": 7000,
+      "script_pubkey": "5120ece3eb44846067d15ea280947ade046407cc18524428b69eea50f280a457470b"
+    }
+  ]
+}

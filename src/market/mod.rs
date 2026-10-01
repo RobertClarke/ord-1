@@ -15,7 +15,9 @@
 //! * sales (`sales.rs`): a tracked input sold by a SINGLE|ANYONECANPAY
 //!   listing, an accepted Magisat offer, a two-party ALL|ANYONECANPAY PSBT or
 //!   a fee-only marketplace shape, priced and attributed by the fee outputs
-//!   (`marketplaces.rs`, `data/marketplaces.json`).
+//!   (`marketplaces.rs`, `data/marketplaces.json`). Real transactions of
+//!   each shape, and lookalikes that are not sales, are fixtures
+//!   (`fixtures.rs`, `tests/fixtures/sales`).
 
 mod inscriptions;
 pub mod marketplaces;
@@ -23,6 +25,8 @@ mod sales;
 mod units;
 mod view;
 
+#[cfg(test)]
+mod fixtures;
 #[cfg(test)]
 mod tests;
 

@@ -1,0 +1,45 @@
+{
+  "name": "psbt_0x81_separate_payment",
+  "txid": "96e080d3531f4c59893c83a7c242260c0fae0b45a806d6fd7959c32acb4a0e45",
+  "height": 965453,
+  "tx_index": 575,
+  "pieces_from": "fork",
+  "tracked": [
+    {
+      "vin": 0,
+      "outpoint": "00d5119a232ab1c3bfb7f584003695050d91e262edb4fbcdd6923936d4ca9f0d:0",
+      "value": 999,
+      "script_pubkey": "51205bc4896761eb7bbac5760b6c870e7508ee70f4f8d268a40dad417147649d1d3e",
+      "height": 963168,
+      "pieces": [
+        {
+          "offset": 0,
+          "start": 45086527080,
+          "len": 1
+        }
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "outpoint": "00d5119a232ab1c3bfb7f584003695050d91e262edb4fbcdd6923936d4ca9f0d:0",
+      "value": 999,
+      "sighash": 129
+    },
+    {
+      "outpoint": "427cd6201ca16fe768424a5ed5832ceeea07a211c47ac9364e7286dd77fbb757:0",
+      "value": 1974599,
+      "sighash": 0
+    }
+  ],
+  "outputs": [
+    {
+      "value": 999,
+      "script_pubkey": "0020586419bedf046261f426a14dfe0f631164fc2a72b6781b5657cdee2090a45652"
+    },
+    {
+      "value": 1973999,
+      "script_pubkey": "0014cd6ba48f589761e9e55fd9ca7b2b40fd9106a15e"
+    }
+  ]
+}

@@ -1,0 +1,85 @@
+{
+  "name": "magisat_0_1_btc",
+  "txid": "a67fb7f7a12730a47d43902e9388856c928c4e791167cb193931db61963d95b5",
+  "height": 961203,
+  "tx_index": 158,
+  "pieces_from": "magisat",
+  "tracked": [
+    {
+      "vin": 2,
+      "outpoint": "275ff4eb4c9c338c4321f7c76a2e0fb0b0492ecc18b82a060d905761961d462d:0",
+      "value": 546,
+      "script_pubkey": "5120290a87b51d099560eeda6c82656ba4c479a60179e57a7da152f4b198dbd44f76",
+      "height": 931121,
+      "pieces": [
+        {
+          "offset": 0,
+          "start": 1996680000000000,
+          "len": 1
+        }
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "outpoint": "f277b35c31276c3edede8c4ed847014782b92463e10491dc510669312a9af598:0",
+      "value": 600,
+      "sighash": 1
+    },
+    {
+      "outpoint": "f277b35c31276c3edede8c4ed847014782b92463e10491dc510669312a9af598:1",
+      "value": 600,
+      "sighash": 1
+    },
+    {
+      "outpoint": "275ff4eb4c9c338c4321f7c76a2e0fb0b0492ecc18b82a060d905761961d462d:0",
+      "value": 546,
+      "sighash": 131
+    },
+    {
+      "outpoint": "b5f629a6b1f9df2cc44127e6378eb7df917aacc71092a92bd1bf12a11042c0cd:0",
+      "value": 1546844,
+      "sighash": 1
+    },
+    {
+      "outpoint": "7d4b1bf267dec81b790705d7ce122cf063fcb91912ad26a47a2287a0eca56711:0",
+      "value": 5132,
+      "sighash": 1
+    },
+    {
+      "outpoint": "f277b35c31276c3edede8c4ed847014782b92463e10491dc510669312a9af598:10",
+      "value": 8820649,
+      "sighash": 1
+    }
+  ],
+  "outputs": [
+    {
+      "value": 1200,
+      "script_pubkey": "512020c24c6942adf15859985817b4bb82d946c4291761d8578b634c97de551339fa"
+    },
+    {
+      "value": 546,
+      "script_pubkey": "512020c24c6942adf15859985817b4bb82d946c4291761d8578b634c97de551339fa"
+    },
+    {
+      "value": 9950544,
+      "script_pubkey": "5120290a87b51d099560eeda6c82656ba4c479a60179e57a7da152f4b198dbd44f76"
+    },
+    {
+      "value": 150007,
+      "script_pubkey": "a914c4e1178d6dc8426ebd9cd7ee64f3181b6a03bac187"
+    },
+    {
+      "value": 600,
+      "script_pubkey": "001421e5d857f17b105e0aedd2040c7c187074bfb6c8"
+    },
+    {
+      "value": 600,
+      "script_pubkey": "001421e5d857f17b105e0aedd2040c7c187074bfb6c8"
+    },
+    {
+      "value": 266896,
+      "script_pubkey": "001421e5d857f17b105e0aedd2040c7c187074bfb6c8"
+    }
+  ]
+}

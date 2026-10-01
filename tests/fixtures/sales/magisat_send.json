@@ -1,0 +1,62 @@
+{
+  "name": "magisat_send",
+  "txid": "8c4d350491d327282f2b212d01f2202c89ba03d86021d5268bb5900fc219f39b",
+  "height": 969120,
+  "tx_index": 2486,
+  "pieces_from": "fork",
+  "tracked": [
+    {
+      "vin": 1,
+      "outpoint": "7ecf57330b4b0c8cf45f6fb27aeeadcdddef0fbd4d57972f61e11ce4348442d4:0",
+      "value": 1000,
+      "script_pubkey": "512074f9c10eec8e8af02c7174dceb142afc71ad088ad2aa80b42f18245fad28edf8",
+      "height": 969108,
+      "pieces": [
+        {
+          "offset": 0,
+          "start": 1086125000000000,
+          "len": 1
+        }
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "outpoint": "09bcb2fe49a93de1b42f557c9786beddc6ab8c601f3d0be03d3f321d343f68bc:0",
+      "value": 546,
+      "sighash": 1
+    },
+    {
+      "outpoint": "7ecf57330b4b0c8cf45f6fb27aeeadcdddef0fbd4d57972f61e11ce4348442d4:0",
+      "value": 1000,
+      "sighash": 1
+    },
+    {
+      "outpoint": "bf680aeff29b7c0d1c56d565552102db3d9aec983de7b52e85a10b7d8f97db31:4",
+      "value": 51380,
+      "sighash": 1
+    }
+  ],
+  "outputs": [
+    {
+      "value": 546,
+      "script_pubkey": "a914d5742d12d125592a60a0b8a9b5359b330b0e190387"
+    },
+    {
+      "value": 1000,
+      "script_pubkey": "5120ea5a81d0a10b32795cf94375333957ab50331ef4c7039cff02eea4b2441ba882"
+    },
+    {
+      "value": 1004,
+      "script_pubkey": "a914d5742d12d125592a60a0b8a9b5359b330b0e190387"
+    },
+    {
+      "value": 10000,
+      "script_pubkey": "a914c4e1178d6dc8426ebd9cd7ee64f3181b6a03bac187"
+    },
+    {
+      "value": 40000,
+      "script_pubkey": "001415cae221d0a686ed29a43c3b02a78913c9554704"
+    }
+  ]
+}

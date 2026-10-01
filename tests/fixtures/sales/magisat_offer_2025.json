@@ -1,0 +1,53 @@
+{
+  "name": "magisat_offer_2025",
+  "txid": "19df449751a6bc87d75195f282a3886d14f256541e052d4239d7e3ca590097dc",
+  "height": 914477,
+  "tx_index": 527,
+  "pieces_from": "magisat",
+  "tracked": [
+    {
+      "vin": 0,
+      "outpoint": "fc0eae395a09fde8a6b1f3a8dfa9b46cf8369a50d44d84693bdc43a2aaba7e9d:1",
+      "value": 546,
+      "script_pubkey": "5120fe6847f7809efb9b87b1be4fcdcfa74974ad57fcffd16c4e5f0fb95a76de46b5",
+      "height": 885276,
+      "pieces": [
+        {
+          "offset": 0,
+          "start": 1444444114444441,
+          "len": 1
+        }
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "outpoint": "fc0eae395a09fde8a6b1f3a8dfa9b46cf8369a50d44d84693bdc43a2aaba7e9d:1",
+      "value": 546,
+      "sighash": 1
+    },
+    {
+      "outpoint": "ee4807d955c7388187f2648b1b3abedebf0f6ec343b56692c1d8b1cfba22bed8:0",
+      "value": 4171945,
+      "sighash": 1
+    }
+  ],
+  "outputs": [
+    {
+      "value": 546,
+      "script_pubkey": "51208ff267461c6c4c6063b34ba1719a7bccc0fcfc09eb6dd5c9b099693129b1216d"
+    },
+    {
+      "value": 3960000,
+      "script_pubkey": "5120fe6847f7809efb9b87b1be4fcdcfa74974ad57fcffd16c4e5f0fb95a76de46b5"
+    },
+    {
+      "value": 80000,
+      "script_pubkey": "a914c4e1178d6dc8426ebd9cd7ee64f3181b6a03bac187"
+    },
+    {
+      "value": 131635,
+      "script_pubkey": "a91405935f88035e0e23861a27f6d06ef41bbee2087487"
+    }
+  ]
+}
