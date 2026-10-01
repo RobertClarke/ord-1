@@ -16,7 +16,7 @@
 //! consumer's `next_block` is a channel receive.
 
 use {
-  super::{RetryPolicy, Rpc, enters_utxo_set, utxo::UtxoMap},
+  super::{RetryPolicy, Rpc, enters_utxo_set, input_envelopes, input_sighash, utxo::UtxoMap},
   crate::model::{ResolvedBlock, ResolvedInput, ResolvedTx},
   anyhow::{Context, anyhow, ensure},
   bitcoin::{
@@ -491,6 +491,30 @@ fn prepare(
   raw: &[u8],
   created: &mut FxHashMap<OutPoint, (u64, usize)>,
 ) -> anyhow::Result<PreparedBlock> {
+  prepare_with(height, hash, raw, created, true)
+}
+
+/// Decodes a raw block exactly like the fast source's fetchers, without the
+/// UTXO value map: inputs spending outputs of earlier blocks keep value 0.
+/// `witness: false` skips reading sighash flags and envelopes. For
+/// validation and benchmarks.
+#[doc(hidden)]
+pub fn decode_block(
+  height: u32,
+  hash: BlockHash,
+  raw: &[u8],
+  witness: bool,
+) -> anyhow::Result<ResolvedBlock> {
+  prepare_with(height, hash, raw, &mut FxHashMap::default(), witness).map(|prepared| prepared.block)
+}
+
+fn prepare_with(
+  height: u32,
+  hash: BlockHash,
+  raw: &[u8],
+  created: &mut FxHashMap<OutPoint, (u64, usize)>,
+  witness: bool,
+) -> anyhow::Result<PreparedBlock> {
   let block = consensus::deserialize::<Block>(raw)
     .with_context(|| format!("decoding block {height} ({hash})"))?;
 
@@ -554,8 +578,14 @@ fn prepare(
           ResolvedInput {
             previous_output: outpoint,
             value,
-            sighash: None,
-            envelopes: Vec::new(),
+            sighash: witness
+              .then(|| input_sighash(&input.script_sig, &input.witness))
+              .flatten(),
+            envelopes: if witness {
+              input_envelopes(&input.witness)
+            } else {
+              Vec::new()
+            },
           }
         })
         .collect()

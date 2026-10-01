@@ -23,7 +23,7 @@ use {
   crossbeam_channel::bounded,
   ord::{
     model::ResolvedBlock,
-    source::{FastSource, FastSyncOptions, LiveSource, Rpc, RpcAuth, RpcConfig},
+    source::{FastSource, FastSyncOptions, LiveSource, Rpc, RpcAuth, RpcConfig, decode_block},
   },
   std::{
     fs,
@@ -68,6 +68,11 @@ struct Args {
   /// on `--fetch-threads` threads (no UTXO map), e.g. to pick fetch_threads.
   #[arg(long)]
   fetch_only: bool,
+  /// Like `--fetch-only`, but decode every block twice with the fast
+  /// source's own preparation, without and with reading sighash flags and
+  /// envelopes, and report the CPU cost of the latter.
+  #[arg(long)]
+  prepare_only: bool,
   #[arg(long, default_value_t = 10)]
   report_secs: u64,
   #[arg(long, env = "ORD_BITCOIN_RPC_URL")]
@@ -109,6 +114,8 @@ fn main() -> anyhow::Result<()> {
     live_only(&args, rpc)
   } else if args.fetch_only {
     fetch_only(&args, rpc)
+  } else if args.prepare_only {
+    prepare_only(&args, rpc)
   } else {
     fast(&args, rpc)
   }
@@ -312,6 +319,123 @@ fn fetch_only(args: &Args, rpc: Rpc) -> anyhow::Result<()> {
     args.fetch_threads,
     hashes.len() as f64 / elapsed,
     bytes.load(Ordering::Relaxed) as f64 / elapsed / 1e6,
+  );
+  Ok(())
+}
+
+fn prepare_only(args: &Args, rpc: Rpc) -> anyhow::Result<()> {
+  let mut hashes = Vec::new();
+  let mut height = args.from;
+  while height <= args.to {
+    let end = args.to.min(height.saturating_add(1999));
+    hashes.extend(rpc.block_hashes(height..end + 1)?);
+    height = end + 1;
+  }
+
+  #[derive(Default)]
+  struct Sums {
+    blocks: u64,
+    bytes: u64,
+    inputs: u64,
+    signed: u64,
+    envelopes: u64,
+    fetch: Duration,
+    without: Duration,
+    with: Duration,
+  }
+
+  let start = Instant::now();
+  let next = Arc::new(AtomicU64::new(0));
+  let hashes = Arc::new(hashes);
+  let workers = (0..args.fetch_threads)
+    .map(|_| {
+      let (rpc, next, hashes) = (rpc.clone(), next.clone(), hashes.clone());
+      let from = args.from;
+      thread::spawn(move || -> anyhow::Result<Sums> {
+        let mut sums = Sums::default();
+        loop {
+          let i = next.fetch_add(1, Ordering::Relaxed) as usize;
+          let Some(&hash) = hashes.get(i) else {
+            return Ok(sums);
+          };
+          let height = from + i as u32;
+
+          let t = Instant::now();
+          let raw = rpc.block_raw(hash)?;
+          sums.fetch += t.elapsed();
+
+          // Alternate the order so neither variant always runs warm.
+          let timed = |witness: bool| -> anyhow::Result<(Duration, ResolvedBlock)> {
+            let t = Instant::now();
+            let block = decode_block(height, hash, &raw, witness)?;
+            Ok((t.elapsed(), block))
+          };
+          let (without, with, block) = if i.is_multiple_of(2) {
+            let (without, _) = timed(false)?;
+            let (with, block) = timed(true)?;
+            (without, with, block)
+          } else {
+            let (with, block) = timed(true)?;
+            let (without, _) = timed(false)?;
+            (without, with, block)
+          };
+
+          sums.blocks += 1;
+          sums.bytes += raw.len() as u64;
+          sums.without += without;
+          sums.with += with;
+          for tx in &block.txs {
+            sums.inputs += tx.inputs.len() as u64;
+            for input in &tx.inputs {
+              sums.signed += u64::from(input.sighash.is_some());
+              sums.envelopes += input.envelopes.len() as u64;
+            }
+          }
+        }
+      })
+    })
+    .collect::<Vec<_>>();
+
+  let mut total = Sums::default();
+  for worker in workers {
+    let sums = worker.join().unwrap()?;
+    total.blocks += sums.blocks;
+    total.bytes += sums.bytes;
+    total.inputs += sums.inputs;
+    total.signed += sums.signed;
+    total.envelopes += sums.envelopes;
+    total.fetch += sums.fetch;
+    total.without += sums.without;
+    total.with += sums.with;
+  }
+
+  let elapsed = start.elapsed().as_secs_f64();
+  let per_block = |duration: Duration| duration.as_secs_f64() * 1e3 / total.blocks as f64;
+  println!(
+    "{} blocks {}..={}, {:.2} GB raw in {elapsed:.1}s with {} threads ({:.1} blocks/s, {:.1} MB/s raw)",
+    total.blocks,
+    args.from,
+    args.to,
+    total.bytes as f64 / 1e9,
+    args.fetch_threads,
+    total.blocks as f64 / elapsed,
+    total.bytes as f64 / elapsed / 1e6,
+  );
+  println!(
+    "per block: fetch {:.2} ms, prepare without witness {:.3} ms, with {:.3} ms (+{:.3} ms, {:+.1}%)",
+    per_block(total.fetch),
+    per_block(total.without),
+    per_block(total.with),
+    per_block(total.with) - per_block(total.without),
+    100.0 * (total.with.as_secs_f64() / total.without.as_secs_f64() - 1.0),
+  );
+  println!(
+    "{} inputs, {} with a sighash flag ({:.1}%), {} envelopes; witness reading costs {:.1} ns per input",
+    total.inputs,
+    total.signed,
+    100.0 * total.signed as f64 / total.inputs as f64,
+    total.envelopes,
+    (total.with.as_secs_f64() - total.without.as_secs_f64()) * 1e9 / total.inputs as f64,
   );
   Ok(())
 }

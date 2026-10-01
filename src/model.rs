@@ -50,10 +50,27 @@ pub struct ResolvedInput {
 /// One inscription envelope revealed by an input. Per ord, it inscribes the
 /// sat at `pointer` (an offset into the transaction's input sats) when the
 /// pointer tag is present and points inside the outputs, otherwise the first
-/// sat of the input that reveals it.
+/// sat of the input that reveals it, unless the inscription is unbound (see
+/// `unrecognized_even_field`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Envelope {
+  /// ord's `Inscription::pointer()`: the first value of tag 2 before the
+  /// body, little-endian; `None` if there is none or a byte past the eighth
+  /// is not zero.
   pub pointer: Option<u64>,
+  /// ord's `unrecognized_even_field`. ord makes an inscription **unbound**
+  /// (credited to no sat, filed under its unbound outpoint) exactly when
+  /// this is set or the revealing input spends a 0-value output
+  /// (`ResolvedInput::value == 0`); nothing else unbinds one (other curses
+  /// only affect numbering).
+  ///
+  /// Set when, of the complete (tag, value) pairs before the body (an
+  /// incomplete trailing tag is ignored), any is left after ord takes the
+  /// tags it knows (the first value of each of 1, 2, 7, 9, 11, 13, 19; every
+  /// value of 3, 5, 17) and that tag's first byte is even: an unknown even
+  /// tag (`[0]`, 4, 66 "unbound", even `OP_PUSHNUM`s such as OP_4 used as
+  /// tags, multi-byte tags like `[2, 0]`) or a repeated pointer tag 2.
+  pub unrecognized_even_field: bool,
 }
 
 /// A run of consecutive tracked sats at consecutive offsets: sat `start + i`

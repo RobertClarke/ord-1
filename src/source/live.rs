@@ -3,13 +3,13 @@
 
 use {
   super::{
-    Rpc, hex,
+    Rpc, hex, input_envelopes, input_sighash,
     rpc::{ParseError, RpcError},
   },
   crate::model::{ResolvedBlock, ResolvedInput, ResolvedTx},
   anyhow::{Context, anyhow, bail, ensure},
   bitcoin::{
-    Amount, BlockHash, CompactTarget, OutPoint, ScriptBuf, TxMerkleNode, TxOut, Txid,
+    Amount, BlockHash, CompactTarget, OutPoint, ScriptBuf, TxMerkleNode, TxOut, Txid, Witness,
     block::{Header, Version},
     hashes::Hash,
     merkle_tree,
@@ -224,6 +224,11 @@ struct VerboseInput<'a> {
   txid: Option<Txid>,
   #[serde(default)]
   vout: Option<u32>,
+  #[serde(rename = "scriptSig", borrow, default)]
+  script_sig: Option<VerboseScript<'a>>,
+  /// Hex elements; absent when the input has no witness.
+  #[serde(borrow, default)]
+  txinwitness: Vec<&'a str>,
   #[serde(borrow, default)]
   prevout: Option<VerbosePrevout<'a>>,
 }
@@ -338,12 +343,24 @@ fn resolve_tx(index: usize, tx: &VerboseTx) -> anyhow::Result<ResolvedTx> {
         let prevout = input.prevout.as_ref().ok_or_else(|| {
           anyhow!("input {vin} has no prevout (is the block's undo data pruned?)")
         })?;
+        let script_sig = ScriptBuf::from_bytes(
+          hex::decode(
+            input
+              .script_sig
+              .as_ref()
+              .map_or("", |script| script.hex)
+              .as_bytes(),
+          )
+          .with_context(|| format!("scriptSig of input {vin}"))?,
+        );
+        let witness =
+          witness(&input.txinwitness).with_context(|| format!("witness of input {vin}"))?;
         Ok(ResolvedInput {
           previous_output: OutPoint { txid, vout },
           value: parse_btc(prevout.value.get())
             .with_context(|| format!("value of the output spent by input {vin}"))?,
-          sighash: None,
-          envelopes: Vec::new(),
+          sighash: input_sighash(&script_sig, &witness),
+          envelopes: input_envelopes(&witness),
         })
       })
       .collect::<anyhow::Result<Vec<ResolvedInput>>>()?
@@ -376,6 +393,15 @@ fn resolve_tx(index: usize, tx: &VerboseTx) -> anyhow::Result<ResolvedTx> {
     inputs,
     outputs,
   })
+}
+
+/// A witness from its hex elements.
+fn witness(elements: &[&str]) -> anyhow::Result<Witness> {
+  let mut witness = Witness::new();
+  for element in elements {
+    witness.push(hex::decode(element.as_bytes())?);
+  }
+  Ok(witness)
 }
 
 /// Parses a JSON number of BTC exactly into sats, with integer arithmetic

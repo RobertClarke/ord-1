@@ -46,6 +46,7 @@ dirs = "6.0.0"
 env_logger = "0.11.0"
 hex.workspace = true
 log = "0.4.14"
+memchr = "2.7.0"
 ordinals = { version = "0.0.17", path = "crates/ordinals" }
 rayon = "1.10.0"
 redb = "3.1.0"
