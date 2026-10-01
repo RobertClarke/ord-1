@@ -181,6 +181,32 @@ for (const name of exoticTypes) {
   mergedExotic[name] = mergeRanges(EXOTIC_RANGES[name]);
 }
 
+// How many first-of-block (uncommon), last-of-block (black), alpha and omega
+// sats the (merged, half-open) ranges hold, by the JS block math. The Rust
+// tests check the matching rows' totals against these, so a regenerated
+// export carries its own expectations.
+function specialCounts(merged) {
+  const counts = { uncommon: 0, black: 0, alpha: 0, omega: 0 };
+  const multiples = (start, end, residue) => {
+    // n in [start, end) with n % COIN == residue
+    const below = x => (x <= residue ? 0n : (x - residue - 1n) / COIN + 1n);
+    return below(end) - below(start);
+  };
+  for (const [start, end] of merged) {
+    counts.alpha += Number(multiples(start, end, 0n));
+    counts.omega += Number(multiples(start, end, COIN - 1n));
+    const { block: first } = rules.getBlockForSat(start);
+    const { block: last } = rules.getBlockForSat(end - 1n);
+    for (let h = first; h <= last; h++) {
+      const firstSat = getFirstSatOfBlock(h);
+      const lastSat = getLastSatOfBlock(h);
+      if (firstSat >= start && firstSat < end) counts.uncommon++;
+      if (lastSat >= start && lastSat < end) counts.black++;
+    }
+  }
+  return counts;
+}
+
 function u32(n) {
   const b = Buffer.alloc(4);
   b.writeUInt32LE(n);
@@ -219,6 +245,7 @@ function writeExoticRanges() {
       sats: Number(sats),
       first: merged.length ? Number(merged[0][0]) : null,
       end: merged.length ? Number(merged[merged.length - 1][1]) : null,
+      special: specialCounts(merged),
     });
   }
   const bin = Buffer.concat(parts);

@@ -100,7 +100,8 @@ fn coinbase_outputs_place_uncommon_and_black() {
     .iter()
     .map(|d| tracker.catalog().rows()[usize::from(d.row)].id.as_str())
     .collect();
-  assert_eq!(changed, ["uncommon", "epic", "black"]);
+  // Block 840,000's first sat is also an alpha.
+  assert_eq!(changed, ["uncommon", "epic", "black", "alpha_uncommon"]);
   tracker.verify().unwrap();
 }
 

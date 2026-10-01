@@ -137,24 +137,26 @@ defined in `src/sats/rows.rs` (ids are the API contract with the dashboard):
 
 ```
 uncommon rare epic legendary mythic black black_rare black_epic paliblock
-alpha_jan_feb_2009 kilosat_alpha decasat_alpha centasat_alpha megasat_alpha
-kilosat_omega decasat_omega centasat_omega megasat_omega
+alpha_jan_feb_2009 alpha_uncommon kilosat_alpha decasat_alpha centasat_alpha megasat_alpha
+kilosat_omega decasat_omega centasat_omega megasat_omega black_omega
 palindrome_1d palindrome_2d palindrome_perfect_palinception bounty3_name
 vintage_uncommon vintage_black vintage_alpha vintage_omega
-block9 450x block9_alpha block9_omega block9_palindrome
+block9 450x block9_1st_tx block9_alpha block9_omega block9_palindrome
 block78_alpha block78_omega block78_palindrome
 block286_alpha block286_omega block286_palindrome
 block_666_alpha block_666_omega block_666_palindrome
 nakamoto_uncommon nakamoto_black nakamoto_alpha nakamoto_omega nakamoto_palindrome
-pizza_uncommon pizza_alpha pizza_omega pizza_palindrome
+pizza_uncommon pizza_black pizza_alpha pizza_omega pizza_palindrome
 jpeg_uncommon jpeg_alpha jpeg_omega jpeg_palindrome
-hitman_uncommon hitman_alpha hitman_omega hitman_palindrome
+hitman_uncommon hitman_black hitman_alpha hitman_omega hitman_palindrome
 sr_uncommon sr_alpha sr_omega sr_black sr_palindrome_3d
 uncommon_2009 rare_2009 black_2009 palindrome_2d_2009
 ```
 
 `*_palindrome` means `palindromes_integer`; `_2009` rows are heights
-`0..=32489`.
+`0..=32489`. A row may also have a sat-number scope (`Row::sats`):
+`block9_1st_tx` is the block 9 sats of the first bitcoin transaction,
+`[45e9, 46e9)` (block 170 sent them to Hal Finney).
 
 For each row the tracker maintains (§5): `total` (all sats that will ever
 exist, computed once), `mined`, `located` (in spendable outputs), `burned`

@@ -371,6 +371,9 @@ fn brute_row_counts(catalog: &SatCatalog, start: u64, len: u64) -> RowCounts {
         && row
           .heights
           .is_none_or(|(from, to)| u64::from(from) <= h && h <= u64::from(to))
+        && row
+          .sats
+          .is_none_or(|(start, end)| start <= sat && sat < end)
       {
         counts[id] += 1;
       }
@@ -529,17 +532,20 @@ fn sat_rows() {
     [
       "uncommon",
       "alpha_jan_feb_2009",
+      "alpha_uncommon",
       "vintage_uncommon",
       "vintage_alpha",
       "block9",
       "450x",
+      "block9_1st_tx",
       "block9_alpha",
       "nakamoto_uncommon",
       "nakamoto_alpha",
       "uncommon_2009"
     ]
   );
-  assert_eq!(ids(45_000_000_001), ["block9", "450x"]);
+  assert_eq!(ids(45_000_000_001), ["block9", "450x", "block9_1st_tx"]);
+  assert_eq!(ids(46_000_000_001), ["block9"]);
   assert!(ids(5_000_000_001).is_empty());
   assert_eq!(
     ids(0),
@@ -550,6 +556,7 @@ fn sat_rows() {
       "legendary",
       "mythic",
       "alpha_jan_feb_2009",
+      "alpha_uncommon",
       "megasat_alpha",
       "vintage_uncommon",
       "vintage_alpha",
@@ -594,6 +601,7 @@ fn invalid_rows_and_configs_are_rejected() {
     all_of: all_of.to_vec(),
     any_of: Vec::new(),
     heights: None,
+    sats: None,
     range,
   };
   let config = TrackerConfig::default();
@@ -689,17 +697,70 @@ fn uncommons_inside(catalog: &SatCatalog, t: SatType) -> Vec<u64> {
   sats
 }
 
+/// The JS counts of uncommon/black/alpha/omega sats inside each exotic
+/// type's ranges, written into the manifest by tools/export-monitoring-data.js
+/// (regenerated with the data, so a new export carries its expectations).
+fn js_special_count(t: SatType, kind: &str) -> u64 {
+  static MANIFEST: OnceLock<serde_json::Value> = OnceLock::new();
+  let manifest = MANIFEST.get_or_init(|| {
+    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/data/exotic-ranges.json");
+    serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()
+  });
+  manifest["types"]
+    .as_array()
+    .unwrap()
+    .iter()
+    .find(|entry| entry["name"] == t.name())
+    .and_then(|entry| entry["special"][kind].as_u64())
+    .unwrap_or_else(|| panic!("no {kind} count for {t} in data/exotic-ranges.json"))
+}
+
+#[test]
+fn combination_row_totals_match_the_js_counts() {
+  // E.g. today: pizza 378 uncommon, 199 black, 10,192 alpha, 10,000 omega
+  // (the JS reads EXOTIC_RANGES' ends as inclusive).
+  use SatType::*;
+  let catalog = default_catalog();
+  let mut checked = 0;
+  for (prefix, t, kinds) in [
+    (
+      "vintage",
+      Vintage,
+      &["uncommon", "black", "alpha", "omega"][..],
+    ),
+    ("block9", Block9, &["alpha", "omega"]),
+    ("block78", Block78, &["alpha", "omega"]),
+    ("block286", Block286, &["alpha", "omega"]),
+    ("block_666", Block666, &["alpha", "omega"]),
+    (
+      "nakamoto",
+      Nakamoto,
+      &["uncommon", "black", "alpha", "omega"],
+    ),
+    ("pizza", Pizza, &["uncommon", "black", "alpha", "omega"]),
+    ("jpeg", Jpeg, &["uncommon", "alpha", "omega"]),
+    ("hitman", Hitman, &["uncommon", "black", "alpha", "omega"]),
+    ("sr", Sr1stAuction, &["uncommon", "black", "alpha", "omega"]),
+  ] {
+    for kind in kinds {
+      let id = format!("{prefix}_{kind}");
+      let row = catalog.row_id(&id).unwrap_or_else(|| panic!("no row {id}"));
+      assert_eq!(catalog.row_total(row), js_special_count(t, kind), "{id}");
+      checked += 1;
+    }
+  }
+  assert_eq!(checked, 31);
+}
+
 #[test]
 fn collection_uncommon_rows() {
-  // Counting first-of-block sats inside EXOTIC_RANGES with the JS
-  // (getBlockForSat / getFirstSatOfBlock, hitman's overlapping ranges
-  // de-duplicated) gives these.
   let expected = [
-    ("pizza_uncommon", SatType::Pizza, 378),
-    ("jpeg_uncommon", SatType::Jpeg, 20),
-    ("hitman_uncommon", SatType::Hitman, 56),
-    ("sr_uncommon", SatType::Sr1stAuction, 1_699),
-  ];
+    ("pizza_uncommon", SatType::Pizza),
+    ("jpeg_uncommon", SatType::Jpeg),
+    ("hitman_uncommon", SatType::Hitman),
+    ("sr_uncommon", SatType::Sr1stAuction),
+  ]
+  .map(|(id, t)| (id, t, js_special_count(t, "uncommon")));
   for catalog in [default_catalog(), rangeless_catalog(), custom_catalog()] {
     for (id, t, total) in expected {
       let row = catalog.row_id(id).unwrap();
@@ -836,4 +897,63 @@ fn row_ranks_order_rows_by_rarity() {
   ranks.sort_unstable();
   assert_eq!(ranks, (0..catalog.rows().len()).collect::<Vec<_>>());
   assert_eq!(catalog.row_rank(u16::MAX), usize::MAX);
+}
+
+#[test]
+fn magisat_rows() {
+  // Rows of sats we already track that Magisat trades.
+  let catalog = default_catalog();
+  let total = |id: &str| catalog.row_total(catalog.row_id(id).unwrap());
+  // Brute force over every block: first sats that are alphas, last sats
+  // that are omegas.
+  let (mut alpha_uncommon, mut black_omega) = (0, 0);
+  for height in 0..6_930_000u64 {
+    let first = first_sat(height);
+    alpha_uncommon += u64::from(first.is_multiple_of(COIN));
+    black_omega += u64::from((first + subsidy(height)).is_multiple_of(COIN));
+  }
+  assert_eq!(total("alpha_uncommon"), alpha_uncommon);
+  assert_eq!(total("black_omega"), black_omega);
+  assert_eq!(
+    total("pizza_black"),
+    js_special_count(SatType::Pizza, "black")
+  );
+  assert_eq!(
+    total("hitman_black"),
+    js_special_count(SatType::Hitman, "black")
+  );
+  // Block 9's first-transaction sats: a range row with a sat scope.
+  let first_tx = catalog.row_id("block9_1st_tx").unwrap();
+  assert_eq!(catalog.row_total(first_tx), 1_000_000_000);
+  assert_eq!(
+    rangeless_catalog().row_total(rangeless_catalog().row_id("block9_1st_tx").unwrap()),
+    rangeless_catalog()
+      .tracked_runs(45_000_000_000, 46_000_000_000)
+      .iter()
+      .map(|(_, len)| len)
+      .sum::<u64>()
+  );
+  let counts = catalog.row_counts(45_000_000_000, 5_000_000_000);
+  assert!(counts.contains(&(first_tx, 1_000_000_000)));
+  let counts = catalog.row_counts(45_999_999_990, 20);
+  assert!(counts.contains(&(first_tx, 10)));
+  assert!(catalog.sat_rows(45_999_999_999).contains(&first_tx));
+  assert!(!catalog.sat_rows(46_000_000_000).contains(&first_tx));
+  let first = catalog.sat_rows(45_000_000_000);
+  for id in ["alpha_uncommon", "block9_1st_tx"] {
+    assert!(first.contains(&catalog.row_id(id).unwrap()), "{id}");
+  }
+  assert!(
+    catalog
+      .sat_rows(49_999_999_999)
+      .contains(&catalog.row_id("black_omega").unwrap())
+  );
+  // Rows with an empty sat scope are rejected.
+  let mut rows = default_rows();
+  rows.push(Row {
+    sats: Some((5, 5)),
+    ..rows[0].clone()
+  });
+  rows.last_mut().unwrap().id = "empty".into();
+  assert!(SatCatalog::with_rows(&TrackerConfig::default(), rows).is_err());
 }

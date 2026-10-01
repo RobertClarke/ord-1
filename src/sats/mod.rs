@@ -68,7 +68,7 @@ use {
   std::{collections::HashMap, sync::OnceLock},
 };
 
-pub use rows::{HEIGHTS_2009, default_rows};
+pub use rows::{BLOCK9_FIRST_TX, HEIGHTS_2009, default_rows};
 
 /// Bump whenever the port's behaviour or the tracker's aggregate rules
 /// change: it changes the fingerprint, so the store refuses indexes built
@@ -227,6 +227,10 @@ pub struct Row {
   pub any_of: Vec<SatType>,
   /// Inclusive block-height scope of the sat's own block, if any.
   pub heights: Option<(u32, u32)>,
+  /// Sat-number scope `[start, end)`, if any (block 9's first-transaction
+  /// sats).
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub sats: Option<(u64, u64)>,
   /// Pure range-membership row, counted by overlap length.
   pub range: bool,
 }
@@ -274,6 +278,7 @@ struct CompiledRow {
   all: TypeSet,
   any: TypeSet,
   heights: Option<(u64, u64)>,
+  sats: Option<(u64, u64)>,
   range: bool,
   /// Sats the row can contain (exotic types, height scope, implied limits).
   domain: Vec<(u64, u64)>,
@@ -537,6 +542,9 @@ impl SatCatalog {
       if let Some((from, to)) = heights {
         ensure!(from <= to, "row `{}` has an empty height scope", row.id);
       }
+      if let Some((start, end)) = row.sats {
+        ensure!(start < end, "row `{}` has an empty sat scope", row.id);
+      }
 
       let mut domain = self.exotic_intersection(all.intersection(exotic_types));
       if !any.is_empty() && exotic_types.contains_all(any) {
@@ -551,6 +559,9 @@ impl SatCatalog {
       if let Some((from, to)) = heights {
         domain = intersect_ranges(&domain, &[(first_sat(from), first_sat(to + 1))]);
       }
+      if let Some(scope) = row.sats {
+        domain = intersect_ranges(&domain, &[scope]);
+      }
       if all.contains(SatType::AlphaJanFeb2009) {
         domain = intersect_ranges(&domain, &[(0, FIRST_MARCH_2009_SAT)]);
       }
@@ -559,6 +570,7 @@ impl SatCatalog {
         all,
         any,
         heights,
+        sats: row.sats,
         range: row.range,
         domain,
         anchors: Vec::new(),
@@ -905,6 +917,9 @@ impl SatCatalog {
         let h = math::height_of(sat);
         from <= h && h <= to
       })
+      && row
+        .sats
+        .is_none_or(|(start, end)| start <= sat && sat < end)
   }
 
   /// Calls `f` with each per-sat row the sat (with `types`) counts toward.

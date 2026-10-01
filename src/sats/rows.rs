@@ -14,9 +14,14 @@ fn row(id: &str, label: &str, all_of: &[SatType]) -> Row {
     all_of: all_of.to_vec(),
     any_of: Vec::new(),
     heights: None,
+    sats: None,
     range: false,
   }
 }
+
+/// Block 9's sats of the first bitcoin transaction (block 170's
+/// f4184fc5…9e16 sent them, 10 BTC, to Hal Finney): `[45e9, 46e9)`.
+pub const BLOCK9_FIRST_TX: (u64, u64) = (45_000_000_000, 46_000_000_000);
 
 fn range(id: &str, label: &str, t: SatType) -> Row {
   Row {
@@ -48,6 +53,7 @@ pub fn default_rows() -> Vec<Row> {
       "Alpha, Jan–Feb 2009",
       &[AlphaJanFeb2009],
     ),
+    row("alpha_uncommon", "Alpha uncommon", &[Uncommon, Alpha]),
     row("kilosat_alpha", "Kilosat alpha", &[KilosatAlpha]),
     row("decasat_alpha", "Decasat alpha", &[DecasatAlpha]),
     row("centasat_alpha", "Centasat alpha", &[CentasatAlpha]),
@@ -56,6 +62,7 @@ pub fn default_rows() -> Vec<Row> {
     row("decasat_omega", "Decasat omega", &[DecasatOmega]),
     row("centasat_omega", "Centasat omega", &[CentasatOmega]),
     row("megasat_omega", "Megasat omega", &[MegasatOmega]),
+    row("black_omega", "Black omega", &[Black, Omega]),
     row("palindrome_1d", "1D palindrome", &[PalindromesInteger1d]),
     row("palindrome_2d", "2D palindrome", &[PalindromesInteger2d]),
     row(
@@ -70,6 +77,10 @@ pub fn default_rows() -> Vec<Row> {
     row("vintage_omega", "Vintage omega", &[Vintage, Omega]),
     range("block9", "Block 9", Block9),
     range("450x", "450x", Block450x),
+    Row {
+      sats: Some(BLOCK9_FIRST_TX),
+      ..range("block9_1st_tx", "Block 9, 1st tx", Block9)
+    },
     row("block9_alpha", "Block 9 alpha", &[Block9, Alpha]),
     row("block9_omega", "Block 9 omega", &[Block9, Omega]),
     row(
@@ -112,6 +123,7 @@ pub fn default_rows() -> Vec<Row> {
       &[Nakamoto, PalindromesInteger],
     ),
     row("pizza_uncommon", "Pizza uncommon", &[Pizza, Uncommon]),
+    row("pizza_black", "Pizza black", &[Pizza, Black]),
     row("pizza_alpha", "Pizza alpha", &[Pizza, Alpha]),
     row("pizza_omega", "Pizza omega", &[Pizza, Omega]),
     row(
@@ -128,6 +140,7 @@ pub fn default_rows() -> Vec<Row> {
       &[Jpeg, PalindromesInteger],
     ),
     row("hitman_uncommon", "Hitman uncommon", &[Hitman, Uncommon]),
+    row("hitman_black", "Hitman black", &[Hitman, Black]),
     row("hitman_alpha", "Hitman alpha", &[Hitman, Alpha]),
     row("hitman_omega", "Hitman omega", &[Hitman, Omega]),
     row(
@@ -169,21 +182,21 @@ mod tests {
     assert_eq!(
       ids.join(" "),
       "uncommon rare epic legendary mythic black black_rare black_epic paliblock \
-       alpha_jan_feb_2009 kilosat_alpha decasat_alpha centasat_alpha megasat_alpha \
-       kilosat_omega decasat_omega centasat_omega megasat_omega \
+       alpha_jan_feb_2009 alpha_uncommon kilosat_alpha decasat_alpha centasat_alpha megasat_alpha \
+       kilosat_omega decasat_omega centasat_omega megasat_omega black_omega \
        palindrome_1d palindrome_2d palindrome_perfect_palinception bounty3_name \
        vintage_uncommon vintage_black vintage_alpha vintage_omega \
-       block9 450x block9_alpha block9_omega block9_palindrome \
+       block9 450x block9_1st_tx block9_alpha block9_omega block9_palindrome \
        block78_alpha block78_omega block78_palindrome \
        block286_alpha block286_omega block286_palindrome \
        block_666_alpha block_666_omega block_666_palindrome \
        nakamoto_uncommon nakamoto_black nakamoto_alpha nakamoto_omega nakamoto_palindrome \
-       pizza_uncommon pizza_alpha pizza_omega pizza_palindrome \
+       pizza_uncommon pizza_black pizza_alpha pizza_omega pizza_palindrome \
        jpeg_uncommon jpeg_alpha jpeg_omega jpeg_palindrome \
-       hitman_uncommon hitman_alpha hitman_omega hitman_palindrome \
+       hitman_uncommon hitman_black hitman_alpha hitman_omega hitman_palindrome \
        sr_uncommon sr_alpha sr_omega sr_black sr_palindrome_3d \
        uncommon_2009 rare_2009 black_2009 palindrome_2d_2009"
     );
-    assert_eq!(ids.len(), 66);
+    assert_eq!(ids.len(), 71);
   }
 }

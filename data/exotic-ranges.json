@@ -18,7 +18,13 @@
       "ranges": 1,
       "sats": 5000000000000,
       "first": 0,
-      "end": 5000000000000
+      "end": 5000000000000,
+      "special": {
+        "uncommon": 1000,
+        "black": 1000,
+        "alpha": 50000,
+        "omega": 50000
+      }
     },
     {
       "name": "block9",
@@ -26,7 +32,13 @@
       "ranges": 1,
       "sats": 5000000000,
       "first": 45000000000,
-      "end": 50000000000
+      "end": 50000000000,
+      "special": {
+        "uncommon": 1,
+        "black": 1,
+        "alpha": 50,
+        "omega": 50
+      }
     },
     {
       "name": "450x",
@@ -34,7 +46,13 @@
       "ranges": 1,
       "sats": 100000000,
       "first": 45000000000,
-      "end": 45100000000
+      "end": 45100000000,
+      "special": {
+        "uncommon": 1,
+        "black": 0,
+        "alpha": 1,
+        "omega": 1
+      }
     },
     {
       "name": "block78",
@@ -42,7 +60,13 @@
       "ranges": 1,
       "sats": 5000000000,
       "first": 390000000000,
-      "end": 395000000000
+      "end": 395000000000,
+      "special": {
+        "uncommon": 1,
+        "black": 1,
+        "alpha": 50,
+        "omega": 50
+      }
     },
     {
       "name": "block286",
@@ -50,7 +74,13 @@
       "ranges": 1,
       "sats": 5000000000,
       "first": 1430000000000,
-      "end": 1435000000000
+      "end": 1435000000000,
+      "special": {
+        "uncommon": 1,
+        "black": 1,
+        "alpha": 50,
+        "omega": 50
+      }
     },
     {
       "name": "block_666",
@@ -58,7 +88,13 @@
       "ranges": 1,
       "sats": 5000000000,
       "first": 3330000000000,
-      "end": 3335000000000
+      "end": 3335000000000,
+      "special": {
+        "uncommon": 1,
+        "black": 1,
+        "alpha": 50,
+        "omega": 50
+      }
     },
     {
       "name": "nakamoto",
@@ -66,7 +102,13 @@
       "ranges": 19,
       "sats": 95000000000,
       "first": 45000000000,
-      "end": 145490000000000
+      "end": 145490000000000,
+      "special": {
+        "uncommon": 19,
+        "black": 19,
+        "alpha": 950,
+        "omega": 950
+      }
     },
     {
       "name": "jpeg",
@@ -74,7 +116,13 @@
       "ranges": 10,
       "sats": 50000000010,
       "first": 151700000000000,
-      "end": 164765000000001
+      "end": 164765000000001,
+      "special": {
+        "uncommon": 20,
+        "black": 10,
+        "alpha": 510,
+        "omega": 500
+      }
     },
     {
       "name": "pizza",
@@ -82,7 +130,13 @@
       "ranges": 825,
       "sats": 1000000000825,
       "first": 120485000000000,
-      "end": 283940000000001
+      "end": 283940000000001,
+      "special": {
+        "uncommon": 378,
+        "black": 199,
+        "alpha": 10192,
+        "omega": 10000
+      }
     },
     {
       "name": "hitman",
@@ -90,7 +144,13 @@
       "ranges": 5914,
       "sats": 167000005918,
       "first": 4045240644369,
-      "end": 1004243898150001
+      "end": 1004243898150001,
+      "special": {
+        "uncommon": 56,
+        "black": 31,
+        "alpha": 1699,
+        "omega": 1669
+      }
     },
     {
       "name": "sr_1st_auction",
@@ -98,7 +158,13 @@
       "ranges": 405497,
       "sats": 2965651712063,
       "first": 390039123225,
-      "end": 1264166615137433
+      "end": 1264166615137433,
+      "special": {
+        "uncommon": 1699,
+        "black": 871,
+        "alpha": 30537,
+        "omega": 29561
+      }
     },
     {
       "name": "requests",
@@ -106,7 +172,13 @@
       "ranges": 0,
       "sats": 0,
       "first": null,
-      "end": null
+      "end": null,
+      "special": {
+        "uncommon": 0,
+        "black": 0,
+        "alpha": 0,
+        "omega": 0
+      }
     }
   ]
 }
