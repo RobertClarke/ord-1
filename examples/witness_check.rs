@@ -66,6 +66,10 @@ enum Command {
     step: u32,
     #[arg(long, default_value_t = 8)]
     threads: usize,
+    /// Also tally the scriptSig/witness shapes of inputs without a
+    /// recognized sighash flag, printing this many examples.
+    #[arg(long, default_value_t = 0)]
+    unsigned: usize,
   },
   /// Our envelopes per transaction vs the oracle's inscriptions per block.
   Envelopes {
@@ -109,7 +113,8 @@ fn main() -> anyhow::Result<()> {
       to,
       step,
       threads,
-    } => scan(&rpc, from, to, step, threads),
+      unsigned,
+    } => scan(&rpc, from, to, step, threads, unsigned),
     Command::Envelopes {
       heights,
       oracle,
@@ -286,7 +291,44 @@ fn sales(rpc: &Rpc, files: &[PathBuf]) -> anyhow::Result<()> {
   Ok(())
 }
 
-fn scan(rpc: &Rpc, from: u32, to: u32, step: u32, threads: usize) -> anyhow::Result<()> {
+/// A short description of an input's scriptSig and witness: element sizes
+/// and first bytes.
+fn shape(input: &bitcoin::TxIn) -> String {
+  let element = |bytes: &[u8]| match bytes.first() {
+    Some(first) => format!("{}:{first:02x}", bytes.len()),
+    None => "0".into(),
+  };
+  let witness = input.witness.iter().map(element).collect::<Vec<_>>();
+  format!(
+    "scriptSig {} witness [{}]",
+    element(input.script_sig.as_bytes()),
+    witness.join(" ")
+  )
+}
+
+/// The shape class used for tallying: element sizes without contents.
+fn shape_class(input: &bitcoin::TxIn) -> String {
+  let witness = input
+    .witness
+    .iter()
+    .map(|element| element.len().min(100).to_string())
+    .collect::<Vec<_>>();
+  format!(
+    "scriptSig {} witness [{}]",
+    input.script_sig.len().min(100),
+    witness.join(" ")
+  )
+}
+
+fn scan(
+  rpc: &Rpc,
+  from: u32,
+  to: u32,
+  step: u32,
+  threads: usize,
+  unsigned: usize,
+) -> anyhow::Result<()> {
+  let unsigned_shapes = std::sync::Mutex::new((BTreeMap::<String, u64>::new(), Vec::new()));
   let heights = (from..=to)
     .step_by(step.max(1) as usize)
     .collect::<Vec<u32>>();
@@ -303,7 +345,26 @@ fn scan(rpc: &Rpc, from: u32, to: u32, step: u32, threads: usize) -> anyhow::Res
               return Ok(());
             };
             let hash = rpc.block_hash(height)?;
-            let block = decode_block(height, hash, &rpc.block_raw(hash)?, true)?;
+            let raw = rpc.block_raw(hash)?;
+            let block = decode_block(height, hash, &raw, true)?;
+            if unsigned > 0 {
+              let full = consensus::deserialize::<bitcoin::Block>(&raw)?;
+              let mut shapes = unsigned_shapes.lock().unwrap();
+              for (tx, resolved) in full.txdata.iter().zip(&block.txs).skip(1) {
+                for (input, resolved) in tx.input.iter().zip(&resolved.inputs) {
+                  if resolved.sighash.is_none() {
+                    *shapes.0.entry(shape_class(input)).or_default() += 1;
+                    if shapes.1.len() < unsigned {
+                      shapes.1.push(format!(
+                        "{height} {}: {}",
+                        resolved.previous_output,
+                        shape(input)
+                      ));
+                    }
+                  }
+                }
+              }
+            }
             let mut stats = [0u64; 4];
             let mut flagged = Vec::new();
             for tx in &block.txs {
@@ -341,6 +402,19 @@ fn scan(rpc: &Rpc, from: u32, to: u32, step: u32, threads: usize) -> anyhow::Res
     }
     for line in flagged {
       println!("unrecognized even field: {line}");
+    }
+  }
+  if unsigned > 0 {
+    let (classes, examples) = unsigned_shapes.into_inner().unwrap();
+    let mut classes = classes.into_iter().collect::<Vec<_>>();
+    classes.sort_by_key(|(_, count)| std::cmp::Reverse(*count));
+    println!("inputs without a sighash flag, by shape (sizes capped at 100):");
+    for (class, count) in classes.iter().take(25) {
+      println!("  {count:>8} {class}");
+    }
+    println!("examples:");
+    for example in examples {
+      println!("  {example}");
     }
   }
   println!(
