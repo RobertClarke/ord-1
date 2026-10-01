@@ -230,10 +230,11 @@ fn tracker_throughput() {
   }
   eprintln!("generated {blocks} blocks in {:.2?}", t.elapsed());
 
-  let ctx = crate::market::MarketContext {
-    catalog: tracker.catalog().clone(),
-    marketplaces: crate::market::Marketplaces::default(),
-  };
+  let ctx = crate::market::MarketContext::new(
+    tracker.catalog().clone(),
+    crate::market::Marketplaces::default(),
+    crate::settings::Chain::Mainnet,
+  );
   let t = Instant::now();
   let mut moves = 0;
   let mut analyzing = std::time::Duration::ZERO;

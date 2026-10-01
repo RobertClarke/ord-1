@@ -35,6 +35,7 @@ use {
   crate::{
     model::{BlockDelta, MarketDelta, ResolvedBlock},
     sats::SatCatalog,
+    settings::Chain,
   },
   std::sync::Arc,
   view::TxView,
@@ -43,6 +44,29 @@ use {
 pub struct MarketContext {
   pub catalog: Arc<SatCatalog>,
   pub marketplaces: Marketplaces,
+  /// Envelopes count as inscriptions from this height on, like ord
+  /// (`first_inscription_height`).
+  pub first_inscription_height: u32,
+}
+
+impl MarketContext {
+  pub fn new(catalog: Arc<SatCatalog>, marketplaces: Marketplaces, chain: Chain) -> Self {
+    Self {
+      catalog,
+      marketplaces,
+      first_inscription_height: first_inscription_height(chain),
+    }
+  }
+}
+
+/// The height ord starts indexing inscriptions at; earlier envelopes are not
+/// inscriptions (the sources report envelopes at every height).
+pub fn first_inscription_height(chain: Chain) -> u32 {
+  match chain {
+    Chain::Mainnet => 767_430,
+    Chain::Signet => 112_402,
+    Chain::Testnet4 | Chain::Regtest => 0,
+  }
 }
 
 /// Sales and inscriptions in `block`, whose tracker delta is `delta`.
@@ -60,7 +84,9 @@ pub fn analyze(block: &ResolvedBlock, delta: &BlockDelta, ctx: &MarketContext) -
       continue;
     };
     let view = TxView::new(tx, m, block.height);
-    inscriptions::detect(&view, &mut market.inscriptions);
+    if block.height >= ctx.first_inscription_height {
+      inscriptions::detect(&view, &mut market.inscriptions);
+    }
     sales::detect(&view, &ctx.marketplaces, &mut market.sales);
   }
   market

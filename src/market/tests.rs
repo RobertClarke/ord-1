@@ -24,9 +24,9 @@ const BUYER: u8 = 9;
 
 fn context() -> MarketContext {
   let fee = |n: u8| script(n).to_hex_string();
-  MarketContext {
-    catalog: catalog_for(&TrackerConfig::default()),
-    marketplaces: Marketplaces::from_json(&format!(
+  MarketContext::new(
+    catalog_for(&TrackerConfig::default()),
+    Marketplaces::from_json(&format!(
       r#"{{ "marketplaces": [
         {{ "id": "magisat", "fee_addresses": [{{ "script_pubkey": "{}" }}] }},
         {{ "id": "magic_eden", "fee_only_sales": true,
@@ -35,7 +35,8 @@ fn context() -> MarketContext {
       fee(MAGIC_EDEN_FEE)
     ))
     .unwrap(),
-  }
+    crate::settings::Chain::Mainnet,
+  )
 }
 
 fn input(previous_output: OutPoint, value: u64, sighash: Option<u8>) -> ResolvedInput {
@@ -324,11 +325,7 @@ fn legacy_magic_eden_sale_by_fee_address() {
   assert!(delta.sales.is_empty());
 
   // Without the table entry the fee output means nothing.
-  let ctx = MarketContext {
-    catalog: market.ctx.catalog.clone(),
-    marketplaces: Marketplaces::default(),
-  };
-  market.ctx = ctx;
+  market.ctx.marketplaces = Marketplaces::default();
   let (z, _, _) = market.mine_rare(3);
   let delta = market.apply(vec![tx(
     txid(8),
@@ -578,4 +575,30 @@ fn sale_units_of_ranges_and_combinations() {
   );
   // Nothing tracked: no unit.
   assert_eq!(sale_unit(&sale(Vec::new(), 1, 1), catalog), None);
+}
+
+#[test]
+fn envelopes_before_the_first_inscription_height_are_not_inscriptions() {
+  use crate::settings::Chain;
+  assert_eq!(first_inscription_height(Chain::Mainnet), 767_430);
+  assert_eq!(first_inscription_height(Chain::Regtest), 0);
+  let mut market = Market::new();
+  let (x, value, rare) = market.mine_rare(1);
+  market.ctx.first_inscription_height = market.chain.next + 1;
+  let delta = market.apply(vec![tx(
+    txid(40),
+    vec![inscribing(input(x, value, Some(0x00)), &[None])],
+    vec![out_to(546, 1)],
+  )]);
+  assert_eq!(events(&delta), []);
+  market.ctx.first_inscription_height = market.chain.next;
+  let delta = market.apply(vec![tx(
+    txid(41),
+    vec![inscribing(
+      input(op(txid(40), 0), value, Some(0x00)),
+      &[None],
+    )],
+    vec![out_to(546, 1)],
+  )]);
+  assert_eq!(events(&delta), [(rare, 0)]);
 }
