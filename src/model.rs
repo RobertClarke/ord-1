@@ -592,3 +592,60 @@ mod tests {
     assert!(is_extracted(&huge, SINCE, &config));
   }
 }
+
+/// How a sale was made (docs/API.md "Sales and inscriptions").
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SaleKind {
+  /// The seller pre-signed a listing (SINGLE|ANYONECANPAY) that a buyer completed.
+  Listing,
+  /// The seller accepted a buyer's offer.
+  Offer,
+  /// A sale recognized only by a marketplace fee output (e.g. legacy Magic Eden).
+  Unknown,
+}
+
+/// One sale of tracked sats: a seller's input that carried them, paid for in
+/// the same transaction. Self-contained, because sales are kept forever while
+/// moves are pruned.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Sale {
+  pub txid: Txid,
+  pub tx_index: u32,
+  /// The seller's input.
+  pub vin: u32,
+  pub kind: SaleKind,
+  /// Marketplace id (data/marketplaces.json), or "unknown".
+  pub marketplace: String,
+  /// The UTXO the seller sold, as it was (value, script, creation, pieces).
+  pub seller_outpoint: OutPoint,
+  pub seller: TrackedUtxo,
+  /// The output paying the seller, when identified.
+  pub payment_vout: Option<u32>,
+  /// What the buyer paid for this listing: seller proceeds plus the
+  /// marketplace fees attributable to it.
+  pub price: u64,
+  pub seller_proceeds: u64,
+  pub fees: u64,
+  /// The output that received the sold sats (the buyer's), if one did.
+  pub buyer_vout: Option<u32>,
+  pub buyer_script: Option<ScriptBuf>,
+}
+
+/// An inscription envelope that landed on a tracked sat.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct InscriptionEvent {
+  pub sat: u64,
+  pub txid: Txid,
+  /// The input that revealed the envelope.
+  pub vin: u32,
+}
+
+/// What one block did in the market: sales of tracked sats and inscriptions
+/// on tracked sats. Derived from the block and the tracker's delta by
+/// `market::analyze`; persisted and undone with the block.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MarketDelta {
+  pub sales: Vec<Sale>,
+  pub inscriptions: Vec<InscriptionEvent>,
+}
