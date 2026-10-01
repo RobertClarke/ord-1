@@ -12,8 +12,9 @@
 //! looked at:
 //! * inscriptions (`inscriptions.rs`): an envelope whose target sat (ord's
 //!   pointer rule) is one of the transaction's tracked sats;
-//! * sales (`sales.rs`): a tracked input sold by a listing or a fee-only
-//!   marketplace shape, with the marketplace from the fee outputs
+//! * sales (`sales.rs`): a tracked input sold by a SINGLE|ANYONECANPAY
+//!   listing, an accepted Magisat offer, a two-party ALL|ANYONECANPAY PSBT or
+//!   a fee-only marketplace shape, priced and attributed by the fee outputs
 //!   (`marketplaces.rs`, `data/marketplaces.json`).
 
 mod inscriptions;
@@ -26,8 +27,10 @@ mod view;
 mod tests;
 
 pub use {
-  marketplaces::{Marketplace, Marketplaces},
-  sales::{LISTING_SIGHASH, UNKNOWN_MARKETPLACE},
+  marketplaces::{Marketplace, Marketplaces, PriceRule},
+  sales::{
+    LISTING_SIGHASH, MAGISAT_MAKER_FEE_HEIGHT, OFFER_SIGHASH, PSBT_SIGHASH, UNKNOWN_MARKETPLACE,
+  },
   units::{sale_sats, sale_unit},
 };
 

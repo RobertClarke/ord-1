@@ -2,11 +2,11 @@
 //!
 //! ```json
 //! { "marketplaces": [{
-//!     "id": "magic_eden",
-//!     "name": "Magic Eden",
-//!     "fee_only_sales": true,
+//!     "id": "magisat",
+//!     "name": "Magisat",
+//!     "price_rule": "magisat",
 //!     "fee_addresses": [
-//!       { "address": "bc1q…", "from_height": 767430, "to_height": 840000 },
+//!       { "address": "bc1p…", "from_height": 804000, "to_height": 831296 },
 //!       { "script_pubkey": "0014…" }
 //!     ] }] }
 //! ```
@@ -16,9 +16,12 @@
 //!   and `to_height` (inclusive, either open), are the marketplace's fees.
 //!   `address` is a mainnet address; `script_pubkey` (hex) also works on
 //!   any chain.
+//! * `price_rule`: how a listing's price is derived (`PriceRule`):
+//!   `proceeds_plus_fees` (the default) or `magisat` (its maker-fee rule;
+//!   it also enables the Magisat offer shape).
 //! * `fee_only_sales`: a transaction paying the fee address is a sale of the
 //!   tracked sats it moves even without SINGLE|ANYONECANPAY listings (legacy
-//!   Magic Eden).
+//!   Magic Eden; needs a payment to the seller's own script).
 //!
 //! Unknown fields are ignored, so the table can grow.
 
@@ -33,7 +36,22 @@ use {
 pub struct Marketplace {
   pub id: String,
   pub name: String,
+  pub price_rule: PriceRule,
   pub fee_only_sales: bool,
+}
+
+/// How a marketplace's listing sales are priced.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PriceRule {
+  /// Seller proceeds plus the transaction's fee outputs, split over its
+  /// sales in proportion to their proceeds.
+  #[default]
+  ProceedsPlusFees,
+  /// Magisat (docs/SALES-SHAPES.md §3c): the paired payment `P`, plus the
+  /// 0.5 % maker fee `⌊P/199⌋` from block 861,287; the buyer's taker fee in
+  /// the fee output is not part of the price.
+  Magisat,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -61,6 +79,8 @@ struct MarketplaceJson {
   id: String,
   #[serde(default)]
   name: Option<String>,
+  #[serde(default)]
+  price_rule: PriceRule,
   #[serde(default)]
   fee_only_sales: bool,
   #[serde(default)]
@@ -129,6 +149,7 @@ impl Marketplaces {
       table.marketplaces.push(Marketplace {
         name: marketplace.name.unwrap_or_else(|| marketplace.id.clone()),
         id: marketplace.id,
+        price_rule: marketplace.price_rule,
         fee_only_sales: marketplace.fee_only_sales,
       });
     }
@@ -160,7 +181,29 @@ mod tests {
 
   #[test]
   fn embedded_table_parses() {
-    Marketplaces::from_json(EMBEDDED).unwrap();
+    let table = Marketplaces::from_json(EMBEDDED).unwrap();
+    // Magisat's two fee addresses, by the heights they were used at.
+    let script = |address: &str| {
+      Address::from_str(address)
+        .unwrap()
+        .require_network(Network::Bitcoin)
+        .unwrap()
+        .script_pubkey()
+    };
+    let f1 = script("bc1pan37k3yyvpnazh4zsz284hsyvsrucxzjgs5td8h22regpfzhgu9sg4xlc6");
+    let f2 = script("3Ke21osfhEbEryUeqdwAuAY8VKxm5B9uB2");
+    let id = |script: &ScriptBuf, height| table.fee_output(script, height).map(|m| m.id.as_str());
+    assert_eq!(id(&f1, 804_700), Some("magisat"));
+    assert_eq!(id(&f1, 831_279), Some("magisat"));
+    assert_eq!(id(&f1, 840_000), None);
+    assert_eq!(id(&f1, 852_779), Some("magisat"));
+    assert_eq!(id(&f2, 831_279), None);
+    assert_eq!(id(&f2, 831_297), Some("magisat"));
+    assert_eq!(id(&f2, 969_000), Some("magisat"));
+    assert_eq!(
+      table.fee_output(&f1, 900_000).unwrap().price_rule,
+      PriceRule::Magisat
+    );
   }
 
   fn address(network: Network) -> (String, ScriptBuf) {
