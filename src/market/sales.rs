@@ -51,7 +51,15 @@
 //!    no fee or marker, worth at least `MIN_OFFER_PAYMENT`. Fees above half
 //!    the price reject it. A passthrough sale (payment at the item's
 //!    index, on a marketplace with that flow) is a listing, the rest
-//!    offers.
+//!    offers. Three misreadings are ruled out (docs/SALES-SHAPES.md §6.1):
+//!    a rune trade (a runestone output: the items move by edict, tracked
+//!    sats in the bidders' funds are not sold); an item output fed by
+//!    several other parties' inputs (a batch's change, not a delivery);
+//!    and a payment that is an earlier input's UTXO passing whole to
+//!    another script (that input is the trade's item; the input holding
+//!    tracked sats is the buyer's funding). Last, an offer that hands a
+//!    whole UTXO over for less than its value is a misreading too (not
+//!    applied to split sales, nor to listings, whose price is signed).
 //!
 //! Not sales either: a marketplace's escrow output (P2WSH) spent by its
 //! settlement or a recovery transfer (a transaction carrying the marker of a
@@ -104,7 +112,7 @@ use {
     view::TxView,
   },
   crate::model::{MoveInput, ResolvedTx, Sale, SaleKind, script_hash},
-  bitcoin::{OutPoint, Script, TxOut},
+  bitcoin::{OutPoint, Script, TxOut, opcodes},
 };
 
 /// SIGHASH_SINGLE | SIGHASH_ANYONECANPAY: marketplace listings.
@@ -275,7 +283,7 @@ pub(super) fn detect(
   out.append(&mut listings);
   attribute_psbts(view, block, marketplaces, &mut psbts, &marks.fees);
   out.append(&mut psbts);
-  price_offers(&mut offers, &marks.fees);
+  price_offers(view, &mut offers, &marks.fees);
   out.append(&mut offers);
   out.sort_by_key(|sale| sale.vin);
 }
@@ -445,6 +453,19 @@ fn offer(view: &TxView, input: &MoveInput, marks: &Marks) -> Option<Sale> {
   if inputs.iter().all(|other| other.script_hash == seller_hash) {
     return None;
   }
+  // A rune trade (the transaction carries a runestone): its items are runes
+  // and move by edict, and the bidders' escrowed funds pay for them, so
+  // tracked sats in those funds reach the payment or another bidder's
+  // change by FIFO without being sold. Magic Eden's rune bids (1-of-2 P2WSH
+  // escrows, a runestone at output 0) were 9 of the fork's offers, every
+  // one such a misreading, 4 below the UTXO's value; no other offer in
+  // the fork's history carries a runestone.
+  if outputs
+    .iter()
+    .any(|output| is_runestone(&output.script_pubkey))
+  {
+    return None;
+  }
   // The sats that leave the seller's script, and the output that took most
   // of them (a seller may split one sat out of a UTXO and keep the rest).
   let seller = &input.utxo.script_pubkey;
@@ -455,6 +476,27 @@ fn offer(view: &TxView, input: &MoveInput, marks: &Marks) -> Option<Sale> {
     .filter(|&(vout, _)| outputs[vout as usize].script_pubkey != *seller)
     .max_by_key(|&(vout, n)| (n, std::cmp::Reverse(vout)))
     .map(|(vout, _)| vout)?;
+  // A two-party trade delivers the item in an output fed by the seller and
+  // at most one other party (the buyer's padding or funding). An output
+  // merging the inputs of several other parties is a batch's (an exchange
+  // payout's change, a coinjoin), not an item: e.g. a 43 BTC exchange batch
+  // of five 10 BTC inputs, two holding tracked sats, that also paid a
+  // marketplace's fee address.
+  let (item_start, item_end) = view.output_range(item as usize);
+  let mut feeders: Vec<u32> = Vec::new();
+  for (vin, other) in inputs.iter().enumerate() {
+    let (start, end) = view.input_range(vin);
+    if other.script_hash != seller_hash
+      && start < item_end
+      && item_start < end
+      && !feeders.contains(&other.script_hash)
+    {
+      feeders.push(other.script_hash);
+    }
+  }
+  if feeders.len() > 1 {
+    return None;
+  }
   // The outputs the seller's tracked sats went to, which the payment is
   // not (its change and fee inputs are netted out below).
   let items: Vec<u32> = view
@@ -492,6 +534,19 @@ fn offer(view: &TxView, input: &MoveInput, marks: &Marks) -> Option<Sale> {
       .map(|(_, other)| other.value)
       .sum()
   };
+  // An output taking exactly the sats of an input ahead of the seller's,
+  // whole, at another script is that input's UTXO passing to its buyer: the
+  // trade's item (offers put the item first, its funding after), not a
+  // payment. Then the "seller" is the buyer's funding holding tracked sats,
+  // whose sats went on to pay for that item: 11 of the fork's offers, each
+  // "sold" for the item's value (10,000 sats and the like) a UTXO worth up
+  // to 3.5 BTC; no other offer was paid by such an output.
+  let passes_whole = |vout: usize| -> bool {
+    let range = view.output_range(vout);
+    let hash = script_hash(&outputs[vout].script_pubkey);
+    (0..input.vin as usize)
+      .any(|vin| inputs[vin].script_hash != hash && view.input_range(vin) == range)
+  };
   let (payment, net) = outputs
     .iter()
     .enumerate()
@@ -500,6 +555,7 @@ fn offer(view: &TxView, input: &MoveInput, marks: &Marks) -> Option<Sale> {
         && !marks.is_marketplace_output(vout as u32)
         && !output.script_pubkey.is_op_return()
         && output.script_pubkey != *buyer
+        && !passes_whole(vout)
     })
     .map(|(vout, output)| {
       (
@@ -685,8 +741,9 @@ fn attribute_psbts(
 
 /// Prices the transaction's offers: a payment shared by several sales split
 /// by their UTXOs' values, the fees by their proceeds; none when the fees
-/// are more than half the price.
-fn price_offers(sales: &mut Vec<Sale>, fees: &[Fee]) {
+/// are more than half the price, nor an offer whose seller handed over a
+/// whole UTXO for less than its value.
+fn price_offers(view: &TxView, sales: &mut Vec<Sale>, fees: &[Fee]) {
   split_payments(sales);
   let fees: Vec<&Fee> = fees.iter().filter(|fee| offer_fee(fee)).collect();
   let Some(marketplace) = main_marketplace(fees.iter().copied()) else {
@@ -700,6 +757,42 @@ fn price_offers(sales: &mut Vec<Sale>, fees: &[Fee]) {
     return;
   }
   attribute(sales, total, marketplace);
+  // Last line, after the shape rules (rune trades, merged items, an earlier
+  // input's item taken for the payment), which account for every offer the
+  // fork found below its UTXO's value: an offer's payment is inferred, not
+  // signed for, and a seller does not hand over a whole UTXO for less than
+  // the sats in it, so such a reading has the wrong payment. Not applied to
+  // split sales (the seller keeps the rest of the UTXO, so `seller.value`
+  // is not what was sold) nor to listings, whose price the seller signed
+  // (SINGLE|ANYONECANPAY), however low.
+  let before = sales.len();
+  sales.retain(|sale| sale.price >= sale.seller.value || !left_whole(view, sale));
+  if sales.len() < before {
+    attribute(sales, total, marketplace);
+  }
+}
+
+/// No output to the seller's script took any of the sold UTXO's sats.
+fn left_whole(view: &TxView, sale: &Sale) -> bool {
+  let (start, end) = view.input_range(sale.vin as usize);
+  view
+    .tx
+    .outputs
+    .iter()
+    .enumerate()
+    .filter(|(_, output)| output.script_pubkey == sale.seller.script_pubkey)
+    .all(|(vout, _)| {
+      let (from, to) = view.output_range(vout);
+      to <= start || end <= from
+    })
+}
+
+/// An OP_RETURN output whose next opcode is OP_PUSHNUM_13: a runestone.
+fn is_runestone(script: &Script) -> bool {
+  script.as_bytes().starts_with(&[
+    opcodes::all::OP_RETURN.to_u8(),
+    opcodes::all::OP_PUSHNUM_13.to_u8(),
+  ])
 }
 
 /// Splits one payment among the sales it pays (several seller inputs paid

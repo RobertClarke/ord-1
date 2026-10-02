@@ -1387,6 +1387,250 @@ fn raresats_lookalikes_are_not_sales() {
   );
 }
 
+/// Magic Eden's fee address of 2023-2026 (`bc1qcq2…`, to block 940,150).
+const MAGIC_EDEN_FEE: &str = "bc1qcq2uv5nk6hec6kvag3wyevp6574qmsm9scjxc2";
+
+/// Satflow's second fee address, from block 958,599.
+const SATFLOW_FEE_2: &str = "bc1qzwwj9elnghu55g0uwuj8lju4z3yzp7nsatfl0w";
+
+fn pay_to(address: &str, value: u64) -> TxOut {
+  TxOut {
+    value: Amount::from_sat(value),
+    script_pubkey: Address::from_str(address)
+      .unwrap()
+      .require_network(Network::Bitcoin)
+      .unwrap()
+      .script_pubkey(),
+  }
+}
+
+/// Moves the tracked sat of input `vin` of a synthesized fixture to offset
+/// `offset` of that input.
+fn tracked_at(mut fixture: Fixture, vin: u32, offset: u64) -> Fixture {
+  let tracked = fixture
+    .tracked
+    .iter_mut()
+    .find(|tracked| tracked.vin == vin)
+    .unwrap();
+  assert!(offset < tracked.value);
+  tracked.pieces[0].offset = offset;
+  fixture
+}
+
+/// A marketplace offer whose seller is not the input holding tracked sats:
+/// the item at vin 0 (owner 20, 10,000 sats) passes whole to the buyer's
+/// ordinals address (owner 31) at vout 0; the buyer's funding at vin 1
+/// (owner 30, 1,187,791 sats, a tracked sat at offset 16,321) pays the
+/// item's seller 460,000 (owner 21) at vout 1 and Magic Eden's 579-sat
+/// floor fee at vout 2, and gets its change at vout 3. FIFO puts the
+/// funding's tracked sat into the payment: shaped like the funding's own
+/// sale, paid by the 10,000-sat item (Magic Eden, 2023-2024: 11 such
+/// readings, 3,885 to 11,023 sats for UTXOs of up to 3.5 BTC).
+fn funding_pays_for_an_earlier_item(name: &str, item: Option<u64>) -> Fixture {
+  let funding = 1_187_791;
+  let fixture = synthesized(
+    name,
+    900_000,
+    &[
+      (20, 10_000, Some(0x01), item),
+      (30, funding, Some(0x01), Some(uncommon(899_000))),
+    ],
+    vec![
+      out_to(10_000, 31),
+      out_to(460_000, 21),
+      pay_to(MAGIC_EDEN_FEE, 579),
+      out_to(funding - 460_000 - 579 - 1_000, 30),
+    ],
+  );
+  tracked_at(fixture, 1, 16_321)
+}
+
+/// A Magic Eden rune-bid fill: a runestone at vout 0; two bidders' escrows
+/// (owners 50 and 51) and the seller's 546-sat rune UTXOs (owner 60); the
+/// runes to the bidders (owners 70, 71), the seller's rune change, each
+/// escrow's change, the fee, and the seller's payment (owner 61). Bidder
+/// 50's escrow holds a tracked sat at offset 10,697,918, which FIFO puts in
+/// bidder 51's change (4 such readings below the UTXO's value, 5 above).
+fn rune_bid_fill(name: &str, runestone: bool) -> Fixture {
+  let mut outputs = Vec::new();
+  if runestone {
+    outputs.push(TxOut {
+      value: Amount::ZERO,
+      script_pubkey: ScriptBuf::from_hex("6a5d0b00c0a23303e8070100").unwrap(),
+    });
+  }
+  outputs.extend([
+    out_to(546, 70),
+    out_to(546, 71),
+    out_to(546, 60),
+    out_to(9_997_643 + 3_276 - 1_638, 50),
+    out_to(740_183, 51),
+    pay_to(MAGIC_EDEN_FEE, 76_701),
+  ]);
+  let total_in: u64 = 11_998_188 + 2_740_929 + 3 * 546;
+  let spent: u64 = outputs.iter().map(|output| output.value.to_sat()).sum();
+  outputs.push(out_to(total_in - spent - 2_000, 61));
+  let fixture = synthesized(
+    name,
+    900_000,
+    &[
+      (50, 11_998_188, Some(0x01), Some(uncommon(899_100))),
+      (51, 2_740_929, Some(0x01), None),
+      (60, 546, Some(0x00), None),
+      (60, 546, Some(0x00), None),
+      (60, 546, Some(0x00), None),
+    ],
+    outputs,
+  );
+  tracked_at(fixture, 0, 10_697_918)
+}
+
+/// An exchange's batch payout that also pays a marketplace's fee address:
+/// five 10 BTC inputs of five scripts (owners 80..=84), input 1 holding a
+/// tracked sat at offset 924,559,322; payouts to owners 100.., the fee
+/// address, and the change (owner 99), fed by inputs 1-4, which receives
+/// the tracked sat (Satflow's second fee address, first paid by such a
+/// batch at block 958,599: 2 readings, 10 BTC "sold" for 3.08 BTC each).
+fn exchange_batch(name: &str) -> Fixture {
+  let mut outputs: Vec<TxOut> = (0..9)
+    .map(|i| out_to(100_000 + i * 1_000, 100 + i as u8))
+    .collect();
+  outputs.push(out_to(608_613_711, 109));
+  outputs.push(pay_to(SATFLOW_FEE_2, 6_900_000));
+  let spent: u64 = outputs.iter().map(|output| output.value.to_sat()).sum();
+  outputs.push(out_to(5_000_000_000 - spent - 50_000, 99));
+  let fixture = synthesized(
+    name,
+    958_599,
+    &[
+      (80, 1_000_000_000, Some(0x01), None),
+      (81, 1_000_000_000, Some(0x01), Some(uncommon(958_000))),
+      (82, 1_000_000_000, Some(0x01), None),
+      (83, 1_000_000_000, Some(0x01), None),
+      (84, 1_000_000_000, Some(0x01), None),
+    ],
+    outputs,
+  );
+  tracked_at(fixture, 1, 924_559_322)
+}
+
+#[test]
+fn offer_misreadings_are_not_sales() {
+  // The funding is no seller: the output taking exactly the earlier item's
+  // sats is that item's delivery, not a payment.
+  let fixture = funding_pays_for_an_earlier_item("funding", None);
+  assert!(paid(&fixture, "magic_eden"));
+  assert_eq!(sales(&fixture), []);
+  // When the item itself holds tracked sats, it is the one sale: paid
+  // 460,000 at vout 1, the whole fee its own.
+  let fixture = funding_pays_for_an_earlier_item("item and funding", Some(uncommon(899_001)));
+  assert_eq!(
+    sales(&fixture),
+    [sold(
+      0,
+      Offer,
+      "magic_eden",
+      (1, 0),
+      (460_579, 460_000, 579)
+    )]
+  );
+
+  // A rune trade: none of the bidders' sats are sold. Without the runestone
+  // the same transaction reads as bidder 50's sale, which the rule is what
+  // prevents.
+  let fixture = rune_bid_fill("rune bid", true);
+  assert!(paid(&fixture, "magic_eden"));
+  assert_eq!(sales(&fixture), []);
+  let without = rune_bid_fill("rune bid without runestone", false);
+  assert_eq!(
+    sales(&without)
+      .iter()
+      .map(|sale| (sale.0, sale.1, sale.2.as_str(), sale.4))
+      .collect::<Vec<_>>(),
+    [(0, Offer, "magic_eden", 4)]
+  );
+
+  // An exchange batch: the tracked sat lands in the change, fed by four
+  // parties' inputs; no item, no sale.
+  let fixture = exchange_batch("exchange batch");
+  assert!(paid(&fixture, "satflow"));
+  assert_eq!(sales(&fixture), []);
+}
+
+#[test]
+fn offers_below_the_sold_utxo_value() {
+  // The last line: a seller handing over a whole 100,000-sat UTXO (owner 20,
+  // an uncommon at offset 0) to the buyer (owner 31) for a 50,000-sat
+  // payment (owner 21) funded by the buyer (owner 30) is a misreading.
+  let whole = synthesized(
+    "whole",
+    900_000,
+    &[
+      (20, 100_000, Some(0x01), Some(uncommon(899_200))),
+      (30, 80_000, Some(0x01), None),
+    ],
+    vec![
+      out_to(100_000, 31),
+      out_to(50_000, 21),
+      pay_to(MAGIC_EDEN_FEE, 1_250),
+      out_to(80_000 - 50_000 - 1_250 - 1_000, 30),
+    ],
+  );
+  assert_eq!(sales(&whole), []);
+  // The same price for one sat split out of that UTXO, the rest back to the
+  // seller: a sale (the seller keeps 99,454 sats).
+  let split = synthesized(
+    "split",
+    900_000,
+    &[
+      (20, 100_000, Some(0x01), Some(uncommon(899_200))),
+      (30, 80_000, Some(0x01), None),
+    ],
+    vec![
+      out_to(546, 31),
+      out_to(99_454, 20),
+      out_to(50_000, 21),
+      pay_to(MAGIC_EDEN_FEE, 1_250),
+      out_to(80_000 - 50_000 - 1_250 - 1_000, 30),
+    ],
+  );
+  assert_eq!(
+    sales(&split),
+    [sold(
+      0,
+      Offer,
+      "magic_eden",
+      (2, 0),
+      (51_250, 50_000, 1_250)
+    )]
+  );
+  // Paid at least the UTXO's value: a sale.
+  let fair = synthesized(
+    "fair",
+    900_000,
+    &[
+      (20, 100_000, Some(0x01), Some(uncommon(899_200))),
+      (30, 200_000, Some(0x01), None),
+    ],
+    vec![
+      out_to(100_000, 31),
+      out_to(150_000, 21),
+      pay_to(MAGIC_EDEN_FEE, 3_750),
+      out_to(200_000 - 150_000 - 3_750 - 1_000, 30),
+    ],
+  );
+  assert_eq!(
+    sales(&fair),
+    [sold(
+      0,
+      Offer,
+      "magic_eden",
+      (1, 0),
+      (153_750, 150_000, 3_750)
+    )]
+  );
+}
+
 #[test]
 fn every_fixture_is_listed() {
   let mut files: Vec<String> = std::fs::read_dir(dir())

@@ -325,6 +325,31 @@ Rules for the detector:
 5. Sales of inscribed sats are real `0x83` sales but priced as inscriptions:
    keep them, flagged `inscribed` (API.md).
 
+### 6.1 Offers below the sold UTXO's value (rules of 2026-10)
+
+Over the fork's whole sales history (292,912 sales to block 969,592), 18
+had a price below the sold UTXO's value: 17 offers (shape 4, `offer`) and
+one listing. Every offer was a misreading of the transaction, in three
+classes, each now ruled out by a shape rule (replayed over all 78,222
+offer sales: these 22 removed, 9 genuine sales re-priced, nothing else
+changed):
+
+| class | sales | what it is | rule |
+|---|---|---|---|
+| funding taken for a seller | 11 (Magic Eden, 2023-2024) | `[item vin 0] → [item vout 0, payment, fee, change]` where the buyer's funding at vin 1 holds tracked sats: FIFO puts them in the payment, so the funding reads as a seller paid by the item output (10,000 sats for a 0.3 BTC UTXO), e.g. `7b2a675a67dd0fd8a643c2673d48a2bf4bbb94aca83210bc5def23277f1e7462`. In 9 of the 11 the item at vin 0 held tracked sats too and is the real sale (now with the whole fee) | an output taking exactly the sats of an earlier input, whole, at another script, is that input's item, never a payment (no other offer was paid by one) |
+| rune bid fills | 4 below value, 5 more above it | Magic Eden rune bids: a runestone at vout 0, bidders' funds in 1-of-2 P2WSH escrows, each escrow's change back to it, the seller's 546-sat rune UTXOs; a tracked sat in one escrow lands in another bidder's change, e.g. `0409b5475cabb8a67ed1f84eb4252476a713f78363c0cc4eff74bbdfa5fa5cd3` | no offer in a transaction with a runestone (no offer outside these 9 carries one) |
+| exchange batch | 2 (Satflow) | a 43 BTC payout of five 10 BTC inputs, 32 outputs, one of them Satflow's new fee address (its first payment): the two tracked sats land in the batch's change and the largest payout reads as the payment, 3.08 BTC for 10 BTC each, `774a0494884ff37ed2ed9481b7ac936e7869a661d5ebb7a46ecb5f9a1b73921a` | the item output must be fed by the seller and at most one other party (only these 2 and 2 of the rune fills had more) |
+
+A last-line guard drops an offer that hands a whole UTXO over (no sat of it
+returns to the seller's script) for less than its value; it removes nothing
+the rules above leave. It is not applied to split sales (`seller.value` is
+the whole UTXO while the seller keeps most of it) nor to listings: the
+remaining listing below value, a black omega in a 10,000-sat UTXO sold for
+1,000 sats by a SINGLE|ANYONECANPAY signature at block 847,609
+(`67ff982d06614379d66800bb3b7e17011246ffe59df17160a947af6e85ad595c`), is the
+seller's signed price. Two more listings sold at exactly the UTXO's value
+(`premium` 0), also signed.
+
 ## 7. Coverage by stratum
 
 Listing sales (rules a–c, d presence, g) and offers (rule e), by period, buy
