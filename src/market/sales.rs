@@ -43,9 +43,10 @@
 //!    buyer's script. Exchange batches and consolidations (every input
 //!    `0x81`) and custodial withdrawals (the `0x81` input split, a fee
 //!    payer signing ALL) never match. Attributed to the marketplace whose fee
-//!    the transaction pays (Satflow's legacy form), or whose settlement
-//!    (marker or fee) spends the escrow output in the same block; otherwise
-//!    unknown.
+//!    the transaction pays (Satflow's legacy form; not a `proceeds`
+//!    marketplace's, whose sales never take this shape), or whose
+//!    settlement (marker or fee) spends the escrow output in the same block;
+//!    otherwise unknown.
 //! 4. **Offer or passthrough** (Magic Eden's offers and bids, ord.net and
 //!    Ordinals Wallet passthrough sales, Satflow's bid acceptances): no
 //!    listing in the transaction, a fee output of a marketplace (not
@@ -764,7 +765,13 @@ fn attribute_psbts(
   if sales.is_empty() {
     return;
   }
-  if let Some(marketplace) = main_marketplace(fees.iter()) {
+  // A `proceeds` marketplace (raresats.net) sells by listings and marked
+  // offers only: its fee neither attributes nor prices a two-party sale.
+  let fees: Vec<&Fee> = fees
+    .iter()
+    .filter(|fee| fee.marketplace.price_rule != PriceRule::Proceeds)
+    .collect();
+  if let Some(marketplace) = main_marketplace(fees.iter().copied()) {
     attribute(sales, fees.iter().map(|fee| fee.value).sum(), marketplace);
     return;
   }

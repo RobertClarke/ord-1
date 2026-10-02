@@ -1641,8 +1641,68 @@ fn raresats_offer_lookalikes_are_not_sales() {
   }
 }
 
+/// A two-party ALL|ANYONECANPAY sale (Satflow's secure-purchase form,
+/// docs/SALES-SHAPES.md): the seller's 546-sat UTXO (owner 20) signed
+/// `0x81` at vin 0, the buyer's funding (owner 30) signed ALL; the item to
+/// the buyer (owner 31) at vout 0, 60,000 sats to the seller's script at
+/// vout 1, then `extra` (fees, a marker), the buyer's change last.
+fn psbt_sale(name: &str, extra: Vec<TxOut>) -> Fixture {
+  let spent: u64 = extra.iter().map(|output| output.value.to_sat()).sum();
+  let mut outputs = vec![out_to(546, 31), out_to(60_000, 20)];
+  outputs.extend(extra);
+  outputs.push(out_to(9_000, 30));
+  synthesized(
+    name,
+    RARESATS_FROM,
+    &[
+      (20, 546, Some(PSBT_SIGHASH), Some(uncommon(969_300))),
+      (30, 60_000 + spent + 9_000 + 1_000, Some(0x01), None),
+    ],
+    outputs,
+  )
+}
+
+#[test]
+fn raresats_fee_marks_no_two_party_sale() {
+  // raresats.net never sells in this shape: its fee (with or without its
+  // marker) neither attributes the sale nor adds to its price. The sale is
+  // an unknown venue's, at the payment.
+  for (name, extra) in [
+    ("psbt, raresats fee", vec![raresats_fee(1_500)]),
+    (
+      "psbt, raresats fee and marker",
+      vec![raresats_fee(1_500), raresats_marker()],
+    ),
+    ("psbt, raresats marker", vec![raresats_marker()]),
+  ] {
+    let fixture = psbt_sale(name, extra);
+    assert_eq!(
+      sales(&fixture),
+      [sold(
+        0,
+        Listing,
+        UNKNOWN_MARKETPLACE,
+        (1, 0),
+        (60_000, 60_000, 0)
+      )],
+      "{name}"
+    );
+  }
+  // With another marketplace's fee too, the sale is that marketplace's, at
+  // the payment plus its fee only.
+  let both = psbt_sale(
+    "psbt, satflow and raresats fees",
+    vec![pay_to(SATFLOW_FEE_2, 1_200), raresats_fee(1_500)],
+  );
+  assert!(paid(&both, "satflow") && paid(&both, "raresats"));
+  assert_eq!(
+    sales(&both),
+    [sold(0, Listing, "satflow", (1, 0), (61_200, 60_000, 1_200))]
+  );
+}
+
 /// Every recorded fixture's sales are the same with or without raresats'
-/// offer flow: marked offers change nothing else.
+/// offer flow: marked offers change nothing else (and none pays its fee).
 #[test]
 fn raresats_offers_change_no_other_sale() {
   let without = Marketplaces::from_json(&include_str!("../../data/marketplaces.json").replace(
@@ -1668,6 +1728,9 @@ fn raresats_offers_change_no_other_sale() {
     Chain::Mainnet,
   );
   for (name, _) in FIXTURES {
+    // None pays raresats.net's fee, so ignoring it in two-party sales
+    // changes none of them either.
+    assert!(!pays(name, "raresats"), "{name}");
     let (block, delta) = Fixture::load(name).block_and_delta();
     assert_eq!(
       analyze(&block, &delta, &context()).sales,

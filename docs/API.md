@@ -412,7 +412,8 @@ SINGLE|ANYONECANPAY, an accepted offer, a legacy Magic Eden trade, …).
   the price to the seller's own address at vout 1, its fee at vout 2, the
   bidder's optional change, the marker last (`payment_vout` 1, `buyer`
   vout 0). A transaction paying its fee address or carrying its marker in
-  any other shape (a transfer) is no sale.
+  any other shape (a transfer) is no sale, and its fee never attributes or
+  prices a two-party (ALL|ANYONECANPAY) sale.
 * `price`: the sale price as the venue states it. Magisat: its listing price
   — the seller's payment plus Magisat's maker fee (⌊payment / 199⌋ from
   height 861,287), excluding the buyer's fee; Magisat offers: the seller's
