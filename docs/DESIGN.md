@@ -293,6 +293,35 @@ Per block, the tracker emits the row deltas; the store keeps a per-row
 history `(row, height) → RowStats` for every block where the row changed, so
 supply can be charted over the whole chain.
 
+### 5.1 Mint years
+
+Every row is also kept per **mint year**, the UTC year of the block that
+mined the sat (index schema 5). Next to the catalog's rows `0..R` the tracker
+counts one **year row** per row and year: id `R + row × 128 + (year −
+2009)` (`model::year_row`; 128 years reach past the last subsidy). They are
+plain tracker rows: a piece's row counts are taken per year (the piece split
+at the years' first sats) and each `(row, n)` is counted for the row and
+for its year row, so a UTXO caches both and every aggregate above
+(`mined` … `extracted`, holders, the Fenwick trees, the row history, undo)
+holds for the year rows without code of its own.
+
+A year starts at the first height whose running-max header time
+(`max_times`, as for the active windows) falls in it, so years are
+contiguous heights and sats. The tracker derives the starts from the header
+times as blocks are applied and drops them as they are undone; they are not
+part of the catalog (2027 has no start yet). On mainnet the running-max year
+equals every block's own year (checked on all 969,639 headers), so 2009 is
+heights 0–32,489: a year row of 2009 counts exactly the sats of the
+`heights: (0, 32489)` rows (`uncommon_2009` = `uncommon` in 2009).
+
+Holders do not add up across years. The supply snapshot therefore also
+counts, per row, the scripts by the **set of years** they hold sats of (a
+128-bit mask → number of scripts; a few hundred distinct masks per row),
+from the per-script tallies the holders are counted from: the holders of
+any set of years are the scripts whose mask meets it, exact. Top holders are
+kept for each year row too, 100 per list. Measured on mainnet: see the
+README.
+
 ## 6. Architecture
 
 ```

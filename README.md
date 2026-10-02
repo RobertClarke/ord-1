@@ -78,6 +78,19 @@ the history (407,095 entries, 90,753 scripts) and nothing else, every sale's
 seller and buyer have their `sale` entry, and `/supply`, `/sales` and the
 lost sats equal those of the previous index.
 
+With the year rows (index schema 5, 2026-10-02, same box, to 969,629):
+fast sync 46.5 min (2,790 s), peak memory 26.6 GiB, RSS live after a
+restart ~1.3 GB (restore 1.9 s), index 7.3 GB (`row_history` 23.5 M
+entries, 1.1 GB on disk), the published supply ~1.0 s a block (0.26 s
+before: top holders for every year row). Checked against the schema 4
+index at the same height (969,644): every row's `/supply` is identical;
+`years=2009` equals `uncommon_2009`, `rare_2009`, `black_2009` and
+`palindrome_2d_2009` counter for counter (holders, inscribed and active
+windows included), and so does their history (194 points); for all 70
+rows the years add up to the row (mined, located, burned, lost,
+overwritten, extracted, inscribed, active) and the holders of every year
+equal the row's.
+
 Validated against an upstream ord with `--index-sats` at the same height
 (`tools/validate/`, 2026-09-30, tip 969,264–969,267): 2,310 sampled tracked
 sats across all 62 rows plus edge sets (burned sats, sats that passed through

@@ -83,6 +83,9 @@ extracted.
   "address_history": true, "address_history_from": "ordinals",
   "address_history_from_height": 767430, "address_history_from_time": 1670976283,
   "address_history_building": false,
+  "year_stats": true,
+  "years": [{ "year": 2009, "from_height": 0, "to_height": 32489 }, …,
+            { "year": 2026, "from_height": 930341, "to_height": 969237 }],
   "timings": { "blocks_per_second": 0.1, "last_commit_blocks": 1,
                "last_commit_seconds": 0.02, "last_commit_at": 1790734130,
                "last_poll_ok_at": 1790734141, "commits": 12,
@@ -104,6 +107,9 @@ lowest height whose moves are kept. `error` is the last indexing error
 `address_history_from_height` / `_time` the first block the history covers
 (`null` until one is indexed), and `address_history_building` is `true`
 while the initial sync is still staging it (history requests answer 503).
+`year_stats` (additive) is `true` on builds that serve the supply by mint
+year (below); `years` are the mint years of the indexed blocks (empty until
+the first commit).
 
 Staleness: `mode` stays `live` while bitcoind is unreachable; `error` then
 says why, and two unix times tell how stale the index may be:
@@ -136,7 +142,7 @@ also `uncommon`; a rare sat is `rare` only), so the `uncommon`, `black`,
 `rare`, `epic`, `black_rare` rows and every row combining them count each
 sat under its highest tier only (totals in docs/DESIGN.md §2).
 
-### `GET /supply`
+### `GET /supply[?years=]`
 ```json
 {
   "height": 969237, "hash": "…", "time": 1790734122,
@@ -151,7 +157,7 @@ sat under its highest tier only (totals in docs/DESIGN.md §2).
 ```
 `delta` is the change the tip block made to the row (`null` if none).
 
-### `GET /supply/{row}?top=100`
+### `GET /supply/{row}?top=100[&years=]`
 One row as in `/supply` plus holders:
 ```json
 { …row…,
@@ -161,13 +167,62 @@ One row as in `/supply` plus holders:
 ```
 `top` ≤ 1000, default 100.
 
-### `GET /supply/{row}/history?from=&to=&every=`
+### `GET /supply/{row}/history?from=&to=&every=[&years=]`
 Row counters over time (only heights where the row changed are stored; each
 bucket of `every` blocks reports the last value at or before its end).
 ```json
 { "row": "uncommon", "points": [{ "height": 144, "time": 1231731025, "stats": RowStats }] }
 ```
 Defaults: `from=0`, `to=tip`, `every` chosen so ≤ 2,000 points are returned.
+
+## Supply by mint year
+
+Every row's counters are also kept per **mint year**: the UTC year of the
+block that mined the sat (by the running maximum of the header times, so a
+year is a contiguous range of heights; on mainnet it is every block's own
+year). 2009 is heights 0–32,489, the scope of the `_2009` rows: `years=2009`
+reports exactly their numbers for `uncommon`, `rare`, `black` and
+`palindrome_2d`. Additive since index schema version 5 (a new
+`catalog_fingerprint`: reindex); `/status` says `"year_stats": true`.
+
+`years=2009,2010` (or `year=`) on `/supply`, `/supply/{row}` and
+`/supply/{row}/history` restricts every row to the sats mined in those
+years. Each must be a year blocks were mined in (`/status` `years`), at most
+64; anything else is a 400.
+
+* `total` and `mined`: the row's sats mined in those years so far (the
+  whole year for a past year).
+* `located`, `burned`, `lost`, `overwritten`, `extracted`, `inscribed` and
+  `active_non_extracted`: the years' counts added up.
+* `holders` and `extracted_holders`: the scripts holding sats of any of the
+  years, exact for any set (a script holding sats of two of them counts
+  once).
+* `delta`: the tip block's change to those years' counters; for more than
+  one year its holder counts are reported unchanged (`before` = `after`).
+* `/supply/{row}?years=` lists top holders for a **single** year only (at
+  most 100 per list), and leaves both lists out for a set of years.
+* `/supply/{row}/history?years=` adds up the years' history point by point
+  and echoes `"years": [2009, 2010]`; `holders` and `extracted_holders` are
+  `null` for more than one year.
+* A row with no sats of those years is reported with zeros (`delta`
+  `null`).
+
+### `GET /supply/years`
+Every row's counters for each year it has mined sats of:
+```json
+{
+  "height": 969237, "hash": "…", "time": 1790734122,
+  "years": [{ "year": 2009, "from_height": 0, "to_height": 32489 }, …],
+  "rows": [{
+    "id": "uncommon",
+    "years": {
+      "2009": { "total": 32473, "stats": RowStats + "inscribed",
+                "active_non_extracted": { "1y": …, … } },
+      …
+    }
+  }]
+}
+```
 
 ### `GET /sat/{n}`
 ```json
