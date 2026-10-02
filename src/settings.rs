@@ -236,6 +236,16 @@ pub struct Options {
   #[arg(long, env = "ORD_EXTRACTED_SINCE", value_name = "UNIX_TIME")]
   pub extracted_since: Option<u32>,
 
+  /// First block of the address history: `ordinals` (the first block at or
+  /// after --extracted-since), `all` or a height [default: ordinals]; needs
+  /// a reindex when changed
+  #[arg(
+    long,
+    env = "ORD_ADDRESS_HISTORY_FROM",
+    value_name = "HEIGHT|ordinals|all"
+  )]
+  pub address_history_from: Option<crate::model::HistoryFrom>,
+
   /// Index only blocks below this height (tests and benchmarks)
   #[arg(long, env = "ORD_HEIGHT_LIMIT", value_name = "HEIGHT")]
   pub height_limit: Option<u32>,
@@ -314,6 +324,9 @@ impl Settings {
     }
     if let Some(time) = options.extracted_since {
       config.extracted_since_time = time;
+    }
+    if let Some(from) = options.address_history_from {
+      config.address_history_from = from;
     }
 
     Ok(Self {

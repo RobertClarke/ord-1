@@ -329,6 +329,75 @@ pub struct TrackerConfig {
   /// Outputs created by blocks with header time ≥ this count as extracted
   /// (1_670_976_000 = 2022-12-14T00:00:00Z).
   pub extracted_since_time: u32,
+  /// Where the address history starts (docs/API.md "Address history").
+  #[serde(default)]
+  pub address_history_from: HistoryFrom,
+}
+
+/// The first block the address history covers (`--address-history-from`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+pub enum HistoryFrom {
+  /// The first block whose header time is at least `extracted_since_time`
+  /// (2022-12-14, the ordinals era), and every block after it: every
+  /// extraction, and the sales of that era.
+  #[default]
+  Ordinals,
+  /// Every block from genesis (an order of magnitude bigger on mainnet).
+  All,
+  /// Every block from this height.
+  Height(u32),
+}
+
+impl HistoryFrom {
+  /// Whether the block at `height` is covered, given `max_time`, the
+  /// highest header time of blocks `0..=height` (header times are not
+  /// monotone; the running maximum is).
+  pub fn covers(self, height: u32, max_time: u32, config: &TrackerConfig) -> bool {
+    match self {
+      Self::Ordinals => max_time >= config.extracted_since_time,
+      Self::All => true,
+      Self::Height(from) => height >= from,
+    }
+  }
+}
+
+impl std::fmt::Display for HistoryFrom {
+  fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    match self {
+      Self::Ordinals => write!(f, "ordinals"),
+      Self::All => write!(f, "all"),
+      Self::Height(height) => write!(f, "{height}"),
+    }
+  }
+}
+
+impl std::str::FromStr for HistoryFrom {
+  type Err = String;
+
+  fn from_str(s: &str) -> Result<Self, Self::Err> {
+    match s {
+      "ordinals" => Ok(Self::Ordinals),
+      "all" => Ok(Self::All),
+      _ => s
+        .parse()
+        .map(Self::Height)
+        .map_err(|_| format!("expected a height, `ordinals` or `all`, got `{s}`")),
+    }
+  }
+}
+
+impl Serialize for HistoryFrom {
+  fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+    serializer.collect_str(self)
+  }
+}
+
+impl<'de> Deserialize<'de> for HistoryFrom {
+  fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+    String::deserialize(deserializer)?
+      .parse()
+      .map_err(serde::de::Error::custom)
+  }
 }
 
 impl Default for TrackerConfig {
@@ -341,6 +410,7 @@ impl Default for TrackerConfig {
       }],
       extracted_max_value: 10_000,
       extracted_since_time: 1_670_976_000,
+      address_history_from: HistoryFrom::Ordinals,
     }
   }
 }

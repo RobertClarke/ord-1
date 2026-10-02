@@ -336,6 +336,29 @@ bitcoind  │ getblockhash (batched) → N× getblock(h,0) → hex→Block→txi
 * **Server** (`src/server/`): read-only JSON API over redb read transactions
   and the published in-memory supply snapshot.
 
+### 6.1 Address history
+
+`src/history.rs` derives, per block, one entry per (transaction, script)
+that sent or received tracked sats from the block's `BlockDelta` and
+`MarketDelta` (definitions in its module docs and docs/API.md "Address
+history"); the indexer computes them after `market::analyze` and commits
+them with the block. The store keys them by (script key, height,
+tx_index), the script key being the first 8 bytes of its SHA-256, and
+never prunes them; a rollback deletes the keys of the undone block's moves.
+
+Coverage is index-defining (`TrackerConfig::address_history_from`, in the
+catalog fingerprint): by default from the first block whose time reaches
+`extracted_since` (the ordinals era). Measured on mainnet (2026-10-02), a
+history from genesis would hold about 150–200 M entries (2.1 per moving
+transaction; 138 M by height 715,000), some 15–20 GB on disk; the ordinals
+era about 100 entries per block, about 20 M entries.
+
+During the initial sync entries are appended to `history_staging`, keyed by
+height first (sequential writes), and the commit that completes the sync
+moves them into `history` in key order, one bucket of script keys (about
+512 MiB of staged records) per scan; this avoids rewriting B-tree pages all
+over the per-script table at every fast-sync commit.
+
 ## 7. Contracts
 
 The shared types live in `src/model.rs` and are the interface between the

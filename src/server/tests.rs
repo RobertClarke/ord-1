@@ -118,6 +118,35 @@ impl Catalog for FakeCatalog {
   }
 }
 
+impl crate::history::HistoryCatalog for FakeCatalog {
+  fn config(&self) -> &TrackerConfig {
+    static CONFIG: std::sync::OnceLock<TrackerConfig> = std::sync::OnceLock::new();
+    CONFIG.get_or_init(TrackerConfig::default)
+  }
+
+  fn row_counts(&self, start: u64, len: u64) -> RowCounts {
+    Catalog::row_counts(self, start, len)
+  }
+
+  fn row_rank(&self, row: RowId) -> usize {
+    let mut order = (0..self.rows.len() as RowId).collect::<Vec<RowId>>();
+    order.sort_by_key(|&row| (self.row_total(row), row));
+    order.iter().position(|&r| r == row).unwrap()
+  }
+
+  fn sat_rows(&self, sat: u64) -> Vec<RowId> {
+    Catalog::sat_rows(self, sat)
+  }
+
+  fn individual_sats(&self, start: u64, end: u64, cap: usize) -> Vec<u64> {
+    (start..end)
+      .step_by(100_000_000)
+      .filter(|sat| sat.is_multiple_of(100_000_000))
+      .take(cap)
+      .collect()
+  }
+}
+
 fn txid(n: u8) -> Txid {
   Txid::from_raw_hash(sha256d::Hash::hash(&[n]))
 }
@@ -220,6 +249,8 @@ struct Scenario {
   d: OutPoint,
   deltas: Vec<BlockDelta>,
   markets: Vec<MarketDelta>,
+  /// Address history from block 1 on (`FakeCatalog`'s rows).
+  histories: Vec<Option<Vec<crate::history::HistoryEntry>>>,
 }
 
 impl Scenario {
@@ -228,7 +259,8 @@ impl Scenario {
     store
       .commit_with(
         &self.deltas[range.clone()],
-        &self.markets[range],
+        &self.markets[range.clone()],
+        &self.histories[range],
         &[4, 4, COIN, 53],
         true,
         &CommitOptions {
@@ -542,6 +574,19 @@ fn scenario() -> Scenario {
     },
   ];
 
+  let catalog = FakeCatalog::new();
+  let histories = deltas
+    .iter()
+    .zip(&markets)
+    .map(|(delta, market)| {
+      (delta.height >= 1).then(|| {
+        crate::history::block_entries(delta, market, &catalog, &|height| {
+          TIMES.get(height as usize).copied()
+        })
+      })
+    })
+    .collect();
+
   Scenario {
     a,
     b,
@@ -553,6 +598,7 @@ fn scenario() -> Scenario {
     d,
     deltas,
     markets,
+    histories,
   }
 }
 
@@ -829,6 +875,11 @@ fn status() {
       "catalog_fingerprint": "fake-catalog",
       "moves_retention": "all",
       "moves_from": 0,
+      "address_history": true,
+      "address_history_from": "ordinals",
+      "address_history_from_height": 1,
+      "address_history_from_time": TIMES[1],
+      "address_history_building": false,
       "timings": status["timings"],
       "error": null,
     })
@@ -1943,4 +1994,208 @@ fn sale_sats_are_the_special_sats_of_the_sold_pieces() {
     render.sale(&sale_of(wide)).unwrap().sats.len(),
     super::sales::MAX_SALE_SATS
   );
+}
+
+#[test]
+fn address_history() {
+  let server = TestServer::new(Some(3));
+  let c_owner = p2wpkh(3);
+  let path = format!("/address/{}/history", address(&c_owner).as_str().unwrap());
+  let history = server.json(&path);
+  let Scenario { c, u0, b, t0, .. } = server.scenario;
+  assert_eq!(
+    history,
+    json!({
+      "address": address(&c_owner),
+      "script_pubkey": c_owner.to_hex_string(),
+      "history_from": 1,
+      "entries": [
+        {
+          "txid": u0.txid,
+          "height": 3,
+          "time": TIMES[3],
+          "tx_index": 1,
+          "direction": "self",
+          "kind": "burn",
+          "rows_in": { "black": 1 },
+          "rows_out": { "uncommon": 1, "black": 1, "alpha": 1 },
+          "sats_in": 1,
+          "sats_out": 2,
+          "value_in": COIN + 8_454,
+          "value_out": COIN + 9_454,
+          "outputs_in": 1,
+          "inputs_out": 1,
+          "extracted_in": false,
+          "extracted_out": false,
+          "extracted_sats": 0,
+          "isolated": 0,
+          "burned": 1,
+          "roles": [],
+          "counterparty": null,
+          "counterparty_script_pubkey": null,
+          "counterparties": 0,
+          "lead_sat": { "sat": 2 * COIN, "types": ["uncommon", "alpha"] },
+          "sales": [],
+        },
+        {
+          "txid": c.txid,
+          "height": 2,
+          "time": TIMES[2],
+          "tx_index": 0,
+          "direction": "in",
+          "kind": "mined",
+          "rows_in": { "uncommon": 1, "black": 1, "alpha": 1 },
+          "rows_out": {},
+          "sats_in": 2,
+          "sats_out": 0,
+          "value_in": COIN + 9_454,
+          "value_out": 0,
+          "outputs_in": 1,
+          "inputs_out": 0,
+          "extracted_in": false,
+          "extracted_out": false,
+          "extracted_sats": 0,
+          "isolated": 0,
+          "burned": 0,
+          "roles": [],
+          "counterparty": null,
+          "counterparty_script_pubkey": null,
+          "counterparties": 0,
+          "lead_sat": { "sat": 2 * COIN, "types": ["uncommon", "alpha"] },
+          "sales": [],
+        },
+      ],
+      "next": null,
+    })
+  );
+  // The script form is the same.
+  assert_eq!(
+    server.json(&format!("/script/{}/history", c_owner.to_hex_string())),
+    history
+  );
+
+  // Paging.
+  let page = server.json(&format!("{path}?limit=1"));
+  assert_eq!(page["entries"].as_array().unwrap().len(), 1);
+  assert_eq!(page["entries"][0]["kind"], "burn");
+  assert_eq!(page["next"], "3:1");
+  let page = server.json(&format!("{path}?limit=1&before=3:1"));
+  assert_eq!(page["entries"][0]["kind"], "mined");
+  assert_eq!(page["next"], Value::Null);
+  let page = server.json(&format!("{path}?before=2:0"));
+  assert_eq!(page["entries"], json!([]));
+
+  // Filters.
+  let kinds = |query: &str| {
+    server.json(&format!("{path}?{query}"))["entries"]
+      .as_array()
+      .unwrap()
+      .iter()
+      .map(|entry| entry["kind"].as_str().unwrap().to_string())
+      .collect::<Vec<String>>()
+  };
+  assert_eq!(kinds("kinds=mined"), ["mined"]);
+  assert_eq!(kinds("kinds=burn,mined"), ["burn", "mined"]);
+  assert_eq!(kinds("kinds=sale"), Vec::<String>::new());
+  assert_eq!(kinds("row=uncommon"), ["burn", "mined"]);
+  assert_eq!(kinds("row=block0"), Vec::<String>::new());
+  assert_eq!(kinds("from=3"), ["burn"]);
+  assert_eq!(kinds("to=2"), ["mined"]);
+  assert_eq!(kinds("from=2&to=2&kinds=burn"), Vec::<String>::new());
+
+  // Sales: the buyer's entry carries its sale.
+  let buyer = server.json(&format!("/script/{}/history", p2tr().to_hex_string()));
+  let entry = &buyer["entries"][0];
+  assert_eq!(entry["kind"], "sale");
+  assert_eq!(entry["roles"], json!(["buyer"]));
+  assert_eq!(entry["direction"], "in");
+  assert_eq!(entry["counterparty"], address(&p2wpkh(1)));
+  assert_eq!(
+    entry["counterparty_script_pubkey"],
+    p2wpkh(1).to_hex_string()
+  );
+  assert_eq!(entry["extracted_in"], true);
+  assert_eq!(entry["isolated"], 1);
+  assert_eq!(entry["sales"].as_array().unwrap().len(), 1);
+  assert_eq!(entry["sales"][0]["seller"]["outpoint"], json!(b));
+  assert_eq!(entry["sales"][0]["buyer"]["outpoint"], json!(t0));
+  let seller = server.json(&format!(
+    "/address/{}/history?kinds=sale",
+    address(&p2wpkh(1)).as_str().unwrap()
+  ));
+  assert_eq!(seller["entries"][0]["roles"], json!(["seller"]));
+  assert_eq!(seller["entries"][0]["direction"], "out");
+  // Its coinbase receipt (block 1) is covered too.
+  assert_eq!(
+    server.json(&format!(
+      "/address/{}/history?kinds=mined",
+      address(&p2wpkh(1)).as_str().unwrap()
+    ))["entries"][0]["height"],
+    1
+  );
+
+  // An address without history.
+  assert_eq!(
+    server.json(&format!(
+      "/address/{}/history",
+      address(&p2wpkh(77)).as_str().unwrap()
+    )),
+    json!({
+      "address": address(&p2wpkh(77)),
+      "script_pubkey": p2wpkh(77).to_hex_string(),
+      "history_from": 1,
+      "entries": [],
+      "next": null,
+    })
+  );
+}
+
+#[test]
+fn address_history_errors() {
+  let server = TestServer::new(Some(3));
+  let path = format!("/address/{}/history", address(&p2wpkh(3)).as_str().unwrap());
+  for (query, status) in [
+    ("limit=0", 400),
+    ("limit=1001", 400),
+    ("limit=x", 400),
+    ("before=12", 400),
+    ("before=a:b", 400),
+    ("kinds=gift", 400),
+    ("from=3&to=2", 400),
+    ("from=-1", 400),
+    ("row=nope", 404),
+  ] {
+    server.error(&format!("{path}?{query}"), status);
+  }
+  server.error("/address/nope/history", 400);
+  server.error("/script/zz/history", 400);
+  assert!(
+    server
+      .error("/address/x/history/more", 404)
+      .contains("no such endpoint")
+  );
+
+  // Nothing indexed yet: 503.
+  let empty = TestServer::new(None);
+  empty.error(&path, 503);
+}
+
+#[test]
+fn address_history_is_unavailable_while_staged() {
+  let server = TestServer::new(Some(2));
+  let scenario = &server.scenario;
+  server
+    .store
+    .commit_with(
+      &scenario.deltas[3..4],
+      &scenario.markets[3..4],
+      &scenario.histories[3..4],
+      &[4, 4, COIN, 53],
+      false,
+      &CommitOptions::default(),
+    )
+    .unwrap();
+  let path = format!("/address/{}/history", address(&p2wpkh(3)).as_str().unwrap());
+  assert!(server.error(&path, 503).contains("being built"));
+  assert_eq!(server.json("/status")["address_history_building"], true);
 }

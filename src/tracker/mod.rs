@@ -528,6 +528,11 @@ impl Tracker {
     self.times.get(height as usize).copied()
   }
 
+  /// The highest header time of blocks `0..=height`.
+  pub fn max_time(&self, height: u32) -> Option<u32> {
+    self.max_times.get(height as usize).copied()
+  }
+
   pub fn catalog(&self) -> &Arc<SatCatalog> {
     &self.catalog
   }

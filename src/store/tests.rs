@@ -549,6 +549,8 @@ fn dump(store: &Store, with_undo: bool) -> Dump {
   table!(SALE_TXS, "sale_txs");
   table!(SALE_PIECES, "sale_pieces");
   table!(INSCRIBED, "inscribed");
+  table!(HISTORY, "history");
+  table!(HISTORY_STAGING, "history_staging");
   if with_undo {
     table!(UNDO, "undo");
   }
@@ -1037,6 +1039,7 @@ fn batched_commits_equal_block_by_block_commits() {
       .commit_with(
         std::slice::from_ref(delta),
         &[market_for(delta)],
+        &[],
         &mined,
         false,
         &CommitOptions {
@@ -1060,6 +1063,7 @@ fn batched_commits_equal_block_by_block_commits() {
       .commit_with(
         batch,
         &markets(batch),
+        &[],
         &mined,
         false,
         &CommitOptions {
@@ -1127,6 +1131,12 @@ fn batched_commits_equal_block_by_block_commits() {
 
 #[test]
 fn rollback_restores_every_table() {
+  for complete in [false, true] {
+    rollback_restores_every_table_with(complete);
+  }
+}
+
+fn rollback_restores_every_table_with(fast_sync_complete: bool) {
   let dir = TempDir::new().unwrap();
   let store = store(&dir, MovesRetention::All);
 
@@ -1144,8 +1154,9 @@ fn rollback_restores_every_table() {
       .commit_with(
         std::slice::from_ref(&delta),
         &[market_for(&delta)],
+        &[Some(history_for(&delta))],
         &mined,
-        false,
+        fast_sync_complete,
         &CommitOptions {
           durable: true,
           target_height: None,
@@ -1183,6 +1194,15 @@ fn rollback_restores_every_table() {
         key != KEY_MOVES_REFS.as_bytes() && key != KEY_SALE_PIECE_MAX_LEN.as_bytes()
       });
     }
+    if fast_sync_complete && i == 0 {
+      // Rollbacks keep `fast_sync_complete`; the empty index had not.
+      for dump in [&mut actual, &mut expected] {
+        dump
+          .get_mut("meta")
+          .unwrap()
+          .retain(|(key, _)| key != KEY_META.as_bytes());
+      }
+    }
     assert_eq!(
       actual, expected,
       "after rolling back block {}",
@@ -1191,6 +1211,9 @@ fn rollback_restores_every_table() {
   }
 
   assert_eq!(store.rollback_tip().unwrap(), None);
+  let reader = store.reader().unwrap();
+  assert_eq!(reader.history_from().unwrap(), None);
+  assert!(!reader.history_building().unwrap());
   assert_eq!(store.meta().unwrap().unwrap().height, None);
 }
 
@@ -1264,6 +1287,7 @@ fn non_durable_commits_are_visible_and_persist_at_the_next_durable_one() {
         .commit_with(
           batch,
           &[],
+          &[],
           &chain.mined(),
           false,
           &CommitOptions {
@@ -1296,6 +1320,7 @@ fn bounded_moves_retention() {
   store
     .commit_with(
       &deltas[..20],
+      &[],
       &[],
       &chain.mined(),
       false,
@@ -1471,6 +1496,8 @@ fn table_info_lists_every_table() {
     names,
     [
       "headers",
+      "history",
+      "history_staging",
       "inscribed",
       "locator",
       "lost",
@@ -1713,6 +1740,7 @@ fn commit_market(store: &Store, deltas: &[BlockDelta], mined: &[u64]) {
     .commit_with(
       deltas,
       &markets(deltas),
+      &[],
       mined,
       false,
       &CommitOptions {
@@ -1801,4 +1829,250 @@ fn sale_records_round_trip() {
     decode_inscribed(&encode_inscribed(3, &test_txid(1), 777, 12)).unwrap(),
     (3, test_txid(1), 777, 12)
   );
+}
+
+/// History entries for a generated block: one per `history::block_keys`
+/// key (the computation itself is tested in `history`), with the value
+/// fields derived from the key so that they differ.
+pub(crate) fn history_for(delta: &BlockDelta) -> Vec<crate::history::HistoryEntry> {
+  use crate::history::{Direction, HistoryEntry, HistoryKind, Side};
+  crate::history::block_keys(delta)
+    .into_iter()
+    .map(|(key, tx_index)| {
+      let m = delta.moves.iter().find(|m| m.tx_index == tx_index).unwrap();
+      HistoryEntry {
+        key,
+        height: delta.height,
+        tx_index,
+        txid: m.txid,
+        kind: HistoryKind::ALL[(key % 6) as usize],
+        direction: Direction::SelfTransfer,
+        received: Side {
+          sats: key % 1000,
+          value: u64::from(delta.height),
+          count: 1,
+          rows: vec![(0, 1), (3, key % 7 + 1)],
+        },
+        sent: Side {
+          sats: 5,
+          value: 7,
+          count: 2,
+          rows: vec![(1, 2)],
+        },
+        extracted_in: key % 2 == 0,
+        extracted_out: key % 3 == 0,
+        extracted_sats: key % 5,
+        isolated: key % 4,
+        burned: key % 3,
+        seller: key % 5 == 0,
+        buyer: key % 5 == 1,
+        counterparties: tx_index,
+        counterparty: (key % 2 == 1).then(|| ScriptBuf::from_bytes(vec![0x51, (key % 251) as u8])),
+        lead_sat: (key % 3 != 0).then_some(key >> 8),
+      }
+    })
+    .collect()
+}
+
+#[test]
+fn history_round_trip() {
+  let mut chain = TestChain::new(31);
+  for _ in 0..20 {
+    let delta = chain.next_block();
+    for entry in history_for(&delta) {
+      let bytes = codec::encode_history(&entry);
+      assert_eq!(
+        codec::decode_history(entry.key, entry.height, entry.tx_index, &bytes).unwrap(),
+        entry
+      );
+    }
+  }
+}
+
+/// Every stored history entry, as (key, height, tx_index).
+fn history_keys(store: &Store) -> Vec<HistoryKey> {
+  let tx = store.db.begin_read().unwrap();
+  let table = tx.open_table(HISTORY).unwrap();
+  table
+    .iter()
+    .unwrap()
+    .map(|entry| entry.unwrap().0.value())
+    .collect()
+}
+
+#[test]
+fn history_is_staged_until_the_initial_sync_completes() {
+  let dir = TempDir::new().unwrap();
+  let store = store(&dir, MovesRetention::Blocks(5));
+  let mut chain = TestChain::new(32);
+  let deltas = (0..40).map(|_| chain.next_block()).collect::<Vec<_>>();
+  // Blocks 0-9 are not covered.
+  let histories = deltas
+    .iter()
+    .map(|delta| (delta.height >= 10).then(|| history_for(delta)))
+    .collect::<Vec<_>>();
+  let mut expected = histories
+    .iter()
+    .flatten()
+    .flatten()
+    .map(|entry| (entry.key, entry.height, entry.tx_index))
+    .collect::<Vec<_>>();
+  expected.sort_unstable();
+  assert!(expected.len() > 50);
+
+  let commit = |range: std::ops::Range<usize>, complete: bool| {
+    store
+      .commit_with(
+        &deltas[range.clone()],
+        &[],
+        &histories[range],
+        &chain.mined(),
+        complete,
+        &CommitOptions {
+          durable: true,
+          target_height: Some(39),
+        },
+      )
+      .unwrap()
+  };
+
+  commit(0..10, false);
+  assert_eq!(store.reader().unwrap().history_from().unwrap(), None);
+  commit(10..30, false);
+  let reader = store.reader().unwrap();
+  assert!(reader.history_building().unwrap());
+  assert_eq!(reader.history_from().unwrap(), Some(10));
+  assert!(
+    history_keys(&store).is_empty(),
+    "staged, not yet in history"
+  );
+  drop(reader);
+
+  // The commit that completes the sync moves the staged entries first.
+  let stats = commit(30..40, true);
+  assert!(stats.history_entries > 0);
+  assert!(!store.reader().unwrap().history_building().unwrap());
+  assert_eq!(history_keys(&store), expected);
+
+  // Reading one script back, newest first, with every field.
+  let (key, _, _) = expected[expected.len() / 2];
+  let mine = histories
+    .iter()
+    .flatten()
+    .flatten()
+    .filter(|entry| entry.key == key)
+    .rev()
+    .cloned()
+    .collect::<Vec<_>>();
+  let reader = store.reader().unwrap();
+  let read = reader
+    .history(key, 0, 39, None)
+    .unwrap()
+    .collect::<anyhow::Result<Vec<_>>>()
+    .unwrap();
+  assert_eq!(read, mine);
+
+  // Cursor paging: everything strictly below the cursor.
+  let pages = |page: usize| {
+    let mut before = None;
+    let mut seen = Vec::new();
+    loop {
+      let chunk = reader
+        .history(key, 0, 39, before)
+        .unwrap()
+        .take(page)
+        .collect::<anyhow::Result<Vec<_>>>()
+        .unwrap();
+      let Some(last) = chunk.last() else { break };
+      before = Some((last.height, last.tx_index));
+      seen.extend(chunk);
+    }
+    seen
+  };
+  for page in [1, 2, 3, 100] {
+    assert_eq!(pages(page), mine, "pages of {page}");
+  }
+
+  // Height ranges.
+  let (low, high) = (15, 25);
+  assert_eq!(
+    reader
+      .history(key, low, high, None)
+      .unwrap()
+      .collect::<anyhow::Result<Vec<_>>>()
+      .unwrap(),
+    mine
+      .iter()
+      .filter(|entry| (low..=high).contains(&entry.height))
+      .cloned()
+      .collect::<Vec<_>>()
+  );
+  assert_eq!(reader.history(key, 20, 10, None).unwrap().count(), 0);
+  assert_eq!(reader.history(key, 0, 39, Some((0, 0))).unwrap().count(), 0);
+  drop(reader);
+
+  // Later blocks write to the history directly; a rollback removes them.
+  let delta = chain.next_block();
+  let entries = history_for(&delta);
+  store
+    .commit_with(
+      std::slice::from_ref(&delta),
+      &[],
+      &[Some(entries.clone())],
+      &chain.mined(),
+      true,
+      &CommitOptions {
+        durable: true,
+        target_height: None,
+      },
+    )
+    .unwrap();
+  assert_eq!(history_keys(&store).len(), expected.len() + entries.len());
+  store.rollback_tip().unwrap().unwrap();
+  assert_eq!(history_keys(&store), expected);
+}
+
+#[test]
+fn staged_history_moves_in_many_buckets() {
+  let dir = TempDir::new().unwrap();
+  let store = store(&dir, MovesRetention::All);
+  let mut chain = TestChain::new(33);
+  chain.txs_per_block = 12;
+  let deltas = (0..30).map(|_| chain.next_block()).collect::<Vec<_>>();
+  let histories = deltas
+    .iter()
+    .map(|delta| Some(history_for(delta)))
+    .collect::<Vec<_>>();
+  store
+    .commit_with(
+      &deltas,
+      &[],
+      &histories,
+      &chain.mined(),
+      false,
+      &CommitOptions::default(),
+    )
+    .unwrap();
+  let mut expected = histories
+    .iter()
+    .flatten()
+    .flatten()
+    .map(|entry| (entry.key, entry.height, entry.tx_index))
+    .collect::<Vec<_>>();
+  expected.sort_unstable();
+
+  let tx = store.db.begin_write().unwrap();
+  let bytes = tx
+    .open_table(HISTORY_STAGING)
+    .unwrap()
+    .stats()
+    .unwrap()
+    .stored_bytes();
+  assert!(bytes > 4 * 1024);
+  // Several buckets of about 1 KiB.
+  let moved = migrate_history_in_buckets(&tx, 1024).unwrap();
+  tx.commit().unwrap();
+  assert_eq!(moved, expected.len() as u64);
+  assert_eq!(history_keys(&store), expected);
+  assert!(!store.reader().unwrap().history_building().unwrap());
 }

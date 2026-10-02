@@ -42,7 +42,13 @@ the tip block by block. `ord --help` lists every option; each also reads an
 Other subcommands: `ord index update` (index to the tip and exit),
 `ord index info`, `ord find <sat>`, `ord types <sat>`, `ord rows`.
 
-Changing the tracked set (`--tracked-range`, `--extracted-*`) or the rules
+The index also keeps a per-address history of tracked-sat activity
+(extractions, sales, transfers, consolidations, burns, coinbase receipts;
+`GET /address/{address}/history`), from the ordinals era by default
+(`--address-history-from <height|ordinals|all>`).
+
+Changing the tracked set (`--tracked-range`, `--extracted-*`), the address
+history's coverage (`--address-history-from`) or the rules
 needs `--reindex`; the index records its configuration and the rules'
 fingerprint and refuses to open with different ones.
 

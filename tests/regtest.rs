@@ -65,13 +65,44 @@ fn fast_sync_then_live_on_a_longer_chain() {
   let update = ord_json(
     Some(&core),
     dir.path(),
-    &["--commit-interval", "7", "index", "update"],
+    &[
+      "--commit-interval",
+      "7",
+      "--address-history-from",
+      "all",
+      "index",
+      "update",
+    ],
   );
   assert_eq!(update["height"], 40);
   assert_eq!(update["fast_sync_complete"], true);
 
+  // The fast sync staged the address history, then moved it: one entry per
+  // coinbase (each pays its own address).
+  let info = ord_json(
+    Some(&core),
+    dir.path(),
+    &["--address-history-from", "all", "index", "info"],
+  );
+  let entries = |name: &str| {
+    info["tables"]
+      .as_array()
+      .unwrap()
+      .iter()
+      .find(|table| table["name"] == name)
+      .unwrap()["entries"]
+      .as_u64()
+      .unwrap()
+  };
+  assert_eq!(entries("history_staging"), 0);
+  assert_eq!(entries("history"), 41);
+
   // Block 9 is tracked whole: any of its sats is in its coinbase.
-  let sat = ord_json(Some(&core), dir.path(), &["find", "45000000123"]);
+  let sat = ord_json(
+    Some(&core),
+    dir.path(),
+    &["--address-history-from", "all", "find", "45000000123"],
+  );
   assert_eq!(sat["tracked"], true);
   assert!(sat["rows"].as_array().unwrap().contains(&"block9".into()));
   assert_eq!(
@@ -82,7 +113,11 @@ fn fast_sync_then_live_on_a_longer_chain() {
   // Black sats of fast-synced and live blocks.
   for height in [5u64, 35] {
     let black = (height + 1) * BLOCK - 1;
-    let sat = ord_json(Some(&core), dir.path(), &["find", &black.to_string()]);
+    let sat = ord_json(
+      Some(&core),
+      dir.path(),
+      &["--address-history-from", "all", "find", &black.to_string()],
+    );
     assert_eq!(
       sat["location"]["satpoint"],
       format!(
@@ -94,7 +129,11 @@ fn fast_sync_then_live_on_a_longer_chain() {
   }
 
   // Untracked sats have no location.
-  let sat = ord_json(Some(&core), dir.path(), &["find", "5000000001"]);
+  let sat = ord_json(
+    Some(&core),
+    dir.path(),
+    &["--address-history-from", "all", "find", "5000000001"],
+  );
   assert_eq!(sat["tracked"], false);
   assert_eq!(sat["location"], Value::Null);
 }
@@ -217,8 +256,39 @@ fn reorg_via_invalidated_tip() {
   let core = regtest();
   core.mine_blocks(3);
   let dir = tempdir();
-  let server = TestServer::spawn(&core, dir.path(), &[], &[]);
+  let server = TestServer::spawn(&core, dir.path(), &["--address-history-from", "all"], &[]);
   server.wait_for_tip(&core);
+
+  // Every coinbase's receipt is in its address's history (mockcore pays
+  // each coinbase to its own address).
+  let miner = |height: usize| {
+    core.address(OutPoint {
+      txid: coinbase(&core, height),
+      vout: 0,
+    })
+  };
+  let mined = |server: &TestServer, address: &bitcoin::Address| {
+    server.json(&format!("/address/{address}/history"))["entries"]
+      .as_array()
+      .unwrap()
+      .iter()
+      .map(|entry| {
+        (
+          entry["height"].as_u64().unwrap(),
+          entry["kind"].as_str().unwrap().to_string(),
+          entry["txid"].as_str().unwrap().to_string(),
+        )
+      })
+      .collect::<Vec<(u64, String, String)>>()
+  };
+  let (old_miner, miner_2) = (miner(3), miner(2));
+  assert_eq!(
+    mined(&server, &old_miner),
+    [(3, "mined".into(), coinbase(&core, 3).to_string())]
+  );
+  let block_2 = mined(&server, &miner_2);
+  assert_eq!(block_2.len(), 1);
+  assert_eq!(server.json("/status")["address_history_from_height"], 0);
 
   let uncommon = format!("/sat/{}", 3 * BLOCK);
   let before = server.json(&uncommon);
@@ -245,6 +315,20 @@ fn reorg_via_invalidated_tip() {
     server.json("/block/3")["hash"],
     core.state().hashes[3].to_string()
   );
+
+  // The history follows the reorg: block 3's old coinbase is gone.
+  assert_eq!(mined(&server, &old_miner), []);
+  assert_eq!(mined(&server, &miner_2), block_2);
+  for height in [3, 4] {
+    assert_eq!(
+      mined(&server, &miner(height)),
+      [(
+        height as u64,
+        "mined".into(),
+        coinbase(&core, height).to_string()
+      )]
+    );
+  }
 
   assert!(server.terminate().success());
 }

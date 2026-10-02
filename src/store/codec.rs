@@ -1236,3 +1236,166 @@ pub(crate) fn decode_inscribed(bytes: &[u8]) -> anyhow::Result<(u32, Txid, u32, 
   dec.finish()?;
   Ok((count, txid, height, tx_index))
 }
+
+// History entries (`history` and `history_staging` values): flags (varint:
+// direction in bits 0-1, kind in bits 2-4, then extracted_in, extracted_out,
+// seller, buyer, has extracted_sats, has isolated, has burned, has lead sat,
+// has counterparty), the txid, the received side if the direction has one
+// and the sent side likewise (each: count, sats, value, row count and
+// (row gap, n) pairs), the optional fields flagged, and the counterparty
+// count. Key fields (script key, height, tx_index) are in the table key.
+
+const HISTORY_EXTRACTED_IN: u64 = 1 << 5;
+const HISTORY_EXTRACTED_OUT: u64 = 1 << 6;
+const HISTORY_SELLER: u64 = 1 << 7;
+const HISTORY_BUYER: u64 = 1 << 8;
+const HISTORY_EXTRACTED_SATS: u64 = 1 << 9;
+const HISTORY_ISOLATED: u64 = 1 << 10;
+const HISTORY_BURNED: u64 = 1 << 11;
+const HISTORY_LEAD: u64 = 1 << 12;
+const HISTORY_COUNTERPARTY: u64 = 1 << 13;
+
+fn encode_side(enc: &mut Enc, side: &crate::history::Side) {
+  enc.varint(side.count.into());
+  enc.varint(side.sats);
+  enc.varint(side.value);
+  enc.varint(side.rows.len() as u64);
+  let mut previous = 0;
+  for &(row, n) in &side.rows {
+    enc.varint(u64::from(row - previous));
+    enc.varint(n);
+    previous = row;
+  }
+}
+
+fn decode_side(dec: &mut Dec) -> anyhow::Result<crate::history::Side> {
+  let count = dec.u32()?;
+  let sats = dec.varint()?;
+  let value = dec.varint()?;
+  let n = dec.len()?;
+  let mut rows = Vec::with_capacity(n);
+  let mut row = 0u64;
+  for _ in 0..n {
+    row += dec.varint()?;
+    rows.push((
+      crate::model::RowId::try_from(row).context("corrupt history record: row")?,
+      dec.varint()?,
+    ));
+  }
+  Ok(crate::history::Side {
+    sats,
+    value,
+    count,
+    rows,
+  })
+}
+
+pub(crate) fn encode_history(entry: &crate::history::HistoryEntry) -> Vec<u8> {
+  use crate::history::Direction;
+  let mut flags = u64::from(entry.direction.code()) | u64::from(entry.kind.code()) << 2;
+  for (set, flag) in [
+    (entry.extracted_in, HISTORY_EXTRACTED_IN),
+    (entry.extracted_out, HISTORY_EXTRACTED_OUT),
+    (entry.seller, HISTORY_SELLER),
+    (entry.buyer, HISTORY_BUYER),
+    (entry.extracted_sats > 0, HISTORY_EXTRACTED_SATS),
+    (entry.isolated > 0, HISTORY_ISOLATED),
+    (entry.burned > 0, HISTORY_BURNED),
+    (entry.lead_sat.is_some(), HISTORY_LEAD),
+    (entry.counterparty.is_some(), HISTORY_COUNTERPARTY),
+  ] {
+    if set {
+      flags |= flag;
+    }
+  }
+  let mut enc = Enc::with_capacity(64);
+  enc.varint(flags);
+  enc.txid(&entry.txid);
+  if entry.direction != Direction::Out {
+    encode_side(&mut enc, &entry.received);
+  }
+  if entry.direction != Direction::In {
+    encode_side(&mut enc, &entry.sent);
+  }
+  for value in [entry.extracted_sats, entry.isolated, entry.burned] {
+    if value > 0 {
+      enc.varint(value);
+    }
+  }
+  if let Some(sat) = entry.lead_sat {
+    enc.varint(sat);
+  }
+  if let Some(script) = &entry.counterparty {
+    enc.blob(script.as_bytes());
+  }
+  enc.varint(entry.counterparties.into());
+  enc.buf
+}
+
+pub(crate) fn decode_history(
+  key: u64,
+  height: u32,
+  tx_index: u32,
+  bytes: &[u8],
+) -> anyhow::Result<crate::history::HistoryEntry> {
+  use crate::history::{Direction, HistoryEntry, HistoryKind, Side};
+  let mut dec = Dec::new(bytes);
+  let flags = dec.varint()?;
+  let direction = Direction::from_code((flags & 3) as u8)
+    .with_context(|| format!("corrupt history record: direction {}", flags & 3))?;
+  let kind = HistoryKind::from_code(((flags >> 2) & 7) as u8)
+    .with_context(|| format!("corrupt history record: kind {}", (flags >> 2) & 7))?;
+  let txid = dec.txid()?;
+  let received = if direction != Direction::Out {
+    decode_side(&mut dec)?
+  } else {
+    Side::default()
+  };
+  let sent = if direction != Direction::In {
+    decode_side(&mut dec)?
+  } else {
+    Side::default()
+  };
+  let mut optional = |flag: u64| -> anyhow::Result<u64> {
+    if flags & flag != 0 {
+      dec.varint()
+    } else {
+      Ok(0)
+    }
+  };
+  let extracted_sats = optional(HISTORY_EXTRACTED_SATS)?;
+  let isolated = optional(HISTORY_ISOLATED)?;
+  let burned = optional(HISTORY_BURNED)?;
+  let lead_sat = if flags & HISTORY_LEAD != 0 {
+    Some(dec.varint()?)
+  } else {
+    None
+  };
+  let counterparty = if flags & HISTORY_COUNTERPARTY != 0 {
+    Some(ScriptBuf::from_bytes(dec.blob()?.to_vec()))
+  } else {
+    None
+  };
+  let counterparties = dec.u32()?;
+  dec.finish()?;
+  Ok(HistoryEntry {
+    key,
+    height,
+    tx_index,
+    txid,
+    kind,
+    direction,
+    received,
+    sent,
+    extracted_in: flags & HISTORY_EXTRACTED_IN != 0,
+    extracted_out: flags & HISTORY_EXTRACTED_OUT != 0,
+    extracted_sats,
+    isolated,
+    burned,
+    seller: flags & HISTORY_SELLER != 0,
+    buyer: flags & HISTORY_BUYER != 0,
+    counterparties,
+    counterparty,
+    lead_sat,
+  })
+}

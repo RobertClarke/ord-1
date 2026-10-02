@@ -1,5 +1,6 @@
 //! ord, rare-sat tracker fork. See docs/DESIGN.md.
 
+pub mod history;
 pub mod indexer;
 pub mod market;
 pub mod model;

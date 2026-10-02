@@ -28,6 +28,21 @@
 //! | `sale_txs` | txid (32 bytes) | (height, tx_index) of the transaction's sales |
 //! | `sale_pieces` | (first sat of a sold piece `u64`, height, tx_index, vin) | the piece's length: finds the sales whose pieces cover a sat |
 //! | `inscribed` | sat `u64` | count (envelopes that landed on it), first txid, first height, first transaction's index in its block: tracked sats only |
+//! | `history` | (script key `u64`, height `u32`, tx_index `u32`) | a `HistoryEntry` (`codec.rs`): the address history, kept forever |
+//! | `history_staging` | (height `u32`, tx_index `u32`, script key `u64`) | the same, while the index is first built (below) |
+//!
+//! **Address history** (`history.rs`, docs/API.md "Address history"): one
+//! entry per transaction and script that sent or received tracked sats,
+//! keyed by `history::history_key` (the first 8 bytes of the script's
+//! SHA-256), for the blocks `TrackerConfig::address_history_from` covers.
+//! Until the initial sync completes (`fast_sync_complete`), entries are
+//! appended to `history_staging`, in height order, which keeps the fast
+//! sync's writes sequential; the first commit that completes it moves them
+//! into `history` in key order, a bucket of keys at a time
+//! (`migrate_history`), and later blocks write to `history` directly. A
+//! rollback deletes the block's keys (`history::block_keys` of its undo
+//! record) from both tables. `history_from` in `meta` is the first covered
+//! height.
 //!
 //! Pieces are encoded as a count and `(offset gap, start, len)` triples, the
 //! gap being the distance from the previous piece's `offset_end()`.
@@ -78,12 +93,14 @@ pub(crate) mod tests;
 
 use {
   self::codec::{
-    Enc, Loc, OutPointKey, RefPolicy, decode_inscribed, decode_loc, decode_lost, decode_moves,
-    decode_row_stats, decode_sale, decode_u64s, decode_undo, decode_utxo, encode_inscribed,
-    encode_loc, encode_lost, encode_moves, encode_row_stats, encode_sale, encode_u64s, encode_undo,
-    encode_utxo, find_output, header_bytes, header_from_bytes, moves_have_external_refs,
-    outpoint_from_key, outpoint_key, overwritten_from_key, overwritten_key, script_key,
+    Enc, Loc, OutPointKey, RefPolicy, decode_history, decode_inscribed, decode_loc, decode_lost,
+    decode_moves, decode_row_stats, decode_sale, decode_u64s, decode_undo, decode_utxo,
+    encode_history, encode_inscribed, encode_loc, encode_lost, encode_moves, encode_row_stats,
+    encode_sale, encode_u64s, encode_undo, encode_utxo, find_output, header_bytes,
+    header_from_bytes, moves_have_external_refs, outpoint_from_key, outpoint_key,
+    overwritten_from_key, overwritten_key, script_key,
   },
+  crate::history::HistoryEntry,
   crate::model::{
     BlockDelta, LocationKind, MarketDelta, Move, Piece, RowId, RowStats, Sale, SatLocation,
     TrackedUtxo, TrackerConfig, TrackerSnapshot, UtxoKind,
@@ -109,8 +126,8 @@ use {
 
 /// Bumped whenever a table layout or encoding changes (2: sales and
 /// inscriptions; 3: an inscription's first transaction index, so a sale and
-/// an inscription in one block are ordered).
-pub const SCHEMA_VERSION: u32 = 3;
+/// an inscription in one block are ordered; 4: the address history).
+pub const SCHEMA_VERSION: u32 = 4;
 
 /// Undo records are kept for this many blocks below and including the tip.
 pub const UNDO_DEPTH: u32 = 144;
@@ -131,6 +148,16 @@ const SALES: TableDefinition<SaleKey, &[u8]> = TableDefinition::new("sales");
 const SALE_TXS: TableDefinition<&[u8; 32], (u32, u32)> = TableDefinition::new("sale_txs");
 const SALE_PIECES: TableDefinition<(u64, u32, u32, u32), u64> = TableDefinition::new("sale_pieces");
 const INSCRIBED: TableDefinition<u64, &[u8]> = TableDefinition::new("inscribed");
+const HISTORY: TableDefinition<HistoryKey, &[u8]> = TableDefinition::new("history");
+const HISTORY_STAGING: TableDefinition<(u32, u32, u64), &[u8]> =
+  TableDefinition::new("history_staging");
+
+/// Key of a history entry: (script key, height, tx_index).
+pub type HistoryKey = (u64, u32, u32);
+
+/// Staged history moved into `history` per bucket of script keys holding
+/// about this many stored bytes (bounds the memory of the move).
+const HISTORY_MIGRATION_BUCKET_BYTES: u64 = 512 << 20;
 
 const KEY_SCHEMA_VERSION: &str = "schema_version";
 const KEY_META: &str = "meta";
@@ -139,6 +166,7 @@ const KEY_LOST_SATS: &str = "lost_sats";
 const KEY_MOVES_FLOOR: &str = "moves_floor";
 const KEY_MOVES_REFS: &str = "moves_refs";
 const KEY_SALE_PIECE_MAX_LEN: &str = "sale_piece_max_len";
+const KEY_HISTORY_FROM: &str = "history_from";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct IndexMeta {
@@ -268,6 +296,9 @@ pub struct CommitStats {
   pub script_writes: usize,
   pub moves: usize,
   pub moves_bytes: usize,
+  pub history_entries: usize,
+  /// Time spent moving the staged history into `history` (once).
+  pub history_migration_seconds: f64,
   pub net_seconds: f64,
   pub write_seconds: f64,
   pub commit_seconds: f64,
@@ -374,6 +405,8 @@ impl Store {
     tx.open_table(SALE_TXS)?;
     tx.open_table(SALE_PIECES)?;
     tx.open_table(INSCRIBED)?;
+    tx.open_table(HISTORY)?;
+    tx.open_table(HISTORY_STAGING)?;
     tx.commit()?;
     Ok(())
   }
@@ -396,6 +429,8 @@ impl Store {
     tx.delete_table(SALE_TXS)?;
     tx.delete_table(SALE_PIECES)?;
     tx.delete_table(INSCRIBED)?;
+    tx.delete_table(HISTORY)?;
+    tx.delete_table(HISTORY_STAGING)?;
     tx.commit()?;
     self.create_tables()
   }
@@ -515,6 +550,7 @@ impl Store {
       .commit_with(
         deltas,
         &[],
+        &[],
         mined,
         fast_sync_complete,
         &CommitOptions {
@@ -526,11 +562,14 @@ impl Store {
   }
 
   /// `markets` holds each block's `MarketDelta` (same length as `deltas`),
-  /// or is empty for blocks without market data.
+  /// or is empty for blocks without market data. `histories` likewise holds
+  /// each block's address history entries (`history::block_entries`), `None`
+  /// for a block the history does not cover, or is empty for none.
   pub fn commit_with(
     &self,
     deltas: &[BlockDelta],
     markets: &[MarketDelta],
+    histories: &[Option<Vec<HistoryEntry>>],
     mined: &[u64],
     fast_sync_complete: bool,
     options: &CommitOptions,
@@ -539,6 +578,12 @@ impl Store {
       markets.is_empty() || markets.len() == deltas.len(),
       "{} market deltas for {} blocks",
       markets.len(),
+      deltas.len()
+    );
+    ensure!(
+      histories.is_empty() || histories.len() == deltas.len(),
+      "{} history batches for {} blocks",
+      histories.len(),
       deltas.len()
     );
     let no_market = MarketDelta::default();
@@ -591,6 +636,16 @@ impl Store {
     stats.utxo_writes = utxo_writes;
     stats.locator_writes = locator_writes;
     stats.script_writes = script_writes;
+
+    if fast_sync_complete && !tx.open_table(HISTORY_STAGING)?.is_empty()? {
+      let start = Instant::now();
+      let moved = migrate_history(&tx)?;
+      stats.history_migration_seconds = start.elapsed().as_secs_f64();
+      log::info!(
+        "moved {moved} staged address history entries into the history in {:.1}s",
+        stats.history_migration_seconds
+      );
+    }
 
     if let Some(last) = deltas.last() {
       let tip = last.height;
@@ -733,6 +788,8 @@ impl Store {
           .insert(KEY_SALE_PIECE_MAX_LEN, max_len.to_le_bytes().as_slice())?;
       }
 
+      stats.history_entries = write_history(&tx, deltas, histories, fast_sync_complete)?;
+
       meta.height = Some(tip);
       meta.hash = Some(last.hash);
 
@@ -822,6 +879,19 @@ impl Store {
       let mut history = tx.open_table(ROW_HISTORY)?;
       for row in &delta.rows {
         history.remove((row.row, height))?;
+      }
+    }
+
+    {
+      let mut history = tx.open_table(HISTORY)?;
+      let mut staging = tx.open_table(HISTORY_STAGING)?;
+      for (key, tx_index) in crate::history::block_keys(&delta) {
+        history.remove((key, height, tx_index))?;
+        staging.remove((height, tx_index, key))?;
+      }
+      let mut table = tx.open_table(META)?;
+      if table.get(KEY_HISTORY_FROM)?.is_some() && get_u32(&table, KEY_HISTORY_FROM)? == height {
+        table.remove(KEY_HISTORY_FROM)?;
       }
     }
 
@@ -946,6 +1016,8 @@ impl Store {
     table!(SALE_TXS);
     table!(SALE_PIECES);
     table!(INSCRIBED);
+    table!(HISTORY);
+    table!(HISTORY_STAGING);
 
     tx.abort()?;
     Ok(info)
@@ -1121,6 +1193,109 @@ fn revert_market(tx: &WriteTransaction, height: u32, market: &MarketDelta) -> an
   }
 
   Ok(())
+}
+
+/// Writes the batch's history entries: to `history_staging` while the
+/// initial sync is not complete, else to `history`. Records the first
+/// covered height. Returns the number of entries.
+fn write_history(
+  tx: &WriteTransaction,
+  deltas: &[BlockDelta],
+  histories: &[Option<Vec<HistoryEntry>>],
+  fast_sync_complete: bool,
+) -> anyhow::Result<usize> {
+  let Some(first) = deltas
+    .iter()
+    .zip(histories)
+    .find(|(_, history)| history.is_some())
+    .map(|(delta, _)| delta.height)
+  else {
+    return Ok(0);
+  };
+  {
+    let mut table = tx.open_table(META)?;
+    if table.get(KEY_HISTORY_FROM)?.is_none() {
+      table.insert(KEY_HISTORY_FROM, first.to_le_bytes().as_slice())?;
+    }
+  }
+
+  let encoded = deltas
+    .par_iter()
+    .zip(histories)
+    .filter_map(|(delta, history)| history.as_ref().map(|entries| (delta.height, entries)))
+    .flat_map_iter(|(height, entries)| {
+      entries
+        .iter()
+        .map(move |entry| ((entry.key, height, entry.tx_index), encode_history(entry)))
+    })
+    .collect::<Vec<(HistoryKey, Vec<u8>)>>();
+
+  // Staged until the initial sync completes (`commit_with` moves the
+  // staged entries first in the commit that completes it).
+  let staging = !fast_sync_complete;
+  if staging {
+    let mut table = tx.open_table(HISTORY_STAGING)?;
+    let mut keyed = encoded
+      .iter()
+      .map(|((key, height, tx_index), bytes)| ((*height, *tx_index, *key), bytes))
+      .collect::<Vec<_>>();
+    keyed.sort_unstable_by_key(|(key, _)| *key);
+    for (key, bytes) in keyed {
+      table.insert(key, bytes.as_slice())?;
+    }
+  } else {
+    let mut table = tx.open_table(HISTORY)?;
+    let mut encoded = encoded;
+    encoded.par_sort_unstable_by_key(|(key, _)| *key);
+    for (key, bytes) in &encoded {
+      table.insert(key, bytes.as_slice())?;
+    }
+  }
+  Ok(encoded_len(histories))
+}
+
+fn encoded_len(histories: &[Option<Vec<HistoryEntry>>]) -> usize {
+  histories.iter().flatten().map(Vec::len).sum()
+}
+
+/// Moves every staged history entry into `history`, in key order, one
+/// bucket of script keys at a time (each bucket a full scan of the staging
+/// table, sized to about `HISTORY_MIGRATION_BUCKET_BYTES`), then empties
+/// the staging table. Returns the number of entries moved.
+fn migrate_history(tx: &WriteTransaction) -> anyhow::Result<u64> {
+  migrate_history_in_buckets(tx, HISTORY_MIGRATION_BUCKET_BYTES)
+}
+
+fn migrate_history_in_buckets(tx: &WriteTransaction, bucket_bytes: u64) -> anyhow::Result<u64> {
+  let (entries, bytes) = {
+    let staging = tx.open_table(HISTORY_STAGING)?;
+    (staging.len()?, staging.stats()?.stored_bytes())
+  };
+  let buckets = u128::from(bytes.div_ceil(bucket_bytes).max(1));
+  let bound = |bucket: u128| (bucket << 64) / buckets;
+  {
+    let staging = tx.open_table(HISTORY_STAGING)?;
+    let mut history = tx.open_table(HISTORY)?;
+    for bucket in 0..buckets {
+      // Script keys in [low, high) (the last bucket ends at 2^64).
+      let (low, high) = (bound(bucket), bound(bucket + 1));
+      let mut batch = Vec::new();
+      for entry in staging.iter()? {
+        let (key, value) = entry?;
+        let (height, tx_index, script) = key.value();
+        if (low..high).contains(&u128::from(script)) {
+          batch.push(((script, height, tx_index), value.value().to_vec()));
+        }
+      }
+      batch.par_sort_unstable_by_key(|(key, _)| *key);
+      for (key, value) in batch {
+        history.insert(key, value.as_slice())?;
+      }
+    }
+  }
+  tx.delete_table(HISTORY_STAGING)?;
+  tx.open_table(HISTORY_STAGING)?;
+  Ok(entries)
 }
 
 fn get_u32(
@@ -1849,6 +2024,59 @@ impl Reader {
           first_tx_index,
         },
       ))
+    }))
+  }
+
+  /// The first height the address history covers (`None`: no covered
+  /// block indexed yet).
+  pub fn history_from(&self) -> anyhow::Result<Option<u32>> {
+    let table = self.tx.open_table(META)?;
+    if table.get(KEY_HISTORY_FROM)?.is_none() {
+      return Ok(None);
+    }
+    Ok(Some(get_u32(&table, KEY_HISTORY_FROM)?))
+  }
+
+  /// Whether history entries are still staged (the initial sync is not
+  /// complete): `history` is then incomplete.
+  pub fn history_building(&self) -> anyhow::Result<bool> {
+    Ok(!self.tx.open_table(HISTORY_STAGING)?.is_empty()?)
+  }
+
+  /// A script's history entries with heights in `from..=to` and keys below
+  /// `before` (exclusive, as (height, tx_index)), newest first.
+  pub fn history(
+    &self,
+    key: u64,
+    from: u32,
+    to: u32,
+    before: Option<(u32, u32)>,
+  ) -> anyhow::Result<impl Iterator<Item = anyhow::Result<HistoryEntry>> + 'static> {
+    let table = self.tx.open_table(HISTORY)?;
+    let low = (key, from, 0);
+    let mut high = (key, to, u32::MAX);
+    let mut empty = from > to;
+    if let Some((height, tx_index)) = before {
+      let cursor = (key, height, tx_index);
+      if cursor <= low {
+        empty = true;
+      } else if cursor <= high {
+        // Exclusive: the key just below the cursor.
+        high = match tx_index.checked_sub(1) {
+          Some(tx_index) => (key, height, tx_index),
+          None => (key, height - 1, u32::MAX),
+        };
+      }
+    }
+    let range = if empty {
+      table.range(low..low)?
+    } else {
+      table.range(low..=high)?
+    };
+    Ok(range.rev().map(|entry| {
+      let (key, value) = entry?;
+      let (script, height, tx_index) = key.value();
+      decode_history(script, height, tx_index, value.value())
     }))
   }
 

@@ -11,6 +11,7 @@
 //! aborted.
 
 pub mod catalog;
+pub mod history;
 pub mod json;
 pub mod sales;
 #[cfg(test)]
@@ -92,6 +93,8 @@ pub enum ServerError {
   BadRequest(String),
   NotFound(String),
   NotReady,
+  /// 503 with a reason.
+  NotReadyBecause(String),
   Internal(anyhow::Error),
 }
 
@@ -110,6 +113,7 @@ impl IntoResponse for ServerError {
         StatusCode::SERVICE_UNAVAILABLE,
         "the index is not ready: no block indexed yet".into(),
       ),
+      Self::NotReadyBecause(message) => (StatusCode::SERVICE_UNAVAILABLE, message),
       Self::Internal(err) => {
         log::error!("request failed: {err:#}");
         (StatusCode::INTERNAL_SERVER_ERROR, format!("{err:#}"))
@@ -197,6 +201,8 @@ pub fn router(state: Arc<ServerState>) -> Router {
     .route("/output/{outpoint}", get(output))
     .route("/address/{address}", get(address))
     .route("/script/{script}", get(script))
+    .route("/address/{address}/history", get(address_history))
+    .route("/script/{script}/history", get(script_history))
     .route("/block/{height}", get(block))
     .route("/block/{height}/moves", get(block_moves))
     .route("/moves", get(moves))
@@ -244,6 +250,17 @@ struct StatusJson {
   moves_retention: String,
   /// Lowest height whose moves are kept.
   moves_from: u32,
+  /// `/address/{address}/history` is served.
+  address_history: bool,
+  /// `--address-history-from`: `ordinals`, `all` or a height.
+  address_history_from: String,
+  /// The first height the address history covers, and its time (`null`
+  /// until a covered block is indexed).
+  address_history_from_height: Option<u32>,
+  address_history_from_time: Option<u32>,
+  /// The history is still being built (initial sync): history requests
+  /// answer 503.
+  address_history_building: bool,
   timings: Timings,
   error: Option<String>,
 }
@@ -252,6 +269,7 @@ async fn status(State(state): State<Arc<ServerState>>) -> ServerResult<Json<Stat
   read(&state, |state, reader| {
     let status = state.published.status();
     let commit = env!("GIT_COMMIT").trim();
+    let history_from = reader.history_from()?;
     Ok(Json(StatusJson {
       chain: state.chain.name(),
       version: env!("CARGO_PKG_VERSION"),
@@ -272,6 +290,14 @@ async fn status(State(state): State<Arc<ServerState>>) -> ServerResult<Json<Stat
       catalog_fingerprint: state.catalog.fingerprint(),
       moves_retention: state.moves_retention.to_string(),
       moves_from: reader.moves_floor()?,
+      address_history: true,
+      address_history_from: state.config.address_history_from.to_string(),
+      address_history_from_height: history_from,
+      address_history_from_time: match history_from {
+        Some(height) => reader.header(height)?.map(|header| header.time),
+        None => None,
+      },
+      address_history_building: reader.history_building()?,
       timings: status.timings,
       error: status.error,
     }))
@@ -588,6 +614,42 @@ async fn script(
     .map_err(|err| bad_request(format!("invalid script hex: {err}")))?;
   read(&state, move |state, reader| {
     Ok(Json(script_outputs(state, reader, script)?))
+  })
+  .await
+}
+
+fn address_script(state: &ServerState, address: &str) -> ServerResult<ScriptBuf> {
+  Ok(
+    parse::<Address<NetworkUnchecked>>("address", address)?
+      .require_network(state.chain.network())
+      .map_err(|err| bad_request(format!("address is not for {}: {err}", state.chain)))?
+      .script_pubkey(),
+  )
+}
+
+async fn address_history(
+  State(state): State<Arc<ServerState>>,
+  Path(address): Path<String>,
+  Query(params): Query<HashMap<String, String>>,
+) -> ServerResult<Json<history::HistoryJson>> {
+  let script = address_script(&state, &address)?;
+  let query = history::HistoryQuery::parse(&params)?;
+  read(&state, move |state, reader| {
+    Ok(Json(history::script_history(state, reader, script, query)?))
+  })
+  .await
+}
+
+async fn script_history(
+  State(state): State<Arc<ServerState>>,
+  Path(script): Path<String>,
+  Query(params): Query<HashMap<String, String>>,
+) -> ServerResult<Json<history::HistoryJson>> {
+  let script = ScriptBuf::from_hex(&script)
+    .map_err(|err| bad_request(format!("invalid script hex: {err}")))?;
+  let query = history::HistoryQuery::parse(&params)?;
+  read(&state, move |state, reader| {
+    Ok(Json(history::script_history(state, reader, script, query)?))
   })
   .await
 }

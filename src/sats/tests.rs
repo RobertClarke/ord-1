@@ -652,11 +652,23 @@ fn fingerprint() {
       .unwrap()
       .fingerprint()
   );
-  // Pinned (rules version 4): indexes built under another fingerprint are
-  // refused, so a change here means a reindex.
+  // The address history's coverage is index-defining.
+  for from in [
+    crate::model::HistoryFrom::All,
+    crate::model::HistoryFrom::Height(800_000),
+  ] {
+    let config = TrackerConfig {
+      address_history_from: from,
+      ..TrackerConfig::default()
+    };
+    assert_ne!(a, SatCatalog::new(&config).unwrap().fingerprint());
+  }
+  // Pinned (rules version 4, with the address history from the ordinals
+  // era): indexes built under another fingerprint are refused, so a change
+  // here means a reindex.
   assert_eq!(
     a,
-    "f9949e6bab522c5c4ca0f7d2ec16e1cf2bb7dc03c1164ad2cc2247dc5eaeaa87"
+    "e5bc7ff5ef5b5eaeb106e3f07e9af24a5dd6a42dfe2ea9124f24e34391badd82"
   );
 }
 

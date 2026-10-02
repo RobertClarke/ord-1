@@ -9,6 +9,7 @@
 
 use {
   crate::{
+    history::{self, HistoryEntry},
     market::{self, MarketContext, Marketplaces},
     model::{
       BlockDelta, MarketDelta, ResolvedBlock, SupplySnapshot, TrackerConfig, TrackerSnapshot,
@@ -208,6 +209,11 @@ pub trait Engine {
   /// Sales and inscriptions of tracked sats in `block`, whose delta
   /// `apply_block` just returned (`market::analyze`).
   fn analyze(&self, block: &ResolvedBlock, delta: &BlockDelta) -> MarketDelta;
+  /// The address history entries of `delta` (`history::block_entries`),
+  /// or `None` when the history does not cover the block.
+  fn history(&self, _delta: &BlockDelta, _market: &MarketDelta) -> Option<Vec<HistoryEntry>> {
+    None
+  }
   fn undo_block(&mut self, delta: &BlockDelta) -> anyhow::Result<()>;
   /// Per-row mined counters, indexed by `RowId`.
   fn mined(&self) -> Vec<u64>;
@@ -243,6 +249,24 @@ impl Engine for TrackerEngine {
 
   fn analyze(&self, block: &ResolvedBlock, delta: &BlockDelta) -> MarketDelta {
     market::analyze(block, delta, &self.market)
+  }
+
+  fn history(&self, delta: &BlockDelta, market: &MarketDelta) -> Option<Vec<HistoryEntry>> {
+    let config = self.tracker.config();
+    let max_time = self.tracker.max_time(delta.height)?;
+    if !config
+      .address_history_from
+      .covers(delta.height, max_time, config)
+    {
+      return None;
+    }
+    let tracker = &self.tracker;
+    Some(history::block_entries(
+      delta,
+      market,
+      &**tracker.catalog(),
+      &|height| tracker.time(height),
+    ))
   }
 
   fn undo_block(&mut self, delta: &BlockDelta) -> anyhow::Result<()> {
@@ -705,7 +729,8 @@ impl Indexer {
       match state.engine.apply_block(&block) {
         Ok(delta) => {
           let market = state.engine.analyze(&block, &delta);
-          batch.push(delta, market);
+          let history = state.engine.history(&delta, &market);
+          batch.push(delta, market, history);
         }
         Err(err) => {
           result = Err(err.context(format!("failed to apply block {height}")));
@@ -777,10 +802,15 @@ impl Indexer {
       stats.utxos,
       stats.bytes_fetched as f64 / 1e9
     );
-    let Applied { deltas, markets } = std::mem::take(batch);
+    let Applied {
+      deltas,
+      markets,
+      histories,
+    } = std::mem::take(batch);
     committer.submit(Batch {
       deltas,
       markets,
+      histories,
       mined: state.engine.mined(),
       fast_sync_complete: complete,
       target: Some(stop),
@@ -897,7 +927,8 @@ impl Indexer {
           .apply_block(&block)
           .with_context(|| format!("failed to apply block {height}"))?;
         let market = state.engine.analyze(&block, &delta);
-        pending.push(delta, market);
+        let history = state.engine.history(&delta, &market);
+        pending.push(delta, market, history);
         if pending.deltas.len() >= self.options.commit_interval as usize
           || state.last_commit.elapsed() >= self.options.commit_every
         {
@@ -922,10 +953,15 @@ impl Indexer {
     let supply_start = Instant::now();
     let supply = state.engine.supply(self.options.supply_top);
     let supply_seconds = supply_start.elapsed().as_secs_f64();
-    let Applied { deltas, markets } = std::mem::take(pending);
+    let Applied {
+      deltas,
+      markets,
+      histories,
+    } = std::mem::take(pending);
     let batch = Batch {
       deltas,
       markets,
+      histories,
       mined: state.engine.mined(),
       fast_sync_complete: state.fast_sync_complete,
       target: None,
@@ -1065,12 +1101,14 @@ pub fn restore(
 struct Applied {
   deltas: Vec<BlockDelta>,
   markets: Vec<MarketDelta>,
+  histories: Vec<Option<Vec<HistoryEntry>>>,
 }
 
 impl Applied {
-  fn push(&mut self, delta: BlockDelta, market: MarketDelta) {
+  fn push(&mut self, delta: BlockDelta, market: MarketDelta, history: Option<Vec<HistoryEntry>>) {
     self.deltas.push(delta);
     self.markets.push(market);
+    self.histories.push(history);
   }
 }
 
@@ -1078,6 +1116,7 @@ impl Applied {
 struct Batch {
   deltas: Vec<BlockDelta>,
   markets: Vec<MarketDelta>,
+  histories: Vec<Option<Vec<HistoryEntry>>>,
   mined: Vec<u64>,
   fast_sync_complete: bool,
   target: Option<u32>,
@@ -1095,6 +1134,7 @@ impl Batch {
     let stats = store.commit_with(
       &self.deltas,
       &self.markets,
+      &self.histories,
       &self.mined,
       self.fast_sync_complete,
       &CommitOptions {
