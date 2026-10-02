@@ -21,7 +21,6 @@ const TYPE_BOUNDS = {
   block286: [sm.firstSat(286), sm.firstSat(287)],
   block_666: [sm.firstSat(666), sm.firstSat(667)],
   nakamoto: [sm.firstSat(9), sm.firstSat(29_098)],
-  alpha_jan_feb_2009: [0, sm.firstSat(sm.FIRST_MARCH_2009_BLOCK)],
 };
 
 // [from, to) holding every sat of the row, when the row's height scope or
@@ -91,8 +90,8 @@ async function sampleRows(ours, rows, { perRow, seed, log, parallel = 3, keepRan
 
 // Tracked-candidate sats inside the oracle's lost ranges. `certain` ones
 // are tracked by rule (uncommon, black, block 9, vintage or milestone
-// alpha/omega, Jan-Feb 2009 alpha, 1d/2d palindrome); the others depend on
-// exotic-range combos.
+// alpha/omega, 1d/2d palindrome); the others depend on exotic-range combos
+// (since rules version 4 a Jan-Feb 2009 alpha is not tracked as such).
 function lostCandidates(lostIndex, { palindromesPerRange = 50 } = {}) {
   const out = [];
   for (const { start, end } of lostIndex.ranges()) {
@@ -109,7 +108,7 @@ function lostCandidates(lostIndex, { palindromesPerRange = 50 } = {}) {
       if (hi9 - 1 !== lo9) out.push({ sat: hi9 - 1, kind: 'block9', certain: true });
     }
     for (let a = Math.ceil(start / sm.COIN) * sm.COIN; a < end; a += sm.COIN) {
-      const certain = a < sm.VINTAGE.end || !!sm.milestoneTier(a) || sm.heightOfSat(a) < sm.FIRST_MARCH_2009_BLOCK;
+      const certain = a < sm.VINTAGE.end || !!sm.milestoneTier(a);
       out.push({ sat: a, kind: 'alpha', certain });
     }
     for (let o = Math.ceil((start + 1) / sm.COIN) * sm.COIN - 1; o < end; o += sm.COIN) {
@@ -163,7 +162,8 @@ async function buildEdges(ctx, add) {
     for (const h of rng.distinct(20, 0, 1000)) both(h, 'edge:vintage');
     for (const k of rng.distinct(20, 0, sm.VINTAGE.end / sm.COIN)) add(k * sm.COIN, 'edge:vintage');
     for (const k of rng.distinct(20, 1, sm.VINTAGE.end / sm.COIN + 1)) add(k * sm.COIN - 1, 'edge:vintage');
-    // Jan-Feb 2009 alphas after the vintage blocks.
+    // Jan-Feb 2009 alphas after the vintage blocks (untracked since rules
+    // version 4 unless a combination tracks them).
     for (const k of rng.distinct(20, sm.VINTAGE.end / sm.COIN, sm.firstSat(sm.FIRST_MARCH_2009_BLOCK) / sm.COIN)) add(k * sm.COIN, 'edge:vintage');
     // Palindromes of blocks 78, 286, 666 and the Nakamoto blocks.
     for (const h of [78, 286, 666, ...sm.NAKAMOTO_BLOCKS]) {

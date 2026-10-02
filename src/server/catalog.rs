@@ -24,7 +24,7 @@ pub struct RowInfo {
 }
 
 pub trait Catalog: Send + Sync {
-  /// The sat's type names (`getSatTypes` + ranges + bounty3 + Jan–Feb 2009).
+  /// The sat's type names (`getSatTypes` + ranges + bounty3).
   fn types(&self, sat: u64) -> Vec<&'static str>;
   fn is_tracked(&self, sat: u64) -> bool;
   /// In `RowId` order.

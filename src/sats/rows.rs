@@ -49,11 +49,6 @@ pub fn default_rows() -> Vec<Row> {
     row("black_rare", "Black rare", &[BlackRare]),
     row("black_epic", "Black epic", &[BlackEpic]),
     row("paliblock", "Paliblock", &[Paliblock]),
-    row(
-      "alpha_jan_feb_2009",
-      "Alpha, Jan–Feb 2009",
-      &[AlphaJanFeb2009],
-    ),
     row("alpha_uncommon", "Alpha uncommon", &[Uncommon, Alpha]),
     row("kilosat_alpha", "Kilosat alpha", &[KilosatAlpha]),
     row("decasat_alpha", "Decasat alpha", &[DecasatAlpha]),
@@ -184,7 +179,7 @@ mod tests {
     assert_eq!(
       ids.join(" "),
       "uncommon rare epic legendary mythic black black_rare black_epic paliblock \
-       alpha_jan_feb_2009 alpha_uncommon kilosat_alpha decasat_alpha centasat_alpha megasat_alpha \
+       alpha_uncommon kilosat_alpha decasat_alpha centasat_alpha megasat_alpha \
        kilosat_omega decasat_omega centasat_omega megasat_omega black_omega \
        palindrome_1d palindrome_2d palindrome_perfect_palinception bounty3_name \
        vintage_uncommon vintage_black vintage_alpha vintage_omega \
@@ -199,6 +194,6 @@ mod tests {
        sr_uncommon sr_alpha sr_omega sr_black sr_palindrome_3d \
        uncommon_2009 rare_2009 black_2009 palindrome_2d_2009"
     );
-    assert_eq!(ids.len(), 71);
+    assert_eq!(ids.len(), 70);
   }
 }

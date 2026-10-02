@@ -21,8 +21,13 @@ full block.
 
 A sat is **tracked** when it satisfies the monitoring runtime's extraction
 rules (`src/utils/psbtBuilder.js` → `SPECIAL_SAT_TYPES`,
-`REQUIRED_COMBINATION_TYPES`, `satIsExtractableAlpha2009`) with the scope the
-operator set:
+`REQUIRED_COMBINATION_TYPES`) with the scope the operator set. The runtime
+also extracts every alpha mined in January–February 2009
+(`satIsExtractableAlpha2009`, `isAlpha2009Sat`: blocks 0–5923); that is an
+extraction criterion, not a rarity, so the tracker does not follow it (rules
+version 4): such an alpha is tracked only when something else tracks it (a
+vintage, Nakamoto, block 9, 78, 286 or 666 alpha, a milestone alpha or an
+uncommon).
 
 * **Whole ranges** — every sat in:
   * `block9`: sats `[45_000_000_000, 50_000_000_000)`, all of block 9
@@ -42,8 +47,7 @@ operator set:
   * every type of any `REQUIRED_COMBINATION_TYPES` entry, e.g.
     `nakamoto`+`alpha`, `pizza`+`palindromes_integer`, `sr_1st_auction`+`black`,
     `palindromes_integer_3d`+`palindromes_integer`+`sr_1st_auction` (the full
-    list is in §2.3);
-  * an alpha mined in Jan–Feb 2009 (blocks 0–5923, `isAlpha2009Sat`).
+    list is in §2.3).
 * **Not tracked:** whole vintage / block 78 / block 286 / block 666 / pizza /
   jpeg / hitman / Silk Road / Nakamoto / 2009 ranges (only their special sats
   above; the runtime's standalone `block78`/`block286` ≥1M-sat chunks are out of
@@ -51,10 +55,13 @@ operator set:
   inscriptions, luck (luck is a per-block property of already-tracked sats and
   can be derived from the stored headers).
 
-Size at height ~969k: ≈2.8 M individual sats (≈969k uncommon + ≈969k black,
-≈296k Jan–Feb 2009 alphas, ≈50k vintage omegas, ≈40k milestone
-alphas/omegas, ≈35k 1d/2d palindromes, ≈12.5k bounty3 names, ≈400k other
-combo sats) plus the block 9 range (5e9 sats).
+Size at height ~969k under rules version 3: ≈2.8 M individual sats (≈969k
+uncommon + ≈969k black, ≈296k Jan–Feb 2009 alphas, ≈50k vintage omegas,
+≈40k milestone alphas/omegas, ≈35k 1d/2d palindromes, ≈12.5k bounty3 names,
+≈400k other combo sats) plus the block 9 range (5e9 sats). Version 4 drops
+the 240,921 Jan–Feb 2009 alphas nothing else tracks; 55,279 of the 296,200
+stay tracked (the 50,000 vintage alphas of blocks 0–999, and the uncommon,
+Nakamoto and milestone alphas of blocks 1000–5923).
 
 The tracked set is a pure function of the sat number, so it can be enumerated
 for any coinbase without chain data.
@@ -64,16 +71,22 @@ for any coinbase without chain data.
 `types(sat) -> TypeSet` must return exactly what bitcoin-monitoring's
 `getSatTypes(sat)` (`src/services/satRarityRules.js`) returns, plus exotic
 range membership (`src/services/exoticSatRanges.js` → `EXOTIC_RANGES`), plus
-`bounty3_name` (`data/bounty3-names-map.json`), plus the synthetic
-`alpha_jan_feb_2009`. Parity is enforced by test vectors generated from the JS
-(`tests/fixtures/sat-types.json`).
+`bounty3_name` (`data/bounty3-names-map.json`). Parity is enforced by test
+vectors generated from the JS (`tests/fixtures/sat-types.json`).
+
+**One deliberate difference:** the runtime's scanner adds a synthetic
+`alpha_jan_feb_2009` type (`isAlpha2009Sat`) after normalization. It names
+an extraction criterion of the runtime, not a rarity, so since rules
+version 4 the port has no such type (nor row), and the export tool leaves it
+out of the test vectors (the Jan–Feb 2009 alphas stay in them, as plain
+alphas).
 
 Assembly follows the runtime scanner for a point sat
 (`rareSatScanner.js` → `analyzeSatRanges`): rule types, then `bounty3_name` if
 named, then every exotic range type containing the sat, then
 `normalizePaliblockTypes` over the combined set — so `paliblock` is dropped
 whenever an exotic type or `bounty3_name` is present (e.g. block 9's first
-sat). `alpha_jan_feb_2009` is added after normalization. `common_name`, name
+sat). `common_name`, name
 palindromes and `inscription_*` types are not modelled.
 
 ### 2.1 Rule types (from `getSatTypes`)
@@ -147,7 +160,7 @@ defined in `src/sats/rows.rs` (ids are the API contract with the dashboard):
 
 ```
 uncommon rare epic legendary mythic black black_rare black_epic paliblock
-alpha_jan_feb_2009 alpha_uncommon kilosat_alpha decasat_alpha centasat_alpha megasat_alpha
+alpha_uncommon kilosat_alpha decasat_alpha centasat_alpha megasat_alpha
 kilosat_omega decasat_omega centasat_omega megasat_omega black_omega
 palindrome_1d palindrome_2d palindrome_perfect_palinception bounty3_name
 vintage_uncommon vintage_black vintage_alpha vintage_omega

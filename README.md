@@ -7,7 +7,7 @@ where the rare sats that matter are:
 * every uncommon sat (so every rare, epic, legendary and mythic) and every
   black sat (so every black rare and black epic);
 * the alphas, omegas and palindromes the bitcoin-monitoring extraction
-  runtime extracts: milestone alphas/omegas, Jan–Feb 2009 alphas, 1d/2d and
+  runtime extracts: milestone alphas/omegas, 1d/2d and
   perfect-palinception palindromes, bounty3 names, and the combo sats inside
   vintage, Nakamoto, pizza, jpeg, hitman, Silk Road and blocks 78/286/666;
 * every sat of block 9, including its first BTC (450x).

@@ -4,7 +4,7 @@ use super::{SatType, TypeSet};
 
 impl SatType {
   /// Every type, in declaration (bit) order.
-  pub const ALL: [SatType; 37] = [
+  pub const ALL: [SatType; 36] = [
     SatType::Mythic,
     SatType::Legendary,
     SatType::Epic,
@@ -41,7 +41,6 @@ impl SatType {
     SatType::Hitman,
     SatType::Sr1stAuction,
     SatType::Bounty3Name,
-    SatType::AlphaJanFeb2009,
   ];
 
   /// The `EXOTIC_RANGES` types: pure sat-range membership.
@@ -98,7 +97,6 @@ impl SatType {
       SatType::Hitman => "hitman",
       SatType::Sr1stAuction => "sr_1st_auction",
       SatType::Bounty3Name => "bounty3_name",
-      SatType::AlphaJanFeb2009 => "alpha_jan_feb_2009",
     }
   }
 
@@ -210,10 +208,8 @@ mod tests {
       SatType::from_name("sr_1st_auction"),
       Some(SatType::Sr1stAuction)
     );
-    assert_eq!(
-      SatType::from_name("alpha_jan_feb_2009"),
-      Some(SatType::AlphaJanFeb2009)
-    );
+    // The runtime's extraction criterion is no type here (rules version 4).
+    assert_eq!(SatType::from_name("alpha_jan_feb_2009"), None);
     assert_eq!(SatType::from_name("requests"), None);
     assert_eq!(SatType::from_name("Uncommon"), None);
     let mut names: Vec<&str> = SatType::ALL.iter().map(|t| t.name()).collect();

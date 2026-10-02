@@ -110,7 +110,7 @@ fn types_match_js_fixture() {
     seen.len(),
     SatType::ALL.len(),
     "missing {}",
-    TypeSet((1 << 37) - 1).difference(seen)
+    TypeSet((1 << SatType::ALL.len()) - 1).difference(seen)
   );
 }
 
@@ -142,7 +142,6 @@ fn js_tracked(fixture: &Fixture, types: TypeSet) -> bool {
       .required_combination_types
       .iter()
       .any(|combo| combo.iter().all(|name| has(name)))
-    || types.contains(SatType::AlphaJanFeb2009)
 }
 
 #[test]
@@ -183,8 +182,7 @@ fn documented_quirks() {
       Uncommon,
       Alpha,
       MegasatAlpha,
-      Vintage,
-      AlphaJanFeb2009
+      Vintage
     ])
   );
   // Block 9's first sat: palindromic height, but exotic types drop paliblock.
@@ -200,6 +198,31 @@ fn documented_quirks() {
   assert!(
     t.contains_all(TypeSet::of(&[Uncommon, Black, Paliblock])),
     "{t}"
+  );
+}
+
+#[test]
+fn jan_feb_2009_alphas_are_plain_alphas() {
+  // The runtime extracts every alpha mined before block 5924 (March 2009);
+  // that is an extraction criterion, not a rarity (rules version 4). A
+  // plain one is not tracked; vintage, Nakamoto and block 9 alphas still
+  // are, by their combinations.
+  let catalog = default_catalog();
+  let plain = first_sat(3_000) + COIN;
+  assert_eq!(catalog.types(plain), TypeSet::of(&[SatType::Alpha]));
+  assert!(!catalog.is_tracked(plain));
+  assert!(!catalog.is_tracked(first_sat(5_923) + COIN));
+  for sat in [
+    first_sat(500) + COIN,
+    first_sat(1_760) + COIN,
+    45_100_000_000,
+  ] {
+    assert!(catalog.is_tracked(sat), "{sat}");
+  }
+  // Every alpha of the vintage blocks is still tracked (vintage_alpha).
+  assert_eq!(
+    catalog.row_total(catalog.row_id("vintage_alpha").unwrap()),
+    50_000
   );
 }
 
@@ -447,7 +470,6 @@ fn block9_row_counts() {
   assert_eq!(expect("block9_alpha"), 50);
   assert_eq!(expect("block9_omega"), 50);
   assert_eq!(expect("vintage_alpha"), 50);
-  assert_eq!(expect("alpha_jan_feb_2009"), 50);
   assert_eq!(expect("uncommon"), 1);
   assert_eq!(expect("black"), 1);
   assert_eq!(expect("uncommon_2009"), 1);
@@ -485,7 +507,6 @@ fn row_totals() {
   assert_eq!(total("black_epic"), 33);
   assert_eq!(total("legendary"), 6);
   assert_eq!(total("mythic"), 1);
-  assert_eq!(total("alpha_jan_feb_2009"), 296_200);
   assert_eq!(total("megasat_alpha"), 21);
   assert_eq!(total("centasat_alpha"), 210 - 21);
   assert_eq!(total("decasat_alpha"), 2100 - 210);
@@ -531,7 +552,6 @@ fn sat_rows() {
     ids(45_000_000_000),
     [
       "uncommon",
-      "alpha_jan_feb_2009",
       "alpha_uncommon",
       "vintage_uncommon",
       "vintage_alpha",
@@ -555,7 +575,6 @@ fn sat_rows() {
       "epic",
       "legendary",
       "mythic",
-      "alpha_jan_feb_2009",
       "alpha_uncommon",
       "megasat_alpha",
       "vintage_uncommon",
@@ -602,11 +621,11 @@ fn fingerprint() {
       .unwrap()
       .fingerprint()
   );
-  // Pinned (rules version 3): indexes built under another fingerprint are
+  // Pinned (rules version 4): indexes built under another fingerprint are
   // refused, so a change here means a reindex.
   assert_eq!(
     a,
-    "6385347665d0f46a32d7200649c84768a828fa473bfa0b0b1ee4c0f4abeece2c"
+    "f9949e6bab522c5c4ca0f7d2ec16e1cf2bb7dc03c1164ad2cc2247dc5eaeaa87"
   );
 }
 

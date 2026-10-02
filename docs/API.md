@@ -21,7 +21,7 @@ This document is the contract with the bitcoin-monitoring supply dashboard
 
 **Piece**
 ```json
-{ "offset": 0, "start": 45000000000, "len": 1, "types": ["uncommon", "alpha", "vintage", "block9", "450x", "nakamoto", "alpha_jan_feb_2009"] }
+{ "offset": 0, "start": 45000000000, "len": 1, "types": ["uncommon", "alpha", "vintage", "block9", "450x", "nakamoto"] }
 ```
 `types` are the types of the piece's first sat (for `len > 1` pieces the
 other sats may have fewer types). `offset` meaning depends on the holder
@@ -113,6 +113,14 @@ Row definitions, in `RowId` order.
 `Sale`). `false` for label rows that name the same circulating sats as
 another row: `block9_1st_tx` holds every block 9 sat that ever moved (the
 other 40 BTC of block 9 never did), so its sales are priced as `block9`.
+
+The row set is docs/DESIGN.md §3. Rules version 4 (a new
+`catalog_fingerprint` in `/status`, so a reindex) removed the
+`alpha_jan_feb_2009` row and type (an extraction criterion of the runtime,
+not a rarity): an index built under version 4 never reports it, in `/rows`,
+`/supply`, `types`, `rows` or sales, and no longer tracks the Jan–Feb 2009
+alphas that nothing else tracks. Clients that also read older indexes should
+ignore that row and type.
 
 ### `GET /supply`
 ```json

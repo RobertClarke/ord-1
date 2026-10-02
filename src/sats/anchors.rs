@@ -149,7 +149,7 @@ impl Anchor {
       },
       BlackRare => last(2016),
       BlackEpic => last(210_000),
-      Alpha | AlphaJanFeb2009 => alpha(COIN),
+      Alpha => alpha(COIN),
       MegasatAlpha => alpha(MEGASAT),
       CentasatAlpha => alpha(CENTASAT),
       DecasatAlpha => alpha(DECASAT),
@@ -481,7 +481,6 @@ mod tests {
             | CentasatOmega
             | DecasatOmega
             | KilosatOmega
-            | AlphaJanFeb2009
         );
         assert_eq!(anchor.implied().contains(t), exact, "{t}");
       } else {

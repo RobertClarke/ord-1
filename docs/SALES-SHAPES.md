@@ -460,7 +460,7 @@ sales; `black_omega`, 2,069; `pizza_black`; `hitman_black`;
 **Sales per our row** (market sales whose main sat is in the row, all
 years; `sales_by_our_row` in the JSON has them per year): uncommon 7,737,
 block9 5,818, 450x 5,209, black 3,455, pizza_palindrome 312, bounty3_name
-239, palindrome_2d 184, kilosat_alpha 182, alpha_jan_feb_2009 166,
+239, palindrome_2d 184, kilosat_alpha 182, alpha_jan_feb_2009 166 (a row until rules version 4),
 nakamoto_palindrome 129, block78_palindrome 121, hitman_palindrome 117,
 uncommon_2009 113, sr_alpha 86, palindrome_perfect_palinception 77,
 block_666_palindrome 68, vintage_alpha 66, kilosat_omega 53, black_2009 50,

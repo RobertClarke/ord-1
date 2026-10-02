@@ -1,6 +1,6 @@
 //! End to end against a mockcore regtest chain. Default tracker config:
 //! block 9 is tracked whole; other blocks track their uncommon (first) and
-//! black (last) sats, and heights < 5924 their alphas.
+//! black (last) sats, and heights < 1000 (vintage) their alphas and omegas.
 
 use {
   super::*,

@@ -46,8 +46,11 @@
  *   of types the runtime's scanner gives that sat as a point sat
  *   (rareSatScanner.analyzeSatRanges): findSpecialSatsInRangesBatch rule
  *   types, plus bounty3_name, plus every EXOTIC_RANGES type containing the
- *   sat, then normalizePaliblockTypes over the combined list; the synthetic
- *   alpha_jan_feb_2009 (isAlpha2009Sat) is added afterwards. Stored as
+ *   sat, then normalizePaliblockTypes over the combined list. The scanner's
+ *   synthetic alpha_jan_feb_2009 (isAlpha2009Sat) is left out: it is an
+ *   extraction criterion, not a rarity, and the tracker deliberately has no
+ *   such type (rules version 4); the Jan-Feb 2009 alphas stay in the sample
+ *   as plain alphas. Stored as
  *   [sat, mask] pairs, bit i of mask = type_names[i]. Also carries the
  *   psbtBuilder.js arrays for the Rust drift check.
  *
@@ -110,7 +113,6 @@ const {
   findSpecialSatsInRangesBatch,
   getSatTypes,
   normalizePaliblockTypes,
-  isAlpha2009Sat,
   getFirstSatOfBlock,
   getLastSatOfBlock,
   generatePalindromesInRange,
@@ -378,9 +380,8 @@ function scannerTypes(sat) {
     if (!types.includes(name)) types.push(name);
   }
   normalizePaliblockTypes(types);
-  if (isAlpha2009Sat(sat)) {
-    types.push('alpha_jan_feb_2009');
-  }
+  // The scanner then adds alpha_jan_feb_2009 (isAlpha2009Sat), an extraction
+  // criterion the tracker deliberately does not model: left out.
   return types;
 }
 
@@ -668,7 +669,6 @@ function writeFixture() {
     if (bounty3Set.has(sat)) plain.push('bounty3_name');
     plain.push(...exoticTypesOf(sat));
     normalizePaliblockTypes(plain);
-    if (isAlpha2009Sat(sat)) plain.push('alpha_jan_feb_2009');
     const a = [...new Set(plain)].sort().join(',');
     const b = [...new Set(types)].sort().join(',');
     if (a !== b) {
@@ -684,7 +684,8 @@ function writeFixture() {
     description:
       'Types the runtime scanner gives each sat as a point sat: findSpecialSatsInRangesBatch ' +
       'rule types + bounty3_name + EXOTIC_RANGES membership, normalizePaliblockTypes over ' +
-      'the combined list, then alpha_jan_feb_2009 (isAlpha2009Sat). sats: [sat, mask] with ' +
+      'the combined list; without the scanner\'s synthetic alpha_jan_feb_2009 (isAlpha2009Sat), ' +
+      'an extraction criterion the tracker deliberately does not model. sats: [sat, mask] with ' +
       'bit i of mask = type_names[i].',
     sources: Object.fromEntries(
       Object.entries(SOURCES).map(([key, file]) => [key, { file, sha256: sourceHash(file) }])

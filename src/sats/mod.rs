@@ -18,9 +18,12 @@
 //! 4. `normalizePaliblockTypes` over that combined list: `paliblock` survives
 //!    only next to `uncommon`/`black` and paliblock-compatible types, so any
 //!    exotic type or `bounty3_name` drops it (block 9's first sat has no
-//!    `paliblock`);
-//! 5. the synthetic `alpha_jan_feb_2009` (`isAlpha2009Sat`), added after the
-//!    normalization.
+//!    `paliblock`).
+//!
+//! The runtime's scanner also adds a synthetic `alpha_jan_feb_2009`
+//! (`isAlpha2009Sat`: alphas mined in January–February 2009). That is an
+//! extraction criterion of the runtime, not a rarity, so the port leaves it
+//! out (rules version 4): the one deliberate difference from the JS types.
 //!
 //! `common_name`, name palindromes and `inscription_*` types are not tracked
 //! and never reported. Where the scanner differs from a bare `getSatTypes`:
@@ -35,7 +38,10 @@
 //! A sat below the supply is tracked when it lies in a `TrackerConfig` range
 //! (default: block 9), or its types include a standalone type
 //! (`SPECIAL_SAT_TYPES` minus `NOT_TRACKED_STANDALONE`), or all types of one
-//! `REQUIRED_COMBINATION_TYPES` entry, or `alpha_jan_feb_2009`.
+//! `REQUIRED_COMBINATION_TYPES` entry. (The runtime also extracts every
+//! Jan–Feb 2009 alpha; the tracker does not, since rules version 4: those
+//! not tracked for another reason, such as vintage or Nakamoto alphas, are
+//! not tracked.)
 //!
 //! Every individually tracked sat belongs to a sparse family (an *anchor*:
 //! block boundaries, alphas, omegas, palindromes, listed sats), so
@@ -59,7 +65,7 @@ use {
       BOUNTY3_NAMES_BIN, Bounty3, EXOTIC_RANGES_BIN, ExoticIndex, for_each_overlap,
       intersect_ranges, merge_ranges, overlap_len, parse_exotic_ranges,
     },
-    math::{FIRST_MARCH_2009_SAT, SUPPLY, first_sat},
+    math::{SUPPLY, first_sat},
   },
   crate::model::{RowCounts, RowId, TrackerConfig},
   anyhow::{Context, ensure},
@@ -80,7 +86,9 @@ pub use rows::{BLOCK9_FIRST_TX, HEIGHTS_2009, default_rows};
 /// * 3: the pizza, jpeg, hitman and sr_1st_auction ranges end on their last
 ///   sat (DESIGN.md §2.2): the sat after each range, an uncommon or alpha
 ///   when the range ends on a block or BTC, is no longer of the type.
-pub const RULES_VERSION: &str = "3";
+/// * 4: no `alpha_jan_feb_2009` (an extraction criterion, not a rarity): no
+///   such type nor row, and alphas tracked only for it are not tracked.
+pub const RULES_VERSION: &str = "4";
 
 /// `psbtBuilder.js` → `SPECIAL_SAT_TYPES`, verbatim and in order (a test
 /// compares it with the array parsed from the JS).
@@ -197,7 +205,6 @@ pub enum SatType {
   Hitman,
   Sr1stAuction,
   Bounty3Name,
-  AlphaJanFeb2009,
 }
 
 /// A set of `SatType`s (bit i = variant i).
@@ -280,8 +287,6 @@ struct SourceGroup {
   anchor: Anchor,
   /// Candidates anywhere may be tracked; `Some(true)`: all of them are.
   everywhere: Option<bool>,
-  /// Candidates inside these sorted, disjoint ranges are all tracked.
-  sure_ranges: Vec<(u64, u64)>,
   /// Candidates in exotic segments covering the set may be tracked
   /// (`true`: are tracked).
   exotic: Vec<(TypeSet, bool)>,
@@ -407,7 +412,6 @@ impl SatCatalog {
     }
     enum Domain {
       Everywhere,
-      Ranges(Vec<(u64, u64)>),
       Exotic(TypeSet),
     }
     let exotic_types = TypeSet::exotic();
@@ -451,13 +455,6 @@ impl SatCatalog {
         sure: anchor.implied().union(exotic).contains_all(combo),
       });
     }
-
-    // Jan–Feb 2009 alphas.
-    sources.push(Source {
-      anchor: Anchor::of(SatType::AlphaJanFeb2009).unwrap(),
-      domain: Domain::Ranges(vec![(0, FIRST_MARCH_2009_SAT)]),
-      sure: true,
-    });
 
     // Group by anchor, dropping anchors whose candidates another anchor
     // already enumerates everywhere as tracked.
@@ -507,7 +504,6 @@ impl SatCatalog {
           groups.push(SourceGroup {
             anchor: source.anchor,
             everywhere: None,
-            sure_ranges: Vec::new(),
             exotic: Vec::new(),
           });
           groups.len() - 1
@@ -517,11 +513,6 @@ impl SatCatalog {
       match source.domain {
         Domain::Everywhere => {
           group.everywhere = Some(group.everywhere.unwrap_or(false) | source.sure);
-        }
-        Domain::Ranges(ranges) => {
-          ensure!(source.sure, "range sources must be sure");
-          group.sure_ranges.extend(ranges);
-          group.sure_ranges = merge_ranges(std::mem::take(&mut group.sure_ranges));
         }
         Domain::Exotic(set) => group.exotic.push((set, source.sure)),
       }
@@ -575,9 +566,6 @@ impl SatCatalog {
       if let Some(scope) = row.sats {
         domain = intersect_ranges(&domain, &[scope]);
       }
-      if all.contains(SatType::AlphaJanFeb2009) {
-        domain = intersect_ranges(&domain, &[(0, FIRST_MARCH_2009_SAT)]);
-      }
 
       let mut compiled = CompiledRow {
         all,
@@ -606,13 +594,9 @@ impl SatCatalog {
         if let Some((key, anchor)) = best {
           compiled.anchors.push(anchor);
           compiled.keys.insert(key);
-          let mut implied = anchor.implied().union(all.intersection(exotic_types));
-          if implied.contains(SatType::Alpha) && all.contains(SatType::AlphaJanFeb2009) {
-            implied.insert(SatType::AlphaJanFeb2009);
-          }
+          let implied = anchor.implied().union(all.intersection(exotic_types));
           let tracked = implied.intersects(self.standalone)
             || self.combos.iter().any(|c| implied.contains_all(*c))
-            || implied.contains(SatType::AlphaJanFeb2009)
             || compiled
               .domain
               .iter()
@@ -646,10 +630,10 @@ impl SatCatalog {
   }
 
   /// Exactly the JS `getSatTypes(sat)` + exotic range membership +
-  /// `bounty3_name` + `alpha_jan_feb_2009`, assembled the way the runtime
-  /// scanner types a point sat (see the module docs): `paliblock` is
-  /// normalized over the rule, bounty3 and exotic types together, and sat 0
-  /// is not a palindrome.
+  /// `bounty3_name`, assembled the way the runtime scanner types a point sat
+  /// (see the module docs): `paliblock` is normalized over the rule, bounty3
+  /// and exotic types together, and sat 0 is not a palindrome. Unlike the
+  /// scanner, no synthetic `alpha_jan_feb_2009`.
   pub fn types(&self, sat: u64) -> TypeSet {
     use {
       SatType::*,
@@ -754,10 +738,6 @@ impl SatCatalog {
       types.insert(Paliblock);
     }
 
-    if sat < FIRST_MARCH_2009_SAT && sat.is_multiple_of(COIN) {
-      types.insert(AlphaJanFeb2009);
-    }
-
     types
   }
 
@@ -767,9 +747,7 @@ impl SatCatalog {
   }
 
   fn tracked_by_types(&self, types: TypeSet) -> bool {
-    types.intersects(self.standalone)
-      || types.contains(SatType::AlphaJanFeb2009)
-      || self.combos.iter().any(|combo| types.contains_all(*combo))
+    types.intersects(self.standalone) || self.combos.iter().any(|combo| types.contains_all(*combo))
   }
 
   /// DESIGN.md §1.
@@ -851,11 +829,6 @@ impl SatCatalog {
           continue;
         }
       }
-      for_each_overlap(&group.sure_ranges, a, b, |s, e| {
-        group
-          .anchor
-          .for_each(&self.lists, s, e, |sat| push(sat, true))
-      });
       if group.exotic.is_empty() {
         continue;
       }

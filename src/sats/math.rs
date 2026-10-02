@@ -16,12 +16,6 @@ pub const SUBSIDY_EPOCHS: usize = 33;
 /// Last height with a subsidy.
 pub const LAST_SUBSIDY_HEIGHT: u64 = SUBSIDY_EPOCHS as u64 * HALVING_INTERVAL - 1;
 
-/// Block 5924 is the first block of March 2009 (`FIRST_MARCH_2009_BLOCK`).
-pub const FIRST_MARCH_2009_HEIGHT: u64 = 5924;
-
-/// First sat of block 5924: alphas below it are `alpha_jan_feb_2009`.
-pub const FIRST_MARCH_2009_SAT: u64 = FIRST_MARCH_2009_HEIGHT * 5_000_000_000;
-
 const fn epoch_starts() -> [u64; SUBSIDY_EPOCHS + 1] {
   let mut starts = [0; SUBSIDY_EPOCHS + 1];
   let mut i = 1;
