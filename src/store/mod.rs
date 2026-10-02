@@ -29,20 +29,29 @@
 //! | `sale_pieces` | (first sat of a sold piece `u64`, height, tx_index, vin) | the piece's length: finds the sales whose pieces cover a sat |
 //! | `inscribed` | sat `u64` | count (envelopes that landed on it), first txid, first height, first transaction's index in its block: tracked sats only |
 //! | `history` | (script key `u64`, height `u32`, tx_index `u32`) | a `HistoryEntry` (`codec.rs`): the address history, kept forever |
-//! | `history_staging` | (height `u32`, tx_index `u32`, script key `u64`) | the same, while the index is first built (below) |
 //!
 //! **Address history** (`history.rs`, docs/API.md "Address history"): one
 //! entry per transaction and script that sent or received tracked sats,
 //! keyed by `history::history_key` (the first 8 bytes of the script's
 //! SHA-256), for the blocks `TrackerConfig::address_history_from` covers.
 //! Until the initial sync completes (`fast_sync_complete`), entries are
-//! appended to `history_staging`, in height order, which keeps the fast
-//! sync's writes sequential; the first commit that completes it moves them
-//! into `history` in key order, a bucket of keys at a time
-//! (`migrate_history`), and later blocks write to `history` directly. A
-//! rollback deletes the block's keys (`history::block_keys` of its undo
-//! record) from both tables. `history_from` in `meta` is the first covered
-//! height.
+//! appended, height first, to the `history_staging` table of a separate
+//! file next to the index (`index.history-staging.redb`), which keeps the
+//! fast sync's writes sequential; the commit that completes the sync moves
+//! them into `history` in key order, a bucket of script keys at a time
+//! (`migrate_history`), and the file is deleted, so its pages do not stay
+//! in the index as free space. Later blocks write to `history` directly. A
+//! staging batch is committed just before the index commit that records it
+//! (`history_staged` in `meta`); on open, staged blocks above the index's
+//! tip are dropped, and a staging file the index does not record is
+//! deleted. A rollback deletes the block's keys (`history::block_keys` of
+//! its undo record) from `history` and the staging file. `history_from` in
+//! `meta` is the first covered height.
+//!
+//! Bulk inserts in key order leave redb's leaves half full (a full leaf
+//! splits in two halves, and the left one is never written again), so they
+//! insert three entries in five first and the rest in a second pass
+//! (`dense_order`): the second pass fills the leaves to about 80%.
 //!
 //! Pieces are encoded as a count and `(offset gap, start, len)` triples, the
 //! gap being the distance from the previous piece's `offset_end()`.
@@ -149,11 +158,13 @@ const SALE_TXS: TableDefinition<&[u8; 32], (u32, u32)> = TableDefinition::new("s
 const SALE_PIECES: TableDefinition<(u64, u32, u32, u32), u64> = TableDefinition::new("sale_pieces");
 const INSCRIBED: TableDefinition<u64, &[u8]> = TableDefinition::new("inscribed");
 const HISTORY: TableDefinition<HistoryKey, &[u8]> = TableDefinition::new("history");
-const HISTORY_STAGING: TableDefinition<(u32, u32, u64), &[u8]> =
-  TableDefinition::new("history_staging");
+const HISTORY_STAGING: TableDefinition<StagingKey, &[u8]> = TableDefinition::new("history_staging");
 
 /// Key of a history entry: (script key, height, tx_index).
 pub type HistoryKey = (u64, u32, u32);
+
+/// Key of a staged history entry: (height, tx_index, script key).
+type StagingKey = (u32, u32, u64);
 
 /// Staged history moved into `history` per bucket of script keys holding
 /// about this many stored bytes (bounds the memory of the move).
@@ -167,6 +178,20 @@ const KEY_MOVES_FLOOR: &str = "moves_floor";
 const KEY_MOVES_REFS: &str = "moves_refs";
 const KEY_SALE_PIECE_MAX_LEN: &str = "sale_piece_max_len";
 const KEY_HISTORY_FROM: &str = "history_from";
+const KEY_HISTORY_STAGED: &str = "history_staged";
+
+/// The staging file of the index at `path`.
+fn staging_path(path: &Path) -> PathBuf {
+  path.with_extension("history-staging.redb")
+}
+
+/// The order of a dense bulk insert of `n` sorted entries: three in five,
+/// then the rest (see the module docs).
+fn dense_order(n: usize) -> impl Iterator<Item = usize> {
+  (0..n)
+    .filter(|i| i % 5 < 3)
+    .chain((0..n).filter(|i| i % 5 >= 3))
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct IndexMeta {
@@ -318,6 +343,8 @@ pub struct Store {
   db: Database,
   path: PathBuf,
   options: StoreOptions,
+  /// The history staging file, while the initial sync stages entries.
+  staging: std::sync::Mutex<Option<Database>>,
 }
 
 impl Store {
@@ -358,9 +385,11 @@ impl Store {
       db,
       path: path.into(),
       options,
+      staging: std::sync::Mutex::new(None),
     };
 
     store.create_tables()?;
+    store.recover_staging()?;
 
     Ok(store)
   }
@@ -406,9 +435,132 @@ impl Store {
     tx.open_table(SALE_PIECES)?;
     tx.open_table(INSCRIBED)?;
     tx.open_table(HISTORY)?;
-    tx.open_table(HISTORY_STAGING)?;
     tx.commit()?;
     Ok(())
+  }
+
+  /// Opens the staging file if the index records staged history, after
+  /// dropping blocks above the index's tip (staged, but the index commit
+  /// did not happen); deletes a staging file the index does not record.
+  fn recover_staging(&self) -> anyhow::Result<()> {
+    let path = staging_path(&self.path);
+    let reader = self.reader()?;
+    let staged = reader.history_building()?;
+    let tip = reader.meta().ok().flatten().and_then(|meta| meta.height);
+    drop(reader);
+    if !staged {
+      if path.exists() {
+        std::fs::remove_file(&path)
+          .with_context(|| format!("failed to delete {}", path.display()))?;
+      }
+      return Ok(());
+    }
+    ensure!(
+      path.exists(),
+      "the index records staged address history, but {} is missing; restart with --reindex",
+      path.display()
+    );
+    let db = self.open_staging()?;
+    let tx = db.begin_write()?;
+    {
+      let mut table = tx.open_table(HISTORY_STAGING)?;
+      let from = tip.map_or(0, |tip| tip.saturating_add(1));
+      if tip != Some(u32::MAX) {
+        for entry in table.extract_from_if((from, 0, 0).., |_, _| true)? {
+          entry?;
+        }
+      }
+    }
+    tx.commit()?;
+    *self.staging.lock().unwrap() = Some(db);
+    Ok(())
+  }
+
+  fn open_staging(&self) -> anyhow::Result<Database> {
+    let path = staging_path(&self.path);
+    let db = Database::builder()
+      .set_cache_size(self.options.cache_size.min(256 << 20))
+      .create(&path)
+      .with_context(|| format!("failed to open {}", path.display()))?;
+    let tx = db.begin_write()?;
+    tx.open_table(HISTORY_STAGING)?;
+    tx.commit()?;
+    Ok(db)
+  }
+
+  /// Closes and deletes the staging file.
+  fn drop_staging(&self) -> anyhow::Result<()> {
+    self.staging.lock().unwrap().take();
+    let path = staging_path(&self.path);
+    if path.exists() {
+      std::fs::remove_file(&path)
+        .with_context(|| format!("failed to delete {}", path.display()))?;
+    }
+    Ok(())
+  }
+
+  /// Appends staged entries, keyed (height, tx_index, script key) and
+  /// sorted, in their own commit.
+  fn stage(&self, entries: &[(StagingKey, Vec<u8>)], durable: bool) -> anyhow::Result<()> {
+    let mut staging = self.staging.lock().unwrap();
+    if staging.is_none() {
+      *staging = Some(self.open_staging()?);
+    }
+    let db = staging.as_ref().unwrap();
+    let mut tx = db.begin_write()?;
+    if !durable {
+      tx.set_durability(Durability::None)?;
+    }
+    {
+      let mut table = tx.open_table(HISTORY_STAGING)?;
+      for i in dense_order(entries.len()) {
+        let (key, value) = &entries[i];
+        table.insert(key, value.as_slice())?;
+      }
+    }
+    tx.commit()?;
+    Ok(())
+  }
+
+  /// Moves every staged entry into `history` (in `tx`), in key order, one
+  /// bucket of script keys at a time: each bucket is a full scan of the
+  /// staging table, sized to about `bucket_bytes` of it. Returns the
+  /// number of entries moved.
+  fn migrate_history(&self, tx: &WriteTransaction, bucket_bytes: u64) -> anyhow::Result<u64> {
+    let staging = self.staging.lock().unwrap();
+    let db = staging
+      .as_ref()
+      .context("the index records staged address history, but no staging file is open")?;
+    let read = db.begin_read()?;
+    let table = read.open_table(HISTORY_STAGING)?;
+    let entries = table.len()?;
+    let bytes = {
+      let write = db.begin_write()?;
+      let bytes = write.open_table(HISTORY_STAGING)?.stats()?.stored_bytes();
+      write.abort()?;
+      bytes
+    };
+    let buckets = u128::from(bytes.div_ceil(bucket_bytes).max(1));
+    let bound = |bucket: u128| (bucket << 64) / buckets;
+    let mut history = tx.open_table(HISTORY)?;
+    for bucket in 0..buckets {
+      // Script keys in [low, high) (the last bucket ends at 2^64).
+      let (low, high) = (bound(bucket), bound(bucket + 1));
+      let mut batch = Vec::new();
+      for entry in table.iter()? {
+        let (key, value) = entry?;
+        let (height, tx_index, script) = key.value();
+        if (low..high).contains(&u128::from(script)) {
+          batch.push(((script, height, tx_index), value.value().to_vec()));
+        }
+      }
+      batch.par_sort_unstable_by_key(|(key, _)| *key);
+      for i in dense_order(batch.len()) {
+        let (key, value) = &batch[i];
+        history.insert(key, value.as_slice())?;
+      }
+    }
+    Ok(entries)
   }
 
   /// Deletes everything; the index is then empty (no meta).
@@ -430,8 +582,8 @@ impl Store {
     tx.delete_table(SALE_PIECES)?;
     tx.delete_table(INSCRIBED)?;
     tx.delete_table(HISTORY)?;
-    tx.delete_table(HISTORY_STAGING)?;
     tx.commit()?;
+    self.drop_staging()?;
     self.create_tables()
   }
 
@@ -637,9 +789,12 @@ impl Store {
     stats.locator_writes = locator_writes;
     stats.script_writes = script_writes;
 
-    if fast_sync_complete && !tx.open_table(HISTORY_STAGING)?.is_empty()? {
+    let mut migrated = false;
+    if fast_sync_complete && get_u32(&tx.open_table(META)?, KEY_HISTORY_STAGED)? == 1 {
       let start = Instant::now();
-      let moved = migrate_history(&tx)?;
+      let moved = self.migrate_history(&tx, HISTORY_MIGRATION_BUCKET_BYTES)?;
+      tx.open_table(META)?.remove(KEY_HISTORY_STAGED)?;
+      migrated = true;
       stats.history_migration_seconds = start.elapsed().as_secs_f64();
       log::info!(
         "moved {moved} staged address history entries into the history in {:.1}s",
@@ -788,7 +943,8 @@ impl Store {
           .insert(KEY_SALE_PIECE_MAX_LEN, max_len.to_le_bytes().as_slice())?;
       }
 
-      stats.history_entries = write_history(&tx, deltas, histories, fast_sync_complete)?;
+      stats.history_entries =
+        self.write_history(&tx, deltas, histories, fast_sync_complete, options.durable)?;
 
       meta.height = Some(tip);
       meta.hash = Some(last.hash);
@@ -810,6 +966,10 @@ impl Store {
     let commit_start = Instant::now();
     tx.commit()?;
     stats.commit_seconds = commit_start.elapsed().as_secs_f64();
+
+    if migrated {
+      self.drop_staging()?;
+    }
 
     Ok(stats)
   }
@@ -882,12 +1042,29 @@ impl Store {
       }
     }
 
+    let mut staging_emptied = false;
     {
+      if get_u32(&tx.open_table(META)?, KEY_HISTORY_STAGED)? == 1
+        && let Some(db) = &*self.staging.lock().unwrap()
+      {
+        let staging_tx = db.begin_write()?;
+        {
+          let mut staging = staging_tx.open_table(HISTORY_STAGING)?;
+          for entry in
+            staging.extract_from_if((height, 0, 0)..=(height, u32::MAX, u64::MAX), |_, _| true)?
+          {
+            entry?;
+          }
+          staging_emptied = staging.is_empty()?;
+        }
+        staging_tx.commit()?;
+        if staging_emptied {
+          tx.open_table(META)?.remove(KEY_HISTORY_STAGED)?;
+        }
+      }
       let mut history = tx.open_table(HISTORY)?;
-      let mut staging = tx.open_table(HISTORY_STAGING)?;
       for (key, tx_index) in crate::history::block_keys(&delta) {
         history.remove((key, height, tx_index))?;
-        staging.remove((height, tx_index, key))?;
       }
       let mut table = tx.open_table(META)?;
       if table.get(KEY_HISTORY_FROM)?.is_some() && get_u32(&table, KEY_HISTORY_FROM)? == height {
@@ -931,6 +1108,10 @@ impl Store {
     }
 
     tx.commit()?;
+
+    if staging_emptied {
+      self.drop_staging()?;
+    }
 
     Ok(Some(delta))
   }
@@ -1017,9 +1198,34 @@ impl Store {
     table!(SALE_PIECES);
     table!(INSCRIBED);
     table!(HISTORY);
-    table!(HISTORY_STAGING);
 
     tx.abort()?;
+
+    // The staging file, while there is one.
+    let staging = self.staging.lock().unwrap();
+    match &*staging {
+      Some(db) => {
+        let tx = db.begin_write()?;
+        let table = tx.open_table(HISTORY_STAGING)?;
+        let stats = table.stats()?;
+        info.push(TableInfo {
+          name: HISTORY_STAGING.name().into(),
+          entries: table.len()?,
+          stored_bytes: stats.stored_bytes(),
+          metadata_bytes: stats.metadata_bytes(),
+          fragmented_bytes: stats.fragmented_bytes(),
+        });
+        drop(table);
+        tx.abort()?;
+      }
+      None => info.push(TableInfo {
+        name: HISTORY_STAGING.name().into(),
+        entries: 0,
+        stored_bytes: 0,
+        metadata_bytes: 0,
+        fragmented_bytes: 0,
+      }),
+    }
     Ok(info)
   }
 }
@@ -1195,107 +1401,62 @@ fn revert_market(tx: &WriteTransaction, height: u32, market: &MarketDelta) -> an
   Ok(())
 }
 
-/// Writes the batch's history entries: to `history_staging` while the
-/// initial sync is not complete, else to `history`. Records the first
-/// covered height. Returns the number of entries.
-fn write_history(
-  tx: &WriteTransaction,
-  deltas: &[BlockDelta],
-  histories: &[Option<Vec<HistoryEntry>>],
-  fast_sync_complete: bool,
-) -> anyhow::Result<usize> {
-  let Some(first) = deltas
-    .iter()
-    .zip(histories)
-    .find(|(_, history)| history.is_some())
-    .map(|(delta, _)| delta.height)
-  else {
-    return Ok(0);
-  };
-  {
-    let mut table = tx.open_table(META)?;
-    if table.get(KEY_HISTORY_FROM)?.is_none() {
-      table.insert(KEY_HISTORY_FROM, first.to_le_bytes().as_slice())?;
-    }
-  }
-
-  let encoded = deltas
-    .par_iter()
-    .zip(histories)
-    .filter_map(|(delta, history)| history.as_ref().map(|entries| (delta.height, entries)))
-    .flat_map_iter(|(height, entries)| {
-      entries
-        .iter()
-        .map(move |entry| ((entry.key, height, entry.tx_index), encode_history(entry)))
-    })
-    .collect::<Vec<(HistoryKey, Vec<u8>)>>();
-
-  // Staged until the initial sync completes (`commit_with` moves the
-  // staged entries first in the commit that completes it).
-  let staging = !fast_sync_complete;
-  if staging {
-    let mut table = tx.open_table(HISTORY_STAGING)?;
-    let mut keyed = encoded
+/// Writes the batch's history entries: to the staging file while the
+/// initial sync is not complete (recording `history_staged`), else to
+/// `history`. Records the first covered height. Returns the number of
+/// entries.
+impl Store {
+  fn write_history(
+    &self,
+    tx: &WriteTransaction,
+    deltas: &[BlockDelta],
+    histories: &[Option<Vec<HistoryEntry>>],
+    fast_sync_complete: bool,
+    durable: bool,
+  ) -> anyhow::Result<usize> {
+    let Some(first) = deltas
       .iter()
-      .map(|((key, height, tx_index), bytes)| ((*height, *tx_index, *key), bytes))
-      .collect::<Vec<_>>();
-    keyed.sort_unstable_by_key(|(key, _)| *key);
-    for (key, bytes) in keyed {
-      table.insert(key, bytes.as_slice())?;
-    }
-  } else {
-    let mut table = tx.open_table(HISTORY)?;
-    let mut encoded = encoded;
-    encoded.par_sort_unstable_by_key(|(key, _)| *key);
-    for (key, bytes) in &encoded {
-      table.insert(key, bytes.as_slice())?;
-    }
-  }
-  Ok(encoded_len(histories))
-}
-
-fn encoded_len(histories: &[Option<Vec<HistoryEntry>>]) -> usize {
-  histories.iter().flatten().map(Vec::len).sum()
-}
-
-/// Moves every staged history entry into `history`, in key order, one
-/// bucket of script keys at a time (each bucket a full scan of the staging
-/// table, sized to about `HISTORY_MIGRATION_BUCKET_BYTES`), then empties
-/// the staging table. Returns the number of entries moved.
-fn migrate_history(tx: &WriteTransaction) -> anyhow::Result<u64> {
-  migrate_history_in_buckets(tx, HISTORY_MIGRATION_BUCKET_BYTES)
-}
-
-fn migrate_history_in_buckets(tx: &WriteTransaction, bucket_bytes: u64) -> anyhow::Result<u64> {
-  let (entries, bytes) = {
-    let staging = tx.open_table(HISTORY_STAGING)?;
-    (staging.len()?, staging.stats()?.stored_bytes())
-  };
-  let buckets = u128::from(bytes.div_ceil(bucket_bytes).max(1));
-  let bound = |bucket: u128| (bucket << 64) / buckets;
-  {
-    let staging = tx.open_table(HISTORY_STAGING)?;
-    let mut history = tx.open_table(HISTORY)?;
-    for bucket in 0..buckets {
-      // Script keys in [low, high) (the last bucket ends at 2^64).
-      let (low, high) = (bound(bucket), bound(bucket + 1));
-      let mut batch = Vec::new();
-      for entry in staging.iter()? {
-        let (key, value) = entry?;
-        let (height, tx_index, script) = key.value();
-        if (low..high).contains(&u128::from(script)) {
-          batch.push(((script, height, tx_index), value.value().to_vec()));
-        }
-      }
-      batch.par_sort_unstable_by_key(|(key, _)| *key);
-      for (key, value) in batch {
-        history.insert(key, value.as_slice())?;
+      .zip(histories)
+      .find(|(_, history)| history.is_some())
+      .map(|(delta, _)| delta.height)
+    else {
+      return Ok(0);
+    };
+    {
+      let mut table = tx.open_table(META)?;
+      if table.get(KEY_HISTORY_FROM)?.is_none() {
+        table.insert(KEY_HISTORY_FROM, first.to_le_bytes().as_slice())?;
       }
     }
+
+    let entries = deltas
+      .par_iter()
+      .zip(histories)
+      .filter_map(|(delta, history)| history.as_ref().map(|entries| (delta.height, entries)))
+      .flat_map_iter(|(height, entries)| entries.iter().map(move |entry| (height, entry)))
+      .map(|(height, entry)| ((height, entry.tx_index, entry.key), encode_history(entry)))
+      .collect::<Vec<(StagingKey, Vec<u8>)>>();
+
+    if fast_sync_complete {
+      let mut table = tx.open_table(HISTORY)?;
+      let mut keyed = entries
+        .into_iter()
+        .map(|((height, tx_index, key), bytes)| ((key, height, tx_index), bytes))
+        .collect::<Vec<(HistoryKey, Vec<u8>)>>();
+      keyed.par_sort_unstable_by_key(|(key, _)| *key);
+      for (key, bytes) in &keyed {
+        table.insert(key, bytes.as_slice())?;
+      }
+      Ok(keyed.len())
+    } else {
+      let mut entries = entries;
+      entries.par_sort_unstable_by_key(|(key, _)| *key);
+      self.stage(&entries, durable)?;
+      tx.open_table(META)?
+        .insert(KEY_HISTORY_STAGED, 1u32.to_le_bytes().as_slice())?;
+      Ok(entries.len())
+    }
   }
-  tx.delete_table(HISTORY_STAGING)?;
-  tx.open_table(HISTORY_STAGING)?;
-  Ok(entries)
 }
 
 fn get_u32(
@@ -2040,7 +2201,7 @@ impl Reader {
   /// Whether history entries are still staged (the initial sync is not
   /// complete): `history` is then incomplete.
   pub fn history_building(&self) -> anyhow::Result<bool> {
-    Ok(!self.tx.open_table(HISTORY_STAGING)?.is_empty()?)
+    Ok(get_u32(&self.tx.open_table(META)?, KEY_HISTORY_STAGED)? == 1)
   }
 
   /// A script's history entries with heights in `from..=to` and keys below

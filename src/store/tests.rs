@@ -550,7 +550,15 @@ fn dump(store: &Store, with_undo: bool) -> Dump {
   table!(SALE_PIECES, "sale_pieces");
   table!(INSCRIBED, "inscribed");
   table!(HISTORY, "history");
-  table!(HISTORY_STAGING, "history_staging");
+  if let Some(db) = &*store.staging.lock().unwrap() {
+    let tx = db.begin_read().unwrap();
+    dump.insert(
+      "history_staging",
+      raw(&tx.open_table(HISTORY_STAGING).unwrap()),
+    );
+  } else {
+    dump.insert("history_staging", Vec::new());
+  }
   if with_undo {
     table!(UNDO, "undo");
   }
@@ -1948,11 +1956,64 @@ fn history_is_staged_until_the_initial_sync_completes() {
   );
   drop(reader);
 
-  // The commit that completes the sync moves the staged entries first.
+  // A staged batch whose index commit never happened (a crash between
+  // the two) is dropped when the index is reopened.
+  store
+    .stage(&[((35, 1, 7), vec![1, 2, 3]), ((29, 9, 7), vec![4])], true)
+    .unwrap();
+  let staged_rows = |store: &Store| {
+    store
+      .table_info()
+      .unwrap()
+      .into_iter()
+      .find(|table| table.name == "history_staging")
+      .unwrap()
+      .entries
+  };
+  let before = staged_rows(&store);
+  drop(store);
+  let store = self::store(&dir, MovesRetention::Blocks(5));
+  assert_eq!(
+    staged_rows(&store),
+    before - 1,
+    "height 35 > tip 29 is gone"
+  );
+  // (The other made-up row is at the tip; a rollback of 29 would remove
+  // it. Remove it here so the expectations stay those of the blocks.)
+  {
+    let staging = store.staging.lock().unwrap();
+    let tx = staging.as_ref().unwrap().begin_write().unwrap();
+    tx.open_table(HISTORY_STAGING)
+      .unwrap()
+      .remove((29, 9, 7))
+      .unwrap();
+    tx.commit().unwrap();
+  }
+  let commit = |range: std::ops::Range<usize>, complete: bool| {
+    store
+      .commit_with(
+        &deltas[range.clone()],
+        &[],
+        &histories[range],
+        &chain.mined(),
+        complete,
+        &CommitOptions {
+          durable: true,
+          target_height: Some(39),
+        },
+      )
+      .unwrap()
+  };
+
+  // The commit that completes the sync moves the staged entries first,
+  // then deletes the staging file.
   let stats = commit(30..40, true);
   assert!(stats.history_entries > 0);
+  assert!(stats.history_migration_seconds > 0.0);
   assert!(!store.reader().unwrap().history_building().unwrap());
   assert_eq!(history_keys(&store), expected);
+  assert!(!staging_path(store.path()).exists());
+  assert_eq!(staged_rows(&store), 0);
 
   // Reading one script back, newest first, with every field.
   let (key, _, _) = expected[expected.len() / 2];
@@ -2061,18 +2122,19 @@ fn staged_history_moves_in_many_buckets() {
     .collect::<Vec<_>>();
   expected.sort_unstable();
 
+  assert!(store.reader().unwrap().history_building().unwrap());
+  let staging = store
+    .table_info()
+    .unwrap()
+    .into_iter()
+    .find(|table| table.name == "history_staging")
+    .unwrap();
+  assert_eq!(staging.entries, expected.len() as u64);
+  assert!(staging.stored_bytes > 4 * 1024);
   let tx = store.db.begin_write().unwrap();
-  let bytes = tx
-    .open_table(HISTORY_STAGING)
-    .unwrap()
-    .stats()
-    .unwrap()
-    .stored_bytes();
-  assert!(bytes > 4 * 1024);
   // Several buckets of about 1 KiB.
-  let moved = migrate_history_in_buckets(&tx, 1024).unwrap();
+  let moved = store.migrate_history(&tx, 1024).unwrap();
   tx.commit().unwrap();
   assert_eq!(moved, expected.len() as u64);
   assert_eq!(history_keys(&store), expected);
-  assert!(!store.reader().unwrap().history_building().unwrap());
 }
