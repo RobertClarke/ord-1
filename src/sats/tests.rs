@@ -92,8 +92,11 @@ fn types_match_js_fixture() {
   assert!(fixture.sats.len() > 200_000);
   let mut mismatches = Vec::new();
   let mut seen = TypeSet::EMPTY;
-  for &(sat, expected) in &fixture.sats {
-    seen = seen.union(expected);
+  for &(sat, cumulative) in &fixture.sats {
+    seen = seen.union(cumulative);
+    // The one deliberate difference with the runtime's cumulative tiers:
+    // a sat keeps only its highest (rules version 4).
+    let expected = cumulative.exclusive();
     let actual = catalog.types(sat);
     if actual != expected {
       mismatches.push(format!("{sat}: rust {actual} js {expected}"));
@@ -171,20 +174,46 @@ fn tracked_set_matches_js_rules() {
 fn documented_quirks() {
   use SatType::*;
   let catalog = default_catalog();
-  // Sat 0: no palindrome types (the scanner's generator never yields 0).
+  // Sat 0: no palindrome types (the scanner's generator never yields 0),
+  // and mythic only among the rarities.
   assert_eq!(
     catalog.types(0),
-    TypeSet::of(&[
-      Mythic,
-      Legendary,
-      Epic,
-      Rare,
-      Uncommon,
-      Alpha,
-      MegasatAlpha,
-      Vintage
-    ])
+    TypeSet::of(&[Mythic, Alpha, MegasatAlpha, Vintage])
   );
+  // Exclusive tiers: a rare sat is not also uncommon, a black rare not also
+  // black, an epic not also uncommon (the runtime says both).
+  assert_eq!(
+    catalog.types(1_981_560_000_000_000),
+    TypeSet::of(&[Rare, Alpha])
+  );
+  assert_eq!(
+    catalog.types(1_981_559_999_999_999),
+    TypeSet::of(&[BlackRare, Omega])
+  );
+  assert_eq!(
+    catalog.types(first_sat(840_000)),
+    TypeSet::of(&[Epic, Alpha])
+  );
+  let legendary = catalog.types(first_sat(1_260_000));
+  assert!(legendary.contains(Legendary));
+  assert!(!legendary.intersects(TypeSet::of(&[Epic, Rare, Uncommon])));
+  let black_epic = catalog.types(first_sat(1_260_000) - 1);
+  assert!(black_epic.contains(BlackEpic));
+  assert!(!black_epic.intersects(TypeSet::of(&[BlackRare, Black])));
+  for sat in [
+    0,
+    1_981_560_000_000_000,
+    1_981_559_999_999_999,
+    first_sat(840_000),
+  ] {
+    assert!(catalog.is_tracked(sat), "{sat}");
+    assert!(
+      catalog
+        .types(sat)
+        .with_lower_tiers()
+        .intersects(TypeSet::of(&[Uncommon, Black]))
+    );
+  }
   // Block 9's first sat: palindromic height, but exotic types drop paliblock.
   let t = catalog.types(45_000_000_000);
   assert!(!t.contains(Paliblock));
@@ -499,14 +528,28 @@ fn block9_row_counts() {
 fn row_totals() {
   let catalog = default_catalog();
   let total = |id: &str| catalog.row_total(catalog.row_id(id).unwrap());
-  assert_eq!(total("uncommon"), 6_930_000);
-  assert_eq!(total("black"), 6_930_000);
-  assert_eq!(total("rare"), 3438);
-  assert_eq!(total("black_rare"), 3437);
-  assert_eq!(total("epic"), 33);
-  assert_eq!(total("black_epic"), 33);
-  assert_eq!(total("legendary"), 6);
+  // Exclusive tiers (rules version 4): 6,930,000 blocks; 3,438 at a
+  // multiple of 2016, 33 of 210,000, 6 of 1,260,000 (both), block 0 all of
+  // them; so 3,465 have a tier above uncommon. Black epics: (h + 1) a
+  // multiple of 210,000 (33), black rares of 2016 (3,437), 5 both.
   assert_eq!(total("mythic"), 1);
+  assert_eq!(total("legendary"), 5);
+  assert_eq!(total("epic"), 33 - 6);
+  assert_eq!(total("rare"), 3438 - 6);
+  assert_eq!(total("uncommon"), 6_930_000 - 3_465);
+  assert_eq!(total("black_epic"), 33);
+  assert_eq!(total("black_rare"), 3437 - 5);
+  assert_eq!(total("black"), 6_930_000 - (3437 + 33 - 5));
+  // The same by brute force over every block.
+  let mut first = HashMap::new();
+  let mut last = HashMap::new();
+  for h in 0..6_930_000u64 {
+    *first.entry(first_tier(h)).or_insert(0u64) += 1;
+    *last.entry(last_tier(h)).or_insert(0u64) += 1;
+  }
+  for (t, n) in first.into_iter().chain(last) {
+    assert_eq!(total(t.name()), n, "{t}");
+  }
   assert_eq!(total("megasat_alpha"), 21);
   assert_eq!(total("centasat_alpha"), 210 - 21);
   assert_eq!(total("decasat_alpha"), 2100 - 210);
@@ -515,13 +558,15 @@ fn row_totals() {
   assert_eq!(total("block9"), 5_000_000_000);
   assert_eq!(total("450x"), 100_000_000);
   assert_eq!(total("block9_palindrome"), 50_000);
-  assert_eq!(total("vintage_uncommon"), 1000);
+  assert_eq!(total("vintage_uncommon"), 999);
   assert_eq!(total("vintage_alpha"), 50_000);
   assert_eq!(total("vintage_omega"), 50_000);
   assert_eq!(total("nakamoto_uncommon"), 19);
-  assert_eq!(total("uncommon_2009"), 32_490);
-  assert_eq!(total("rare_2009"), 17);
-  assert_eq!(total("black_2009"), 32_490);
+  // 2009: blocks 0..=32489, 17 of them at a multiple of 2016 (block 0
+  // mythic), 16 ending one.
+  assert_eq!(total("uncommon_2009"), 32_490 - 17);
+  assert_eq!(total("rare_2009"), 16);
+  assert_eq!(total("black_2009"), 32_490 - 16);
   assert_eq!(total("bounty3_name"), 12_450);
   assert_eq!(total("palindrome_1d"), catalog.lists.one_digit.len() as u64);
   assert_eq!(total("palindrome_2d"), catalog.lists.two_digit.len() as u64);
@@ -567,22 +612,8 @@ fn sat_rows() {
   assert_eq!(ids(45_000_000_001), ["block9", "450x", "block9_1st_tx"]);
   assert_eq!(ids(46_000_000_001), ["block9"]);
   assert!(ids(5_000_000_001).is_empty());
-  assert_eq!(
-    ids(0),
-    [
-      "uncommon",
-      "rare",
-      "epic",
-      "legendary",
-      "mythic",
-      "alpha_uncommon",
-      "megasat_alpha",
-      "vintage_uncommon",
-      "vintage_alpha",
-      "uncommon_2009",
-      "rare_2009"
-    ]
-  );
+  // Sat 0 is mythic only among the rarities (tiers are exclusive).
+  assert_eq!(ids(0), ["mythic", "megasat_alpha", "vintage_alpha"]);
 }
 
 #[test]
@@ -752,6 +783,51 @@ fn js_special_count(t: SatType, kind: &str) -> u64 {
     .unwrap_or_else(|| panic!("no {kind} count for {t} in data/exotic-ranges.json"))
 }
 
+/// The highest tier of block `h`'s first sat.
+fn first_tier(h: u64) -> SatType {
+  use SatType::*;
+  match h {
+    0 => Mythic,
+    h if h.is_multiple_of(1_260_000) => Legendary,
+    h if h.is_multiple_of(210_000) => Epic,
+    h if h.is_multiple_of(2016) => Rare,
+    _ => Uncommon,
+  }
+}
+
+/// The highest tier of block `h`'s last sat.
+fn last_tier(h: u64) -> SatType {
+  use SatType::*;
+  match h + 1 {
+    n if n.is_multiple_of(210_000) => BlackEpic,
+    n if n.is_multiple_of(2016) => BlackRare,
+    _ => Black,
+  }
+}
+
+/// Blocks whose first (last) sat has type `t` and a tier above uncommon
+/// (black).
+fn tiered_in(t: SatType, first: bool) -> u64 {
+  let catalog = default_catalog();
+  (0..6_930_000u64)
+    .filter(|&h| {
+      if first {
+        first_tier(h) != SatType::Uncommon
+      } else {
+        last_tier(h) != SatType::Black
+      }
+    })
+    .filter(|&h| {
+      let sat = if first {
+        first_sat(h)
+      } else {
+        first_sat(h) + subsidy(h) - 1
+      };
+      catalog.types(sat).contains(t)
+    })
+    .count() as u64
+}
+
 #[test]
 fn combination_row_totals_match_the_js_counts() {
   // E.g. pizza: 201 uncommon, 199 black, 10,002 alpha, 10,000 omega.
@@ -781,7 +857,18 @@ fn combination_row_totals_match_the_js_counts() {
     for kind in kinds {
       let id = format!("{prefix}_{kind}");
       let row = catalog.row_id(&id).unwrap_or_else(|| panic!("no row {id}"));
-      assert_eq!(catalog.row_total(row), js_special_count(t, kind), "{id}");
+      // The JS counts cumulative tiers: an uncommon or black of a block
+      // with a higher tier is that tier only here.
+      let higher = match *kind {
+        "uncommon" => tiered_in(t, true),
+        "black" => tiered_in(t, false),
+        _ => 0,
+      };
+      assert_eq!(
+        catalog.row_total(row),
+        js_special_count(t, kind) - higher,
+        "{id}"
+      );
       checked += 1;
     }
   }
@@ -941,22 +1028,25 @@ fn magisat_rows() {
   let catalog = default_catalog();
   let total = |id: &str| catalog.row_total(catalog.row_id(id).unwrap());
   // Brute force over every block: first sats that are alphas, last sats
-  // that are omegas.
+  // that are omegas, of the plain tiers (uncommon, black).
   let (mut alpha_uncommon, mut black_omega) = (0, 0);
   for height in 0..6_930_000u64 {
     let first = first_sat(height);
-    alpha_uncommon += u64::from(first.is_multiple_of(COIN));
-    black_omega += u64::from((first + subsidy(height)).is_multiple_of(COIN));
+    alpha_uncommon +=
+      u64::from(first.is_multiple_of(COIN) && first_tier(height) == SatType::Uncommon);
+    black_omega += u64::from(
+      (first + subsidy(height)).is_multiple_of(COIN) && last_tier(height) == SatType::Black,
+    );
   }
   assert_eq!(total("alpha_uncommon"), alpha_uncommon);
   assert_eq!(total("black_omega"), black_omega);
   assert_eq!(
     total("pizza_black"),
-    js_special_count(SatType::Pizza, "black")
+    js_special_count(SatType::Pizza, "black") - tiered_in(SatType::Pizza, false)
   );
   assert_eq!(
     total("hitman_black"),
-    js_special_count(SatType::Hitman, "black")
+    js_special_count(SatType::Hitman, "black") - tiered_in(SatType::Hitman, false)
   );
   // Block 9's first-transaction sats: a range row with a sat scope.
   let first_tx = catalog.row_id("block9_1st_tx").unwrap();

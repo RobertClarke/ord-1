@@ -4,8 +4,9 @@ ord — rare-sat tracker fork
 This fork of [ord](https://github.com/ordinals/ord) tracks, block by block,
 where the rare sats that matter are:
 
-* every uncommon sat (so every rare, epic, legendary and mythic) and every
-  black sat (so every black rare and black epic);
+* every block's first sat (uncommon, rare, epic, legendary or mythic: each
+  sat counts under its highest tier only) and last sat (black, black rare
+  or black epic);
 * the alphas, omegas and palindromes the bitcoin-monitoring extraction
   runtime extracts: milestone alphas/omegas, 1d/2d and
   perfect-palinception palindromes, bounty3 names, and the combo sats inside

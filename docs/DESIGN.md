@@ -39,7 +39,8 @@ uncommon).
     their individually special sats are.
 * **Individual sats** anywhere in the chain whose types (see §2) include any of
   * standalone types: `uncommon` (so also `rare`, `epic`, `legendary`,
-    `mythic`), `black`, `black_rare`, `black_epic`,
+    `mythic`, which the runtime's cumulative tiers make uncommon too),
+    `black`, `black_rare`, `black_epic`,
     `palindromes_integer_1d`, `palindromes_integer_2d`,
     `palindromes_perfect_palinception`, `bounty3_name`,
     `kilosat_alpha`, `decasat_alpha`, `centasat_alpha`, `megasat_alpha`,
@@ -74,12 +75,29 @@ range membership (`src/services/exoticSatRanges.js` → `EXOTIC_RANGES`), plus
 `bounty3_name` (`data/bounty3-names-map.json`). Parity is enforced by test
 vectors generated from the JS (`tests/fixtures/sat-types.json`).
 
-**One deliberate difference:** the runtime's scanner adds a synthetic
-`alpha_jan_feb_2009` type (`isAlpha2009Sat`) after normalization. It names
-an extraction criterion of the runtime, not a rarity, so since rules
-version 4 the port has no such type (nor row), and the export tool leaves it
-out of the test vectors (the Jan–Feb 2009 alphas stay in them, as plain
-alphas).
+**Two deliberate differences** (rules version 4):
+
+* The runtime's scanner adds a synthetic `alpha_jan_feb_2009` type
+  (`isAlpha2009Sat`) after normalization. It names an extraction criterion
+  of the runtime, not a rarity, so the port has no such type (nor row), and
+  the export tool leaves it out of the test vectors (the Jan–Feb 2009
+  alphas stay in them, as plain alphas).
+* The runtime's rarity tiers are cumulative: `getSatTypes` says a rare sat
+  is also uncommon, sat 0 mythic, legendary, epic, rare and uncommon, a
+  black rare also black. The port keeps only the highest tier of each
+  family: mythic > legendary > epic > rare > uncommon, and black_epic >
+  black_rare > black (a rare sat is just rare, as ord and Magisat count
+  them). The test vectors keep the runtime's cumulative tiers; the parity
+  test compares the port with them made exclusive, and the tracked set with
+  the runtime's own rule on them (unchanged: every tier is tracked).
+
+  Exclusive row totals: mythic 1, legendary 5, epic 27, rare 3,432,
+  uncommon 6,926,535 (6,930,000 blocks less the 3,465 with a higher tier;
+  epics are not rares except at multiples of 1,260,000), black_epic 33,
+  black_rare 3,432, black 6,926,535; uncommon_2009 32,473, rare_2009 16,
+  black_2009 32,474, vintage_uncommon 999. `alpha_uncommon`, `black_omega`
+  and the place `_uncommon` / `_black` rows lose their higher-tier sats
+  likewise.
 
 Assembly follows the runtime scanner for a point sat
 (`rareSatScanner.js` → `analyzeSatRanges`): rule types, then `bounty3_name` if
@@ -91,7 +109,9 @@ palindromes and `inscription_*` types are not modelled.
 
 ### 2.1 Rule types (from `getSatTypes`)
 
-For sat `s` in block `h` at `offset = s - first_sat(h)`, `subsidy = subsidy(h)`:
+For sat `s` in block `h` at `offset = s - first_sat(h)`, `subsidy = subsidy(h)`
+(the runtime's cumulative tiers; the port then keeps only the highest tier
+of each family, see the differences above):
 
 | type | rule |
 |---|---|

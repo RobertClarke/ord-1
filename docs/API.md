@@ -120,7 +120,12 @@ The row set is docs/DESIGN.md §3. Rules version 4 (a new
 not a rarity): an index built under version 4 never reports it, in `/rows`,
 `/supply`, `types`, `rows` or sales, and no longer tracks the Jan–Feb 2009
 alphas that nothing else tracks. Clients that also read older indexes should
-ignore that row and type.
+ignore that row and type. Version 4 also makes the rarity tiers exclusive:
+`types` keep only the highest of mythic > legendary > epic > rare >
+uncommon and of black_epic > black_rare > black (sat 0 is `mythic`, not
+also `uncommon`; a rare sat is `rare` only), so the `uncommon`, `black`,
+`rare`, `epic`, `black_rare` rows and every row combining them count each
+sat under its highest tier only (totals in docs/DESIGN.md §2).
 
 ### `GET /supply`
 ```json

@@ -116,7 +116,84 @@ fn count_congruent(lo: u64, hi: u64, modulus: u64, residue: u64) -> u64 {
   }
 }
 
+/// The rarity tiers of a block's first sat, highest first, each with the
+/// height modulus of its blocks (`u64::MAX`: block 0 only). Since rules
+/// version 4 a sat keeps only the highest of them (`TypeSet::exclusive`).
+pub(crate) const FIRST_TIERS: [(SatType, u64); 5] = [
+  (SatType::Mythic, u64::MAX),
+  (SatType::Legendary, 1_260_000),
+  (SatType::Epic, 210_000),
+  (SatType::Rare, 2016),
+  (SatType::Uncommon, 1),
+];
+
+/// The tiers of a block's last sat, highest first: height `h` with
+/// `(h + 1) % modulus == 0`.
+pub(crate) const LAST_TIERS: [(SatType, u64); 3] = [
+  (SatType::BlackEpic, 210_000),
+  (SatType::BlackRare, 2016),
+  (SatType::Black, 1),
+];
+
+fn gcd(a: u64, b: u64) -> u64 {
+  if b == 0 { a } else { gcd(b, a % b) }
+}
+
+/// Least common multiple of two tier moduli; `u64::MAX` (block 0 only)
+/// absorbs any other.
+fn lcm(a: u64, b: u64) -> u64 {
+  if a == u64::MAX || b == u64::MAX {
+    u64::MAX
+  } else {
+    a / gcd(a, b) * b
+  }
+}
+
 impl Anchor {
+  /// Candidates in `[a, b)` that have a tier of `tier`'s family above
+  /// `tier`, so that, tiers being exclusive, they do not have `tier`
+  /// (inclusion-exclusion over the higher tiers' block moduli). `None`
+  /// unless the anchor is that family's block boundary.
+  pub fn superseded(self, tier: SatType, lists: &Lists, a: u64, b: u64) -> Option<u64> {
+    let (family, first) = if let Some(i) = FIRST_TIERS.iter().position(|&(t, _)| t == tier) {
+      (&FIRST_TIERS[..i], true)
+    } else {
+      let i = LAST_TIERS.iter().position(|&(t, _)| t == tier)?;
+      (&LAST_TIERS[..i], false)
+    };
+    let modulus = match self {
+      Anchor::BlockFirst {
+        modulus,
+        residue: 0,
+      } if first => modulus,
+      Anchor::BlockLast { modulus, residue } if !first && residue == modulus - 1 => modulus,
+      _ => return None,
+    };
+    let mut total: i128 = 0;
+    for subset in 1u32..(1 << family.len()) {
+      let mut m = modulus;
+      for (i, &(_, tier_modulus)) in family.iter().enumerate() {
+        if subset >> i & 1 == 1 {
+          m = lcm(m, tier_modulus);
+        }
+      }
+      let anchor = if first {
+        Anchor::BlockFirst {
+          modulus: m,
+          residue: 0,
+        }
+      } else {
+        Anchor::BlockLast {
+          modulus: m,
+          residue: m - 1,
+        }
+      };
+      let n = i128::from(anchor.count(lists, a, b));
+      total += if subset.count_ones() % 2 == 1 { n } else { -n };
+    }
+    Some(u64::try_from(total).unwrap())
+  }
+
   /// The anchor that enumerates every sat having `t`, if `t` is sparse.
   pub fn of(t: SatType) -> Option<Anchor> {
     use SatType::*;

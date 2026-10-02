@@ -20,10 +20,15 @@
 //!    exotic type or `bounty3_name` drops it (block 9's first sat has no
 //!    `paliblock`).
 //!
-//! The runtime's scanner also adds a synthetic `alpha_jan_feb_2009`
-//! (`isAlpha2009Sat`: alphas mined in January–February 2009). That is an
-//! extraction criterion of the runtime, not a rarity, so the port leaves it
-//! out (rules version 4): the one deliberate difference from the JS types.
+//! Two deliberate differences from the JS types (rules version 4): the
+//! runtime's scanner also adds a synthetic `alpha_jan_feb_2009`
+//! (`isAlpha2009Sat`: alphas mined in January–February 2009), an extraction
+//! criterion of the runtime, not a rarity, which the port leaves out; and
+//! the runtime's rarity tiers are cumulative (a rare sat is also uncommon,
+//! sat 0 is mythic, legendary, epic, rare and uncommon), where the port
+//! keeps only the highest tier of each family (`TypeSet::exclusive`). The
+//! tracked set still follows the runtime's cumulative tiers
+//! (`TypeSet::with_lower_tiers`).
 //!
 //! `common_name`, name palindromes and `inscription_*` types are not tracked
 //! and never reported. Where the scanner differs from a bare `getSatTypes`:
@@ -88,6 +93,11 @@ pub use rows::{BLOCK9_FIRST_TX, HEIGHTS_2009, default_rows};
 ///   when the range ends on a block or BTC, is no longer of the type.
 /// * 4: no `alpha_jan_feb_2009` (an extraction criterion, not a rarity): no
 ///   such type nor row, and alphas tracked only for it are not tracked.
+///   Exclusive rarity tiers: a sat keeps only the highest of mythic >
+///   legendary > epic > rare > uncommon and of black_epic > black_rare >
+///   black, so the `uncommon`, `black`, `rare`, `epic`, `black_rare` rows
+///   and their combinations no longer hold the higher tiers (the tracked
+///   set is unchanged).
 pub const RULES_VERSION: &str = "4";
 
 /// `psbtBuilder.js` → `SPECIAL_SAT_TYPES`, verbatim and in order (a test
@@ -303,8 +313,12 @@ struct CompiledRow {
   /// Per-sat rows: the candidates of these anchors cover every row sat.
   anchors: Vec<Anchor>,
   /// Per-sat rows: every candidate of `anchors[0]` in `domain` is a tracked
-  /// row sat, so counts are pure arithmetic.
+  /// row sat, so counts are pure arithmetic: less, with `tier`, the
+  /// candidates a higher tier of its family supersedes.
   sure: bool,
+  /// The rarity tier of a sure row whose anchor is that tier's block
+  /// boundary (tiers are exclusive).
+  tier: Option<SatType>,
   /// Types under which the row is indexed in `rows_by_key`.
   keys: TypeSet,
 }
@@ -576,6 +590,7 @@ impl SatCatalog {
         domain,
         anchors: Vec::new(),
         sure: false,
+        tier: None,
         keys: TypeSet::EMPTY,
       };
 
@@ -602,6 +617,26 @@ impl SatCatalog {
               .iter()
               .all(|&(s, e)| overlap_len(&self.dense, s, e) == e - s);
           compiled.sure = any.is_empty() && implied.contains_all(all) && tracked;
+          // Tiers are exclusive: a sure row of a tier counts its anchor's
+          // candidates less those a higher tier supersedes; a row asking
+          // for two tiers of one family (no sat) or any other mix is
+          // counted sat by sat.
+          let tiers: Vec<SatType> = all
+            .iter()
+            .filter(|t| {
+              anchors::FIRST_TIERS
+                .iter()
+                .chain(&anchors::LAST_TIERS)
+                .any(|(tier, _)| tier == t)
+            })
+            .collect();
+          match tiers[..] {
+            [] => {}
+            [tier] if anchor.superseded(tier, &self.lists, 0, 0).is_some() => {
+              compiled.tier = Some(tier);
+            }
+            _ => compiled.sure = false,
+          }
         } else {
           ensure!(
             !any.is_empty() && any.iter().all(|t| Anchor::of(t).is_some()),
@@ -633,7 +668,8 @@ impl SatCatalog {
   /// `bounty3_name`, assembled the way the runtime scanner types a point sat
   /// (see the module docs): `paliblock` is normalized over the rule, bounty3
   /// and exotic types together, and sat 0 is not a palindrome. Unlike the
-  /// scanner, no synthetic `alpha_jan_feb_2009`.
+  /// scanner, no synthetic `alpha_jan_feb_2009`, and the rarity tiers are
+  /// exclusive (`TypeSet::exclusive`): a rare sat is not also uncommon.
   pub fn types(&self, sat: u64) -> TypeSet {
     use {
       SatType::*,
@@ -738,7 +774,7 @@ impl SatCatalog {
       types.insert(Paliblock);
     }
 
-    types
+    types.exclusive()
   }
 
   fn in_dense(&self, sat: u64) -> bool {
@@ -747,6 +783,8 @@ impl SatCatalog {
   }
 
   fn tracked_by_types(&self, types: TypeSet) -> bool {
+    // The runtime's rules see cumulative tiers (a rare is an uncommon).
+    let types = types.with_lower_tiers();
     types.intersects(self.standalone) || self.combos.iter().any(|combo| types.contains_all(*combo))
   }
 
@@ -948,7 +986,7 @@ impl SatCatalog {
       let mut n = 0;
       for_each_overlap(&row.domain, start, end, |s, e| {
         if row.sure {
-          n += row.anchors[0].count(&self.lists, s, e);
+          n += self.sure_count(row, s, e);
         } else if let [anchor] = row.anchors[..] {
           anchor.for_each(&self.lists, s, e, |sat| {
             n += u64::from(self.row_matches(row, self.types(sat), sat));
@@ -969,6 +1007,16 @@ impl SatCatalog {
       if n > 0 {
         f(id, n);
       }
+    }
+  }
+
+  /// A sure row's sats in `[s, e)` (within its domain).
+  fn sure_count(&self, row: &CompiledRow, s: u64, e: u64) -> u64 {
+    let anchor = row.anchors[0];
+    let n = anchor.count(&self.lists, s, e);
+    match row.tier {
+      Some(tier) => n - anchor.superseded(tier, &self.lists, s, e).unwrap_or(0),
+      None => n,
     }
   }
 
@@ -1015,7 +1063,7 @@ impl SatCatalog {
             .map(|(_, len)| len)
             .sum::<u64>();
         } else if compiled.sure {
-          total += compiled.anchors[0].count(&self.lists, s, e);
+          total += self.sure_count(compiled, s, e);
         } else {
           let mut candidates = Vec::new();
           for anchor in &compiled.anchors {

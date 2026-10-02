@@ -3,7 +3,8 @@
 use {super::*, crate::model::LocationKind};
 
 /// Blocks 840,000..840,319 have exactly two tracked sats each: the first
-/// (uncommon) and the last (black) sat of the subsidy.
+/// (uncommon; epic for 840,000, tiers being exclusive) and the last (black)
+/// sat of the subsidy.
 const H: u32 = 840_000;
 const S: u64 = 312_500_000;
 const F: u64 = 1_968_750_000_000_000;
@@ -14,6 +15,22 @@ fn at_halving() -> (Tracker, Chain) {
 
 fn row(tracker: &Tracker, id: &str) -> RowStats {
   tracker.row_stats(tracker.catalog().row_id(id).unwrap())
+}
+
+/// The blocks' first sats: the `uncommon` row and block 840,000's `epic`
+/// (holders summed: the scenarios never give both to one script).
+fn first_sats(tracker: &Tracker) -> RowStats {
+  let (u, e) = (row(tracker, "uncommon"), row(tracker, "epic"));
+  RowStats {
+    mined: u.mined + e.mined,
+    located: u.located + e.located,
+    burned: u.burned + e.burned,
+    lost: u.lost + e.lost,
+    overwritten: u.overwritten + e.overwritten,
+    extracted: u.extracted + e.extracted,
+    holders: u.holders + e.holders,
+    extracted_holders: u.extracted_holders + e.extracted_holders,
+  }
 }
 
 fn piece(offset: u64, start: u64, len: u64) -> Piece {
@@ -82,7 +99,7 @@ fn coinbase_outputs_place_uncommon_and_black() {
     [0, 2]
   );
 
-  let uncommon = row(&tracker, "uncommon");
+  let uncommon = first_sats(&tracker);
   assert_eq!(
     (uncommon.mined, uncommon.located, uncommon.holders),
     (1, 1, 1)
@@ -100,8 +117,9 @@ fn coinbase_outputs_place_uncommon_and_black() {
     .iter()
     .map(|d| tracker.catalog().rows()[usize::from(d.row)].id.as_str())
     .collect();
-  // Block 840,000's first sat is also an alpha.
-  assert_eq!(changed, ["uncommon", "epic", "black", "alpha_uncommon"]);
+  // Block 840,000's first sat is an epic (and an alpha), not also an
+  // uncommon or an alpha uncommon: tiers are exclusive.
+  assert_eq!(changed, ["epic", "black"]);
   tracker.verify().unwrap();
 }
 
@@ -192,8 +210,8 @@ fn under_claiming_coinbases_lose_sats_at_ord_offsets() {
     (LocationKind::Lost, OutPoint::null(), 1001 + S - 1)
   );
   assert_eq!(row(&tracker, "black").lost, 2);
-  assert_eq!(row(&tracker, "uncommon").lost, 1);
-  assert_eq!(row(&tracker, "uncommon").mined, 3);
+  assert_eq!(first_sats(&tracker).lost, 1);
+  assert_eq!(first_sats(&tracker).mined, 3);
   tracker.verify().unwrap();
 }
 
@@ -232,7 +250,7 @@ fn op_return_and_oversized_outputs_burn_zero_value_outputs_get_nothing() {
     [piece(S - 12, F + S - 1, 1)]
   );
   assert_eq!(located(&tracker, F), (LocationKind::Burned, op(t, 2), 0));
-  let uncommon = row(&tracker, "uncommon");
+  let uncommon = first_sats(&tracker);
   assert_eq!((uncommon.burned, uncommon.located), (1, 1));
   assert!(delta.created.iter().any(|(o, _)| *o == op(t, 2)));
 
@@ -362,7 +380,7 @@ fn intra_block_chains() {
   assert_eq!(delta.moves[1].inputs[0].outpoint, op(b, 0));
   assert_eq!(delta.moves[1].inputs[0].vin, 0);
   // Holders follow the uncommon to script 9.
-  let uncommon = row(&tracker, "uncommon");
+  let uncommon = first_sats(&tracker);
   assert_eq!((uncommon.located, uncommon.holders), (2, 2));
 
   // Undo restores A, redo reproduces the delta.
@@ -399,7 +417,7 @@ fn bip30_duplicate_coinbase_overwrites() {
     (LocationKind::Unspent, op(t, 0), 0)
   );
   assert_eq!(tracker.utxo(&op(t, 0)).unwrap().height, H + 1);
-  let uncommon = row(&tracker, "uncommon");
+  let uncommon = first_sats(&tracker);
   assert_eq!(
     (uncommon.located, uncommon.overwritten, uncommon.mined),
     (1, 1, 2)
@@ -491,7 +509,7 @@ fn block9_pieces_split_and_merge() {
   // sats count as extracted too.
   let x450 = row(&tracker, "450x");
   assert_eq!((x450.located, x450.extracted), (100_000_000, 100_000_000));
-  assert_eq!(row(&tracker, "uncommon").extracted, 1);
+  assert_eq!(first_sats(&tracker).extracted, 1);
   tracker.verify().unwrap();
   let mut deltas = vec![delta];
 
@@ -555,21 +573,21 @@ fn extraction_uses_block_time_and_value() {
   tracker
     .apply_block(&chain.block(vec![coinbase(early, vec![out(1), out(S - 2), out(1)])]))
     .unwrap();
-  assert_eq!(row(&tracker, "uncommon").extracted, 0);
+  assert_eq!(first_sats(&tracker).extracted, 0);
   assert_eq!(row(&tracker, "black").extracted, 0);
   // At the threshold: small outputs are extracted.
   chain.next_time = Some(1_670_976_000);
   tracker
     .apply_block(&chain.block(vec![coinbase(txid(2), vec![out(10_000), out(S - 10_000)])]))
     .unwrap();
-  assert_eq!(row(&tracker, "uncommon").extracted, 1);
+  assert_eq!(first_sats(&tracker).extracted, 1);
   assert_eq!(row(&tracker, "black").extracted, 0);
   // A header time below the previous one still counts by its own time.
   chain.next_time = Some(1_670_975_000);
   tracker
     .apply_block(&chain.block(vec![coinbase(txid(3), vec![out(1), out(S - 1)])]))
     .unwrap();
-  assert_eq!(row(&tracker, "uncommon").extracted, 1);
+  assert_eq!(first_sats(&tracker).extracted, 1);
   tracker.verify().unwrap();
 }
 
@@ -596,9 +614,10 @@ fn supply_active_windows_and_holders() {
   let supply = tracker.supply(3);
   assert_eq!(supply.height, Some(H + 4));
   assert_eq!(supply.time, Some(base + 8 * year));
+  // The first block's first sat is an epic: four uncommons, scripts 2-5.
   let uncommon = &supply.rows[usize::from(tracker.catalog().row_id("uncommon").unwrap())];
-  assert_eq!(uncommon.stats.located, 5);
-  assert_eq!(uncommon.stats.holders, 5);
+  assert_eq!(uncommon.stats.located, 4);
+  assert_eq!(uncommon.stats.holders, 4);
   // 20,000-sat outputs holding one row sat: not extracted.
   assert_eq!(uncommon.stats.extracted, 0);
   assert_eq!(
@@ -620,14 +639,14 @@ fn supply_active_windows_and_holders() {
     ),
     (script(100), 5, 5, H + 4)
   );
-  // Ties break by script bytes: scripts 1, 2, 3 of the five.
+  // Ties break by script bytes: scripts 2, 3, 4 of the four.
   assert_eq!(
     uncommon
       .top_non_extracted_holders
       .iter()
       .map(|h| h.script_pubkey.clone())
       .collect::<Vec<_>>(),
-    [script(1), script(2), script(3)]
+    [script(2), script(3), script(4)]
   );
   assert_eq!(tracker.supply(0).rows[0].top_non_extracted_holders, []);
   // Restore rebuilds the same supply.
@@ -683,7 +702,7 @@ fn reorg_to_a_competing_block() {
   // The coinbase under-claims by 7: the black of Y's block is lost.
   assert_eq!(delta_y.lost.len(), 1);
   assert_eq!(tracker.lost_sats(), 7);
-  assert_eq!(row(&tracker, "uncommon").extracted, 1);
+  assert_eq!(first_sats(&tracker).extracted, 1);
   tracker.verify().unwrap();
   // X no longer extends the tip.
   assert!(tracker.apply_block(&x).is_err());
@@ -834,7 +853,7 @@ fn collector_consolidation_is_extracted() {
   // the row) said no.
   let (mut tracker, mut chain) = at_halving();
   let inputs = mine_padded_sats(&mut tracker, &mut chain, 100);
-  assert_eq!(row(&tracker, "uncommon").extracted, 100);
+  assert_eq!(first_sats(&tracker).extracted, 100);
   let consolidation = txid(1);
   tracker
     .apply_block(&chain.block(vec![
@@ -853,12 +872,13 @@ fn collector_consolidation_is_extracted() {
     2_000_000
   );
   assert!(extracted(&tracker, op(consolidation, 0)));
-  for id in ["uncommon", "black"] {
+  // The first block's first sat is an epic.
+  for (id, n) in [("uncommon", 99), ("epic", 1), ("black", 100)] {
     let stats = row(&tracker, id);
-    assert_eq!((stats.extracted, stats.extracted_holders), (100, 1), "{id}");
+    assert_eq!((stats.extracted, stats.extracted_holders), (n, 1), "{id}");
   }
   // The newest coinbase's uncommon sits in a whole-subsidy output.
-  assert_eq!(row(&tracker, "uncommon").located, 101);
+  assert_eq!(first_sats(&tracker).located, 101);
   let supply = tracker.supply(2);
   let uncommon = &supply.rows[usize::from(tracker.catalog().row_id("uncommon").unwrap())];
   assert_eq!(uncommon.top_extracted_holders[0].script_pubkey, script(7));
@@ -867,7 +887,7 @@ fn collector_consolidation_is_extracted() {
       uncommon.top_extracted_holders[0].count,
       uncommon.top_extracted_holders[0].utxos
     ),
-    (100, 1)
+    (99, 1)
   );
   assert_eq!(uncommon.active_non_extracted[0], (1, 1));
 
@@ -891,7 +911,7 @@ fn collector_consolidation_is_extracted() {
   // The eighth sat, still alone in its 330 sats, is.
   assert!(extracted(&tracker, inputs[7].0));
   assert_eq!(
-    row(&tracker, "uncommon").extracted + row(&tracker, "black").extracted,
+    first_sats(&tracker).extracted + row(&tracker, "black").extracted,
     1
   );
   tracker.verify().unwrap();
@@ -937,7 +957,7 @@ fn near_pure_block9_output_is_extracted() {
   assert_eq!(row(&tracker, "450x").extracted, 100_000);
   // Block 9's first sat and the palindrome 45,000,000,054 are in the chunk:
   // every row of it is extracted.
-  assert_eq!(row(&tracker, "uncommon").extracted, 1);
+  assert_eq!(first_sats(&tracker).extracted, 1);
   assert_eq!(row(&tracker, "block9_palindrome").extracted, 1);
   assert_eq!(row(&tracker, "block9_palindrome").located, 50_000);
   tracker.verify().unwrap();
@@ -961,7 +981,7 @@ fn exchange_output_with_two_uncommons_is_not_extracted() {
       .unwrap();
     uncommons.push((op(cb, 0), 1000));
   }
-  assert_eq!(row(&tracker, "uncommon").extracted, 2);
+  assert_eq!(first_sats(&tracker).extracted, 2);
   let exchange = txid(1);
   tracker
     .apply_block(&chain.block(vec![
@@ -984,7 +1004,7 @@ fn exchange_output_with_two_uncommons_is_not_extracted() {
     20_000
   );
   assert!(!extracted(&tracker, op(exchange, 0)));
-  let uncommon = row(&tracker, "uncommon");
+  let uncommon = first_sats(&tracker);
   assert_eq!(
     (
       uncommon.located,
@@ -1082,7 +1102,7 @@ fn unspendable_outputs_are_never_extracted() {
   let burned = tracker.utxo(&op(a, 0)).unwrap();
   assert_eq!(burned.kind, UtxoKind::Unspendable);
   assert!(!extracted(&tracker, op(a, 0)));
-  let uncommon = row(&tracker, "uncommon");
+  let uncommon = first_sats(&tracker);
   assert_eq!(
     (
       uncommon.burned,

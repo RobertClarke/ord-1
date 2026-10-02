@@ -1,6 +1,9 @@
 //! `SatType` names and `TypeSet` helpers.
 
-use super::{SatType, TypeSet};
+use super::{
+  SatType, TypeSet,
+  anchors::{FIRST_TIERS, LAST_TIERS},
+};
 
 impl SatType {
   /// Every type, in declaration (bit) order.
@@ -122,6 +125,47 @@ impl std::fmt::Display for SatType {
 
 impl TypeSet {
   pub const EMPTY: TypeSet = TypeSet(0);
+
+  /// Only the highest rarity tier of each family: mythic, legendary, epic,
+  /// rare, uncommon, highest first, and black_epic, black_rare, black
+  /// (rules version 4; the runtime's `getSatTypes` is cumulative, e.g. a
+  /// rare sat is also uncommon there).
+  pub fn exclusive(self) -> TypeSet {
+    let mut set = self;
+    for family in [&FIRST_TIERS[..], &LAST_TIERS[..]] {
+      if let Some(i) = family.iter().position(|&(t, _)| set.contains(t)) {
+        for &(lower, _) in &family[i + 1..] {
+          set.remove(lower);
+        }
+      }
+    }
+    set
+  }
+
+  /// The lower tiers an exclusive set's tiers stand for, added back, as the
+  /// runtime's cumulative types have them (for the tracked set, which
+  /// follows the runtime): every tier is an uncommon or a black; a
+  /// legendary or mythic is an epic and a rare too, a mythic a legendary.
+  /// (The 5 black epics that are also black rares are not told apart: no
+  /// rule needs it.)
+  pub fn with_lower_tiers(self) -> TypeSet {
+    use SatType::*;
+    let mut set = self;
+    if FIRST_TIERS.iter().any(|&(t, _)| set.contains(t)) {
+      set.insert(Uncommon);
+    }
+    if set.contains(Mythic) {
+      set.insert(Legendary);
+    }
+    if set.contains(Legendary) {
+      set.insert(Epic);
+      set.insert(Rare);
+    }
+    if LAST_TIERS.iter().any(|&(t, _)| set.contains(t)) {
+      set.insert(Black);
+    }
+    set
+  }
 
   pub fn of(types: &[SatType]) -> Self {
     types.iter().copied().collect()

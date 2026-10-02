@@ -281,7 +281,8 @@ fn server_follows_new_blocks_and_serves_supply() {
     .iter()
     .find(|row| row["id"] == "uncommon")
     .unwrap();
-  assert_eq!(uncommon["stats"]["mined"], 13);
+  // Blocks 1-12: block 0's first sat is mythic, not also uncommon.
+  assert_eq!(uncommon["stats"]["mined"], 12);
   assert_eq!(uncommon["delta"]["height"], 12);
 
   let block9 = server.json("/supply/block9?top=5");
