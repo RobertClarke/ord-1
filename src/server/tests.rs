@@ -1461,6 +1461,48 @@ fn sats_stream() {
 }
 
 #[test]
+fn sats_count() {
+  let server = TestServer::new(Some(3));
+  // The stream's pieces, counted by where they are; `to` is capped at the
+  // supply.
+  assert_eq!(
+    server.json("/sats?row=uncommon&count=1"),
+    json!({
+      "row": "uncommon", "from": 0, "to": 2_099_999_997_690_000u64, "count": 4,
+      "by_kind": { "unspent": 3, "burned": 1, "lost": 0, "overwritten": 0 },
+      // Every tracked piece of the scenario, of any row.
+      "pieces": 8,
+    })
+  );
+  // Cut to [from, to), like the stream.
+  let count = server.json("/sats?row=block0&from=10&to=20&count=true");
+  assert_eq!(
+    (
+      &count["from"],
+      &count["to"],
+      &count["count"],
+      &count["pieces"]
+    ),
+    (&json!(10), &json!(20), &json!(10), &json!(1))
+  );
+  assert_eq!(count["by_kind"]["unspent"], 10);
+  let black = server.json("/sats?row=black&count=1");
+  assert_eq!(black["count"], 4);
+  assert_eq!(black["by_kind"]["lost"], 1);
+  // count=0 is the stream.
+  assert_eq!(
+    server.ndjson("/sats?row=black&count=0"),
+    server.ndjson("/sats?row=black")
+  );
+  // The stream's validation and errors.
+  server.error("/sats?count=1", 400);
+  server.error("/sats?row=nope&count=1", 404);
+  server.error("/sats?row=uncommon&from=5&to=5&count=1", 400);
+  server.error("/sats?row=uncommon&count=yes", 400);
+  TestServer::new(None).error("/sats?row=uncommon&count=1", 503);
+}
+
+#[test]
 fn blocks() {
   let server = TestServer::new(Some(3));
   assert_eq!(

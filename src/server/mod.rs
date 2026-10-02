@@ -812,6 +812,20 @@ async fn sats(
     .cloned()
     .ok_or_else(|| bad_request("`row` is required"))?;
   let with_pieces = param::<bool>(&params, "pieces")?.unwrap_or(false);
+  let count_only = match params.get("count").map(String::as_str) {
+    None | Some("" | "0" | "false") => false,
+    Some("1" | "true") => true,
+    Some(value) => return Err(bad_request(format!("invalid count `{value}`"))),
+  };
+
+  if count_only {
+    return read(&state, move |state, reader| {
+      tip(reader)?;
+      let (row, _) = state.row(&id)?;
+      Ok(Json(sats_count(state, reader, row, id, from, to)?).into_response())
+    })
+    .await;
+  }
 
   let row = read(&state, move |state, reader| {
     tip(reader)?;
@@ -828,6 +842,74 @@ async fn sats(
       with_pieces,
     },
   ))
+}
+
+/// The row's tracked sats by where they are now.
+#[derive(Serialize, Default)]
+struct SatsByKind {
+  unspent: u64,
+  burned: u64,
+  lost: u64,
+  overwritten: u64,
+}
+
+/// `/sats?count=1`.
+#[derive(Serialize)]
+struct SatsCountJson {
+  row: String,
+  from: u64,
+  to: u64,
+  /// The row's tracked sats in `[from, to)`.
+  count: u64,
+  by_kind: SatsByKind,
+  /// Tracked pieces scanned (of any row).
+  pieces: u64,
+}
+
+/// The `/sats` scan of `[from, to)`, counted instead of rendered: no output
+/// lookups, no JSON per piece, one read transaction.
+fn sats_count(
+  state: &ServerState,
+  reader: &Reader,
+  row: RowId,
+  id: String,
+  from: u64,
+  to: u64,
+) -> anyhow::Result<SatsCountJson> {
+  let to = to.min(crate::sats::math::SUPPLY);
+  let mut by_kind = SatsByKind::default();
+  let mut pieces = 0;
+  for location in reader.pieces(from, to)? {
+    let location = location?;
+    let piece = &location.piece;
+    // Only the sats in [from, to).
+    let start = piece.start.max(from);
+    let end = piece.end().min(to);
+    if start >= end {
+      continue;
+    }
+    pieces += 1;
+    let count = state
+      .catalog
+      .row_counts(start, end - start)
+      .into_iter()
+      .find(|(r, _)| *r == row)
+      .map_or(0, |(_, count)| count);
+    *match location.kind {
+      LocationKind::Unspent => &mut by_kind.unspent,
+      LocationKind::Burned => &mut by_kind.burned,
+      LocationKind::Lost => &mut by_kind.lost,
+      LocationKind::Overwritten => &mut by_kind.overwritten,
+    } += count;
+  }
+  Ok(SatsCountJson {
+    row: id,
+    from,
+    to,
+    count: by_kind.unspent + by_kind.burned + by_kind.lost + by_kind.overwritten,
+    by_kind,
+    pieces,
+  })
 }
 
 /// `/sats` of `[next, to)`; resumes after the last sat it went through.

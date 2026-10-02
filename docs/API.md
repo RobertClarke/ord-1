@@ -216,6 +216,21 @@ The location's `output` leaves out its `pieces` array (mainnet outputs hold
 up to tens of thousands of pieces, which every line would repeat); add
 `&pieces=true` to include it.
 
+`&count=1` (additive; also `count=true`, and `count=0` is the stream): the
+same scan counted instead of streamed, one JSON object:
+```json
+{ "row": "block9", "from": 45000000000, "to": 50000000000, "count": 5000000000,
+  "by_kind": { "unspent": 4999999000, "burned": 0, "lost": 1000, "overwritten": 0 },
+  "pieces": 267000 }
+```
+`count` is the row's tracked sats in `[from, to)` (`to` capped at the
+supply), `by_kind` the same by location kind, `pieces` the tracked pieces
+the scan went through (of any row). `from` and `to` are sats, as in the
+stream: the sats mined at heights `a..=b` are `[first sat of a, first sat
+of b + 1)`. Same validation and errors as the stream. It scans the same
+locator range in one read transaction, without output lookups or JSON per
+piece.
+
 ### `GET /blocks?from=&to=`
 `[{ "height": …, "hash": "…", "time": … }]`, `to - from` ≤ 10,000.
 
