@@ -16,6 +16,7 @@ pub mod json;
 pub mod sales;
 #[cfg(test)]
 mod tests;
+pub mod years;
 
 use {
   self::{
@@ -195,6 +196,7 @@ pub fn router(state: Arc<ServerState>) -> Router {
     .route("/status", get(status))
     .route("/rows", get(rows))
     .route("/supply", get(supply))
+    .route("/supply/years", get(supply_years))
     .route("/supply/{row}", get(supply_row))
     .route("/supply/{row}/history", get(supply_history))
     .route("/sat/{sat}", get(sat))
@@ -261,6 +263,11 @@ struct StatusJson {
   /// The history is still being built (initial sync): history requests
   /// answer 503.
   address_history_building: bool,
+  /// The supply by mint year is served (`years=` on `/supply…`,
+  /// `/supply/years`).
+  year_stats: bool,
+  /// The mint years of the indexed blocks.
+  years: Vec<years::YearSpanJson>,
   timings: Timings,
   error: Option<String>,
 }
@@ -298,6 +305,11 @@ async fn status(State(state): State<Arc<ServerState>>) -> ServerResult<Json<Stat
         None => None,
       },
       address_history_building: reader.history_building()?,
+      year_stats: true,
+      years: {
+        let supply = state.published.supply();
+        years::year_spans(&supply.years, supply.height)
+      },
       timings: status.timings,
       error: status.error,
     }))
@@ -335,12 +347,14 @@ struct SupplyJson {
   rows: Vec<RowSupplyJson>,
 }
 
-/// Located inscribed sats per row (by `RowId`) at the published supply's
-/// height, computed from the `inscribed` table and the sats' current
-/// locations, once per height.
+/// Located inscribed sats per row at the published supply's height, by
+/// tracker row id (the catalog's `RowId`s, then their year rows), computed
+/// from the `inscribed` table and the sats' current locations, once per
+/// height.
 fn inscribed_rows(
   state: &ServerState,
   reader: &Reader,
+  supply: &crate::model::SupplySnapshot,
   height: u32,
 ) -> anyhow::Result<Arc<Vec<u64>>> {
   if let Some((cached, counts)) = &*state.inscribed_rows.lock().unwrap()
@@ -348,18 +362,14 @@ fn inscribed_rows(
   {
     return Ok(counts.clone());
   }
-  let mut counts = vec![0; state.catalog.rows().len()];
+  let mut counts = vec![0; years::inscribed_len(state)];
   for entry in reader.inscribed_from(0)? {
     let (sat, _) = entry?;
     if reader
       .locate(sat)?
       .is_some_and(|location| location.kind == LocationKind::Unspent)
     {
-      for row in state.catalog.sat_rows(sat) {
-        if let Some(count) = counts.get_mut(usize::from(row)) {
-          *count += 1;
-        }
-      }
+      years::inscribed_by_year(state, &supply.years.starts, sat, &mut counts);
     }
   }
   let counts = Arc::new(counts);
@@ -413,21 +423,46 @@ fn row_supply(
   })
 }
 
-async fn supply(State(state): State<Arc<ServerState>>) -> ServerResult<Json<SupplyJson>> {
-  read(&state, |state, reader| {
+async fn supply(
+  State(state): State<Arc<ServerState>>,
+  Query(params): Query<HashMap<String, String>>,
+) -> ServerResult<Json<SupplyJson>> {
+  read(&state, move |state, reader| {
     let supply = state.published.supply();
     let height = supply.height.ok_or(ServerError::NotReady)?;
-    let inscribed = inscribed_rows(state, reader, height)?;
-    Ok(Json(SupplyJson {
-      height: supply.height,
-      hash: supply.hash,
-      time: supply.time,
-      rows: supply
+    let years = years::parse_years(&params, &supply)?;
+    let inscribed = inscribed_rows(state, reader, &supply, height)?;
+    let rows = match &years {
+      None => supply
         .rows
         .iter()
         .map(|row| row_supply(state, reader, row, height, None, &inscribed))
         .collect::<ServerResult<_>>()?,
+      Some(years) => supply
+        .years
+        .rows
+        .iter()
+        .map(|row| years::row_supply(state, reader, row, years, height, None, &inscribed))
+        .collect::<ServerResult<_>>()?,
+    };
+    Ok(Json(SupplyJson {
+      height: supply.height,
+      hash: supply.hash,
+      time: supply.time,
+      rows,
     }))
+  })
+  .await
+}
+
+async fn supply_years(
+  State(state): State<Arc<ServerState>>,
+) -> ServerResult<Json<years::SupplyYearsJson>> {
+  read(&state, |state, reader| {
+    let supply = state.published.supply();
+    let height = years::ready(&supply)?;
+    let inscribed = inscribed_rows(state, reader, &supply, height)?;
+    Ok(Json(years::supply_years(state, &supply, &inscribed)?))
   })
   .await
 }
@@ -445,12 +480,30 @@ async fn supply_row(
     let (row, _) = state.row(&id)?;
     let supply = state.published.supply();
     let height = supply.height.ok_or(ServerError::NotReady)?;
+    let years = years::parse_years(&params, &supply)?;
+    let inscribed = inscribed_rows(state, reader, &supply, height)?;
+    if let Some(years) = years {
+      let row_years = supply
+        .years
+        .rows
+        .iter()
+        .find(|supply| supply.row == row)
+        .ok_or_else(|| not_found(format!("no supply for row `{id}`")))?;
+      return Ok(Json(years::row_supply(
+        state,
+        reader,
+        row_years,
+        &years,
+        height,
+        Some(top.min(crate::model::YEAR_TOP_HOLDERS)),
+        &inscribed,
+      )?));
+    }
     let row_supply_entry = supply
       .rows
       .iter()
       .find(|supply| supply.row == row)
       .ok_or_else(|| not_found(format!("no supply for row `{id}`")))?;
-    let inscribed = inscribed_rows(state, reader, height)?;
     Ok(Json(row_supply(
       state,
       reader,
@@ -467,12 +520,44 @@ async fn supply_row(
 struct HistoryPoint {
   height: u32,
   time: Option<u32>,
-  stats: RowStats,
+  stats: HistoryStats,
+}
+
+/// `RowStats`, but holder counts are `null` over more than one year (they
+/// do not add up).
+#[derive(Serialize)]
+struct HistoryStats {
+  mined: u64,
+  located: u64,
+  burned: u64,
+  lost: u64,
+  overwritten: u64,
+  extracted: u64,
+  holders: Option<u64>,
+  extracted_holders: Option<u64>,
+}
+
+impl HistoryStats {
+  fn new(stats: RowStats, holders: bool) -> Self {
+    Self {
+      mined: stats.mined,
+      located: stats.located,
+      burned: stats.burned,
+      lost: stats.lost,
+      overwritten: stats.overwritten,
+      extracted: stats.extracted,
+      holders: holders.then_some(stats.holders),
+      extracted_holders: holders.then_some(stats.extracted_holders),
+    }
+  }
 }
 
 #[derive(Serialize)]
 struct HistoryJson {
   row: String,
+  /// The years asked for (`years=`), else absent.
+  #[serde(skip_serializing_if = "Option::is_none")]
+  years: Option<Vec<u16>>,
   points: Vec<HistoryPoint>,
 }
 
@@ -487,6 +572,17 @@ async fn supply_history(
   read(&state, move |state, reader| {
     let (row, info) = state.row(&id)?;
     let tip = tip(reader)?;
+    let years = years::parse_years(&params, &state.published.supply())?;
+    // The tracker rows to add up: the row, or its year rows.
+    let ids: Vec<RowId> = match &years {
+      None => vec![row],
+      Some(years) => years
+        .list
+        .iter()
+        .map(|&year| crate::model::year_row(state.catalog.rows().len(), row, year))
+        .collect(),
+    };
+    let holders = years.as_ref().is_none_or(|years| years.single());
     let from = from.unwrap_or(0);
     let to = to.unwrap_or(tip).min(tip);
     if from > to {
@@ -509,18 +605,36 @@ async fn supply_history(
     for point in 0..points {
       let end =
         (u64::from(from) + u64::from(point + 1) * u64::from(every) - 1).min(u64::from(to)) as u32;
-      let stats = reader
-        .row_stats_at(row, end)?
-        .map(|(_, stats)| stats)
-        .unwrap_or_default();
+      let mut stats = RowStats::default();
+      for &id in &ids {
+        let at = reader
+          .row_stats_at(id, end)?
+          .map(|(_, stats)| stats)
+          .unwrap_or_default();
+        stats.mined += at.mined;
+        stats.located += at.located;
+        stats.burned += at.burned;
+        stats.lost += at.lost;
+        stats.overwritten += at.overwritten;
+        stats.extracted += at.extracted;
+        stats.holders += at.holders;
+        stats.extracted_holders += at.extracted_holders;
+      }
       result.push(HistoryPoint {
         height: end,
         time: render.time(end)?,
-        stats,
+        stats: HistoryStats::new(stats, holders),
       });
     }
     Ok(Json(HistoryJson {
       row: info.id.clone(),
+      years: years.map(|years| {
+        years
+          .list
+          .iter()
+          .map(|&year| crate::model::FIRST_YEAR + year as u16)
+          .collect()
+      }),
       points: result,
     }))
   })

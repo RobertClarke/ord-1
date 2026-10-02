@@ -537,7 +537,11 @@ impl SatCatalog {
   }
 
   fn compile_rows(&mut self, rows: Vec<Row>) -> anyhow::Result<()> {
-    ensure!(rows.len() <= usize::from(RowId::MAX), "too many rows");
+    // The tracker also keeps a year row per row and mint year.
+    ensure!(
+      crate::model::tracked_row_ids(rows.len()) <= usize::from(RowId::MAX),
+      "too many rows"
+    );
     let exotic_types = TypeSet::exotic();
     for (index, row) in rows.iter().enumerate() {
       let id = RowId::try_from(index)?;
@@ -1100,6 +1104,15 @@ impl SatCatalog {
         };
         part(b"ord rare-sat catalog");
         part(RULES_VERSION.as_bytes());
+        // The tracker's year rows (DESIGN.md §5.1): their history is indexed.
+        part(
+          format!(
+            "year rows {}..+{}",
+            crate::model::FIRST_YEAR,
+            crate::model::YEAR_SLOTS
+          )
+          .as_bytes(),
+        );
         part(sha256::Hash::hash(EXOTIC_RANGES_BIN).as_byte_array());
         part(sha256::Hash::hash(BOUNTY3_NAMES_BIN).as_byte_array());
         part(

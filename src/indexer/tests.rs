@@ -409,6 +409,7 @@ impl Engine for FakeEngine {
       hash: self.hash,
       time: None,
       rows: Vec::new(),
+      years: Default::default(),
     }
   }
 

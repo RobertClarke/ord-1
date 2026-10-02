@@ -139,7 +139,7 @@ fn tracker_throughput() {
     utxos: snapshot_utxos,
     lost: Vec::new(),
     overwritten: Vec::new(),
-    mined: vec![0; catalog.rows().len()],
+    mined: vec![0; crate::model::tracked_row_ids(catalog.rows().len())],
   };
   let mut tracker = Tracker::restore(catalog, config, snapshot).unwrap();
   eprintln!(

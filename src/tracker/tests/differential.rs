@@ -638,6 +638,7 @@ fn check_full(tracker: &Tracker, naive: &Naive, rng: &mut Rng) {
     OutPoint::null(),
   );
   naive.check_supply(tracker);
+  super::check_years(tracker);
   tracker.verify().unwrap();
 }
 

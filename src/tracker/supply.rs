@@ -3,7 +3,10 @@
 
 use {
   super::*,
-  crate::model::{ACTIVE_YEARS, Holder, RowSupply},
+  crate::model::{
+    ACTIVE_YEARS, Holder, RowSupply, RowYears, YEAR_TOP_HOLDERS, YearMask, YearSupply,
+    split_year_row,
+  },
   std::cmp::Ordering,
 };
 
@@ -67,6 +70,9 @@ impl Fenwick {
 
 const YEAR: u32 = 365 * 86_400;
 
+/// Scripts per set of years held (`RowYears::holder_masks`).
+type MaskCounts = Vec<(YearMask, u64)>;
+
 impl Tracker {
   /// Heights from which a UTXO counts as active within each of
   /// `ACTIVE_YEARS` (see the module docs on time → height).
@@ -113,8 +119,11 @@ impl Tracker {
     active
   }
 
-  /// Per row: (top extracted holders, top non-extracted holders).
+  /// Per row: (top extracted holders, top non-extracted holders); `top`
+  /// per list for a catalog row, `YEAR_TOP_HOLDERS` at most for a year row.
   fn top_holders(&self, top: usize) -> Vec<(Vec<Holder>, Vec<Holder>)> {
+    let catalog_rows = self.catalog_rows();
+    let year_top = top.min(YEAR_TOP_HOLDERS);
     let rows = self.stats.len();
     let mut scripts: Vec<Option<&ScriptBuf>> = vec![None; self.script_entries.len()];
     for (script, &entry) in &self.scripts {
@@ -139,7 +148,11 @@ impl Tracker {
         .cmp(&a.0)
         .then_with(|| scripts[a.1 as usize].cmp(&scripts[b.1 as usize]))
     };
-    let select = |list: &mut Vec<(u64, u32)>| {
+    let select = |list: &mut Vec<(u64, u32)>, top: usize| {
+      if top == 0 {
+        list.clear();
+        return;
+      }
       if list.len() > top {
         list.select_nth_unstable_by(top - 1, order);
         list.truncate(top);
@@ -167,8 +180,9 @@ impl Tracker {
       .map(|row| {
         let mut ext = std::mem::take(&mut extracted[row]);
         let mut non = std::mem::take(&mut non_extracted[row]);
-        select(&mut ext);
-        select(&mut non);
+        let top = if row < catalog_rows { top } else { year_top };
+        select(&mut ext, top);
+        select(&mut non, top);
         let row_id = row as RowId;
         (
           ext
@@ -184,6 +198,57 @@ impl Tracker {
       .collect()
   }
 
+  /// Per catalog row: (located, extracted) holder counts by the set of
+  /// years each script holds sats of.
+  fn holder_masks(&self) -> Vec<(MaskCounts, MaskCounts)> {
+    let rows = self.catalog_rows();
+    let mut located: Vec<FxHashMap<YearMask, u64>> = vec![FxHashMap::default(); rows];
+    let mut extracted: Vec<FxHashMap<YearMask, u64>> = vec![FxHashMap::default(); rows];
+    // Per script: (catalog row, located years, extracted years).
+    let mut masks: Vec<(RowId, YearMask, YearMask)> = Vec::new();
+    // A free entry holds no rows.
+    for entry in &self.script_entries {
+      masks.clear();
+      for &(id, held, ext) in &entry.rows {
+        let Some((row, year)) = split_year_row(rows, id) else {
+          continue;
+        };
+        let bit: YearMask = 1 << year;
+        let slot = match masks.iter_mut().find(|(r, _, _)| *r == row) {
+          Some(slot) => slot,
+          None => {
+            masks.push((row, 0, 0));
+            masks.last_mut().unwrap()
+          }
+        };
+        if held > 0 {
+          slot.1 |= bit;
+        }
+        if ext > 0 {
+          slot.2 |= bit;
+        }
+      }
+      for &(row, held, ext) in &masks {
+        if held != 0 {
+          *located[usize::from(row)].entry(held).or_default() += 1;
+        }
+        if ext != 0 {
+          *extracted[usize::from(row)].entry(ext).or_default() += 1;
+        }
+      }
+    }
+    let sorted = |map: FxHashMap<YearMask, u64>| {
+      let mut list: Vec<(YearMask, u64)> = map.into_iter().collect();
+      list.sort_unstable();
+      list
+    };
+    located
+      .into_iter()
+      .zip(extracted)
+      .map(|(located, extracted)| (sorted(located), sorted(extracted)))
+      .collect()
+  }
+
   pub(super) fn supply_snapshot(&self, top: usize) -> SupplySnapshot {
     let active = self.active_non_extracted();
     let mut holders = if top > 0 {
@@ -192,27 +257,52 @@ impl Tracker {
       Vec::new()
     };
     holders.resize_with(self.stats.len(), Default::default);
+    let mut supplies: Vec<RowSupply> = holders
+      .into_iter()
+      .enumerate()
+      .map(
+        |(row, (top_extracted_holders, top_non_extracted_holders))| RowSupply {
+          row: row as RowId,
+          stats: self.stats[row],
+          active_non_extracted: ACTIVE_YEARS
+            .iter()
+            .copied()
+            .zip(active[row].iter().copied())
+            .collect(),
+          top_extracted_holders,
+          top_non_extracted_holders,
+        },
+      )
+      .collect();
+    let catalog_rows = self.catalog_rows();
+    let year_supplies = supplies.split_off(catalog_rows);
+    let mut years: Vec<RowYears> = self
+      .holder_masks()
+      .into_iter()
+      .enumerate()
+      .map(|(row, (holder_masks, extracted_holder_masks))| RowYears {
+        row: row as RowId,
+        cells: Vec::new(),
+        holder_masks,
+        extracted_holder_masks,
+      })
+      .collect();
+    for supply in year_supplies {
+      if supply.stats == RowStats::default() {
+        continue;
+      }
+      let (row, year) = split_year_row(catalog_rows, supply.row).expect("a year row");
+      years[usize::from(row)].cells.push((year, supply));
+    }
     SupplySnapshot {
       height: self.height,
       hash: self.hash,
       time: self.times.last().copied(),
-      rows: holders
-        .into_iter()
-        .enumerate()
-        .map(
-          |(row, (top_extracted_holders, top_non_extracted_holders))| RowSupply {
-            row: row as RowId,
-            stats: self.stats[row],
-            active_non_extracted: ACTIVE_YEARS
-              .iter()
-              .copied()
-              .zip(active[row].iter().copied())
-              .collect(),
-            top_extracted_holders,
-            top_non_extracted_holders,
-          },
-        )
-        .collect(),
+      rows: supplies,
+      years: YearSupply {
+        starts: self.year_starts.clone(),
+        rows: years,
+      },
     }
   }
 }

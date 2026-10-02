@@ -5,6 +5,7 @@ mod bench;
 mod differential;
 mod mainnet;
 mod scenarios;
+mod years;
 
 use {
   super::*,
@@ -72,7 +73,7 @@ pub(crate) fn tracker_at(config: &TrackerConfig, height: Option<u32>) -> (Tracke
     utxos: Vec::new(),
     lost: Vec::new(),
     overwritten: Vec::new(),
-    mined: vec![0; rows],
+    mined: vec![0; crate::model::tracked_row_ids(rows)],
   };
   (
     Tracker::restore(catalog, config.clone(), snapshot).unwrap(),
@@ -205,5 +206,70 @@ impl Chain {
       header,
       txs,
     }
+  }
+}
+
+/// The year rows add up to their catalog rows (DESIGN.md §5.1): every
+/// counter but the holders is the sum of the years', the holders of all
+/// years (from the year masks) are the row's, and the active windows add up.
+pub(crate) fn check_years(tracker: &Tracker) {
+  let supply = tracker.supply(5);
+  let rows = tracker.catalog().rows().len();
+  assert_eq!(supply.rows.len(), rows);
+  assert_eq!(supply.years.rows.len(), rows);
+  let all: crate::model::YearMask = (1 << supply.years.starts.len()) - 1;
+  for (row, years) in supply.rows.iter().zip(&supply.years.rows) {
+    assert_eq!(row.row, years.row);
+    let name = &tracker.catalog().rows()[usize::from(row.row)].id;
+    let mut sum = RowStats::default();
+    let mut active = vec![0u64; row.active_non_extracted.len()];
+    let mut last_year = None;
+    for (year, cell) in &years.cells {
+      assert!(last_year < Some(*year), "{name}: years out of order");
+      last_year = Some(*year);
+      assert!(
+        *year < supply.years.starts.len(),
+        "{name}: year {year} past the tip"
+      );
+      assert_eq!(
+        cell.row,
+        crate::model::year_row(rows, row.row, *year),
+        "{name}"
+      );
+      assert_eq!(cell.stats, tracker.year_stats(row.row, *year), "{name}");
+      let s = cell.stats;
+      sum.mined += s.mined;
+      sum.located += s.located;
+      sum.burned += s.burned;
+      sum.lost += s.lost;
+      sum.overwritten += s.overwritten;
+      sum.extracted += s.extracted;
+      assert!(s.holders <= row.stats.holders, "{name} {year}");
+      assert!(
+        s.extracted_holders <= row.stats.extracted_holders,
+        "{name} {year}"
+      );
+      assert_eq!(years.holders(1 << year, false), s.holders, "{name} {year}");
+      assert_eq!(
+        years.holders(1 << year, true),
+        s.extracted_holders,
+        "{name} {year}"
+      );
+      for (total, (_, n)) in active.iter_mut().zip(&cell.active_non_extracted) {
+        *total += n;
+      }
+    }
+    sum.holders = years.holders(all, false);
+    sum.extracted_holders = years.holders(all, true);
+    assert_eq!(sum, row.stats, "{name}: the years do not add up");
+    assert_eq!(
+      active,
+      row
+        .active_non_extracted
+        .iter()
+        .map(|(_, n)| *n)
+        .collect::<Vec<_>>(),
+      "{name}: active by year"
+    );
   }
 }

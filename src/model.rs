@@ -234,6 +234,55 @@ pub type RowId = u16;
 /// Sparse per-row sat counts, sorted by `RowId`, no zero entries.
 pub type RowCounts = Vec<(RowId, u64)>;
 
+/// The mint year of `RowId`-space year index 0 (DESIGN.md §5.1).
+pub const FIRST_YEAR: u16 = 2009;
+
+/// Mint years the tracker breaks every row down by: `FIRST_YEAR` to 2136,
+/// past the last block with a subsidy. A sat of a later year counts in the
+/// last one.
+pub const YEAR_SLOTS: usize = 128;
+
+/// Bit `y` set for year index `y` (year `FIRST_YEAR + y`).
+pub type YearMask = u128;
+
+/// The tracker's id of row `row` restricted to the sats mined in year index
+/// `year` (DESIGN.md §5.1): ids `0..rows` are the catalog's rows, then one
+/// block of `YEAR_SLOTS` ids per catalog row.
+pub fn year_row(rows: usize, row: RowId, year: usize) -> RowId {
+  debug_assert!(usize::from(row) < rows && year < YEAR_SLOTS);
+  (rows + usize::from(row) * YEAR_SLOTS + year) as RowId
+}
+
+/// The catalog row and year index of a year row id; `None` for a catalog
+/// row (`id < rows`).
+pub fn split_year_row(rows: usize, id: RowId) -> Option<(RowId, usize)> {
+  let index = usize::from(id).checked_sub(rows)?;
+  Some(((index / YEAR_SLOTS) as RowId, index % YEAR_SLOTS))
+}
+
+/// Ids the tracker keeps counters for, given the catalog's row count.
+pub fn tracked_row_ids(rows: usize) -> usize {
+  rows * (1 + YEAR_SLOTS)
+}
+
+/// The UTC calendar year of a unix time.
+pub fn year_of_time(time: u32) -> u32 {
+  // Howard Hinnant's civil_from_days, for days ≥ 0.
+  let days = time / 86_400 + 719_468;
+  let era = days / 146_097;
+  let doe = days - era * 146_097;
+  let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
+  let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+  let mp = (5 * doy + 2) / 153;
+  let month = if mp < 10 { mp + 3 } else { mp - 9 };
+  yoe + era * 400 + u32::from(month <= 2)
+}
+
+/// The year index (`year - FIRST_YEAR`, within `0..YEAR_SLOTS`) of a time.
+pub fn year_index_of_time(time: u32) -> usize {
+  (year_of_time(time).saturating_sub(u32::from(FIRST_YEAR)) as usize).min(YEAR_SLOTS - 1)
+}
+
 /// A row's circulating-supply counters at one height (see DESIGN.md §5).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RowStats {
@@ -520,7 +569,8 @@ pub struct TrackerSnapshot {
   /// Tracked UTXOs replaced by BIP30 duplicates, with the replacing height.
   pub overwritten: Vec<(OutPoint, u32, TrackedUtxo)>,
   /// `RowStats::mined` per row (the only counter not derivable from the
-  /// UTXOs above), indexed by `RowId`.
+  /// UTXOs above), indexed by `RowId`: the catalog's rows, then their year
+  /// rows (`tracked_row_ids`).
   pub mined: Vec<u64>,
 }
 
@@ -559,7 +609,56 @@ pub struct SupplySnapshot {
   pub hash: Option<BlockHash>,
   pub time: Option<u32>,
   pub rows: Vec<RowSupply>,
+  /// The same broken down by mint year (DESIGN.md §5.1).
+  pub years: YearSupply,
 }
+
+/// Every row's supply by the year its sats were mined.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct YearSupply {
+  /// First height of each year, from `FIRST_YEAR` to the tip's year (a
+  /// year no block was mined in starts where the next one does).
+  pub starts: Vec<u32>,
+  /// One per catalog row, in `RowId` order.
+  pub rows: Vec<RowYears>,
+}
+
+/// One catalog row's supply by mint year.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RowYears {
+  pub row: RowId,
+  /// The years the row has mined sats in, ascending: each year's supply
+  /// under its year row id (`year_row`); top holders at most
+  /// `YEAR_TOP_HOLDERS` per list.
+  pub cells: Vec<(usize, RowSupply)>,
+  /// Holders by the set of years they hold located sats of: (year mask,
+  /// scripts), so the holders of any set of years are exact (the scripts
+  /// whose mask meets it).
+  pub holder_masks: Vec<(YearMask, u64)>,
+  /// The same for extracted sats.
+  pub extracted_holder_masks: Vec<(YearMask, u64)>,
+}
+
+impl RowYears {
+  /// Scripts holding located (`extracted`: extracted) sats of the row mined
+  /// in any year of `years`.
+  pub fn holders(&self, years: YearMask, extracted: bool) -> u64 {
+    let masks = if extracted {
+      &self.extracted_holder_masks
+    } else {
+      &self.holder_masks
+    };
+    masks
+      .iter()
+      .filter(|(mask, _)| mask & years != 0)
+      .map(|(_, count)| count)
+      .sum()
+  }
+}
+
+/// Top holders per list kept for a year row (the catalog rows keep the
+/// indexer's `supply_top`).
+pub const YEAR_TOP_HOLDERS: usize = 100;
 
 #[cfg(test)]
 mod tests {
@@ -587,6 +686,54 @@ mod tests {
     ] {
       assert_eq!(script_hash(&script), hash, "{script:?}");
     }
+  }
+
+  #[test]
+  fn years_of_times() {
+    for (time, year) in [
+      (0, 1970),
+      (1_231_006_505, 2009), // genesis
+      (1_262_303_999, 2009), // 2009-12-31T23:59:59Z
+      (1_262_304_000, 2010),
+      (1_330_473_600, 2012), // 2012-02-29
+      (1_767_225_599, 2025),
+      (1_767_225_600, 2026),
+      (4_102_444_800, 2100),
+      (u32::MAX, 2106),
+    ] {
+      assert_eq!(year_of_time(time), year, "{time}");
+    }
+    assert_eq!(year_index_of_time(0), 0);
+    assert_eq!(year_index_of_time(1_262_304_000), 1);
+    assert_eq!(year_index_of_time(u32::MAX), 97);
+  }
+
+  #[test]
+  fn year_row_ids() {
+    let rows = 72;
+    assert_eq!(tracked_row_ids(rows), 72 * 129);
+    assert!(tracked_row_ids(rows) <= usize::from(RowId::MAX));
+    assert_eq!(split_year_row(rows, 71), None);
+    for (row, year) in [(0, 0), (0, 127), (5, 17), (71, 127)] {
+      let id = year_row(rows, row, year);
+      assert!(usize::from(id) >= rows && usize::from(id) < tracked_row_ids(rows));
+      assert_eq!(split_year_row(rows, id), Some((row, year)));
+    }
+  }
+
+  #[test]
+  fn holders_of_year_sets() {
+    let years = RowYears {
+      holder_masks: vec![(0b001, 10), (0b011, 5), (0b100, 2)],
+      extracted_holder_masks: vec![(0b010, 3)],
+      ..RowYears::default()
+    };
+    assert_eq!(years.holders(0b001, false), 15);
+    assert_eq!(years.holders(0b010, false), 5);
+    assert_eq!(years.holders(0b011, false), 15);
+    assert_eq!(years.holders(0b111, false), 17);
+    assert_eq!(years.holders(0b101, true), 0);
+    assert_eq!(years.holders(0b010, true), 3);
   }
 
   #[test]

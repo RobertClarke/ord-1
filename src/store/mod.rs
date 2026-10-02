@@ -135,8 +135,9 @@ use {
 
 /// Bumped whenever a table layout or encoding changes (2: sales and
 /// inscriptions; 3: an inscription's first transaction index, so a sale and
-/// an inscription in one block are ordered; 4: the address history).
-pub const SCHEMA_VERSION: u32 = 4;
+/// an inscription in one block are ordered; 4: the address history; 5: the
+/// year rows' history in `row_history` and their `mined` counters).
+pub const SCHEMA_VERSION: u32 = 5;
 
 /// Undo records are kept for this many blocks below and including the tip.
 pub const UNDO_DEPTH: u32 = 144;

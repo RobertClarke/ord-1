@@ -112,14 +112,19 @@ fn coinbase_outputs_place_uncommon_and_black() {
     (1, 1, 1)
   );
   assert_eq!(uncommon.extracted, 0);
-  let changed: Vec<&str> = delta
+  let rows = tracker.catalog().rows();
+  let changed: Vec<String> = delta
     .rows
     .iter()
-    .map(|d| tracker.catalog().rows()[usize::from(d.row)].id.as_str())
+    .map(|d| match crate::model::split_year_row(rows.len(), d.row) {
+      None => rows[usize::from(d.row)].id.clone(),
+      Some((row, year)) => format!("{}@{}", rows[usize::from(row)].id, 2009 + year),
+    })
     .collect();
   // Block 840,000's first sat is an epic (and an alpha), not also an
-  // uncommon or an alpha uncommon: tiers are exclusive.
-  assert_eq!(changed, ["epic", "black"]);
+  // uncommon or an alpha uncommon: tiers are exclusive. Each row changes
+  // with its year row (the test chain's blocks are dated 2024).
+  assert_eq!(changed, ["epic", "black", "epic@2024", "black@2024"]);
   tracker.verify().unwrap();
 }
 

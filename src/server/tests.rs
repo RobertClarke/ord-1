@@ -574,6 +574,22 @@ fn scenario() -> Scenario {
     },
   ];
 
+  // The uncommon row's year rows (ids 4 + year index: `FakeCatalog` has
+  // four rows): block 0 and 1 are dated 2009, 2 and 3 2023 (`TIMES`).
+  for (height, year, before, after) in [
+    (0, 0, RowStats::default(), stats(1, 1, 0, 0, 0)),
+    (1, 0, stats(1, 1, 0, 0, 0), stats(2, 2, 0, 0, 0)),
+    (2, 0, stats(2, 2, 0, 0, 0), stats(2, 2, 0, 0, 1)),
+    (2, 14, RowStats::default(), stats(1, 1, 0, 0, 0)),
+    (3, 14, stats(1, 1, 0, 0, 0), stats(2, 1, 1, 0, 0)),
+  ] {
+    deltas[height].rows.push(RowDelta {
+      row: crate::model::year_row(4, 0, year),
+      before,
+      after,
+    });
+  }
+
   let catalog = FakeCatalog::new();
   let histories = deltas
     .iter()
@@ -599,6 +615,64 @@ fn scenario() -> Scenario {
     deltas,
     markets,
     histories,
+  }
+}
+
+/// The published supply by year of `TestServer`: the uncommon row's
+/// 2009 and 2023 (its year rows in `scenario`); the other rows have none.
+fn fake_years() -> crate::model::YearSupply {
+  let cell = |year: usize, stats: RowStats, active: u64, holder: Holder| {
+    (
+      year,
+      RowSupply {
+        row: crate::model::year_row(4, 0, year),
+        stats,
+        active_non_extracted: vec![
+          (1, 0),
+          (2, active),
+          (3, active),
+          (4, active),
+          (5, active),
+          (7, active),
+        ],
+        top_extracted_holders: if stats.extracted > 0 {
+          vec![holder.clone()]
+        } else {
+          Vec::new()
+        },
+        top_non_extracted_holders: vec![holder],
+      },
+    )
+  };
+  let holder = |script: ScriptBuf, height: u32| Holder {
+    script_pubkey: script,
+    count: 1,
+    utxos: 1,
+    last_received_height: height,
+  };
+  let mut starts = vec![0];
+  starts.extend([2; 14]);
+  crate::model::YearSupply {
+    starts,
+    rows: (0..4)
+      .map(|row| crate::model::RowYears {
+        row,
+        cells: if row == 0 {
+          vec![
+            cell(0, stats(2, 2, 0, 0, 1), 1, holder(p2tr(), 2)),
+            cell(14, stats(2, 1, 1, 0, 0), 1, holder(p2wpkh(4), 3)),
+          ]
+        } else {
+          Vec::new()
+        },
+        holder_masks: if row == 0 {
+          vec![(1, 2), (1 << 14, 1)]
+        } else {
+          Vec::new()
+        },
+        extracted_holder_masks: if row == 0 { vec![(1, 1)] } else { Vec::new() },
+      })
+      .collect(),
   }
 }
 
@@ -724,6 +798,7 @@ impl TestServer {
             ],
           })
           .collect(),
+        years: fake_years(),
       });
     }
 
@@ -880,6 +955,8 @@ fn status() {
       "address_history_from_height": 1,
       "address_history_from_time": TIMES[1],
       "address_history_building": false,
+      "year_stats": true,
+      "years": status["years"],
       "timings": status["timings"],
       "error": null,
     })
@@ -986,6 +1063,120 @@ fn supply() {
   let server = TestServer::new(None);
   server.error("/supply", 503);
   server.error("/supply/uncommon", 503);
+}
+
+#[test]
+fn supply_by_year() {
+  let server = TestServer::new(Some(3));
+  let status = server.json("/status");
+  assert_eq!(status["year_stats"], true);
+  assert_eq!(
+    status["years"],
+    json!([
+      { "year": 2009, "from_height": 0, "to_height": 1 },
+      { "year": 2023, "from_height": 2, "to_height": 3 },
+    ])
+  );
+
+  // One year: that year's counters, delta and inscribed sats (5e9 is
+  // block 1's).
+  let supply = server.json("/supply?years=2009");
+  assert_eq!(supply["height"], 3);
+  assert_eq!(
+    supply["rows"][0],
+    json!({
+      "id": "uncommon",
+      "total": 2,
+      "stats": { "mined": 2, "located": 2, "burned": 0, "lost": 0, "overwritten": 0,
+                 "extracted": 1, "holders": 2, "extracted_holders": 1, "inscribed": 1 },
+      "active_non_extracted": { "1y": 0, "2y": 1, "3y": 1, "4y": 1, "5y": 1, "7y": 1 },
+      "delta": null,
+    })
+  );
+  let supply = server.json("/supply?year=2023");
+  assert_eq!(supply["rows"][0]["stats"]["inscribed"], 0);
+  assert_eq!(
+    supply["rows"][0]["delta"],
+    json!({
+      "height": 3,
+      "before": { "mined": 1, "located": 1, "burned": 0, "lost": 0, "overwritten": 0,
+                  "extracted": 0, "holders": 1, "extracted_holders": 0 },
+      "after": { "mined": 2, "located": 1, "burned": 1, "lost": 0, "overwritten": 0,
+                 "extracted": 0, "holders": 1, "extracted_holders": 0 },
+    })
+  );
+  // Rows without sats of the years are zeros.
+  assert_eq!(supply["rows"][1]["id"], "black");
+  assert_eq!(supply["rows"][1]["total"], 0);
+  assert_eq!(supply["rows"][1]["stats"]["located"], 0);
+  assert_eq!(supply["rows"][1]["delta"], Value::Null);
+
+  // Both years: the row's own numbers; holders from the year masks, and a
+  // delta whose holder counts are reported unchanged.
+  let both = server.json("/supply?years=2023,2009");
+  let all = server.json("/supply");
+  assert_eq!(both["rows"][0]["stats"], all["rows"][0]["stats"]);
+  assert_eq!(both["rows"][0]["active_non_extracted"]["7y"], 2);
+  assert_eq!(both["rows"][0]["delta"]["before"]["located"], 3);
+  assert_eq!(both["rows"][0]["delta"]["before"]["holders"], 3);
+  assert_eq!(both["rows"][0]["delta"]["after"]["burned"], 1);
+
+  // One row: top holders for one year, none for a set.
+  let row = server.json("/supply/uncommon?years=2023&top=5");
+  assert_eq!(row["stats"]["burned"], 1);
+  assert_eq!(row["top_extracted_holders"], json!([]));
+  assert_eq!(
+    row["top_non_extracted_holders"][0]["address"],
+    address(&p2wpkh(4))
+  );
+  let row = server.json("/supply/uncommon?years=2009,2023");
+  assert!(row.get("top_extracted_holders").is_none());
+  assert_eq!(row["stats"]["holders"], 3);
+
+  // History: a year's own, a set's added up without holders.
+  let history = server.json("/supply/uncommon/history?every=1&years=2023");
+  assert_eq!(history["years"], json!([2023]));
+  let located = |history: &Value| {
+    history["points"]
+      .as_array()
+      .unwrap()
+      .iter()
+      .map(|point| point["stats"]["located"].as_u64().unwrap())
+      .collect::<Vec<u64>>()
+  };
+  assert_eq!(located(&history), [0, 0, 1, 1]);
+  assert_eq!(history["points"][3]["stats"]["holders"], 1);
+  let history = server.json("/supply/uncommon/history?every=1&years=2009,2023");
+  let all = server.json("/supply/uncommon/history?every=1");
+  assert_eq!(located(&history), located(&all));
+  assert_eq!(history["points"][3]["stats"]["holders"], Value::Null);
+  assert_eq!(all["points"][3]["stats"]["holders"], 3);
+  assert!(all.get("years").is_none());
+
+  // Every row's years.
+  let years = server.json("/supply/years");
+  assert_eq!(years["height"], 3);
+  assert_eq!(years["years"], status["years"]);
+  assert_eq!(years["rows"][0]["id"], "uncommon");
+  assert_eq!(years["rows"][0]["years"]["2009"]["total"], 2);
+  assert_eq!(years["rows"][0]["years"]["2009"]["stats"]["inscribed"], 1);
+  assert_eq!(years["rows"][0]["years"]["2023"]["stats"]["burned"], 1);
+  assert_eq!(years["rows"][1]["years"], json!({}));
+
+  for (path, needle) in [
+    ("/supply?years=2010", "no block was mined in 2010"),
+    ("/supply?years=2024", "from 2009 to 2023"),
+    ("/supply?years=09", "YYYY"),
+    ("/supply?years=2009,x", "YYYY"),
+    ("/supply/uncommon?years=1999", "1999"),
+    ("/supply/uncommon/history?years=2008", "2008"),
+  ] {
+    assert!(server.error(path, 400).contains(needle), "{path}");
+  }
+
+  let server = TestServer::new(None);
+  server.error("/supply/years", 503);
+  server.error("/supply?years=2009", 503);
 }
 
 #[test]
