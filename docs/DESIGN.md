@@ -351,7 +351,8 @@ catalog fingerprint): by default from the first block whose time reaches
 `extracted_since` (the ordinals era). Measured on mainnet (2026-10-02), a
 history from genesis would hold about 150–200 M entries (2.1 per moving
 transaction; 138 M by height 715,000), some 15–20 GB on disk; the ordinals
-era (from height 767,4xx) about 26.4 M entries.
+era (from height 767,304) 26.4 M entries, 94 bytes each as stored: the
+`history` table is 3.1 GB on disk, the whole index 5.2 GB (README).
 
 During the initial sync entries are appended, keyed by height first
 (sequential writes), to a separate staging file next to the index

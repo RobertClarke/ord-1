@@ -68,6 +68,16 @@ Tailscale, 2026-09-30:
 | Tracked at the tip | 1,014,851 UTXOs, 2,751,933 pieces |
 | Lost sats | 2,895,844,904 — identical to upstream ord `--index-sats` |
 
+With the address history (index schema 4, 2026-10-02, same box, to
+969,602): fast sync 43.9 min (2,635 s, including 49 s to move 25.9 M staged
+history entries into place), peak RSS 19.6 GiB, RSS live after a restart
+~1.1 GB, index 5.2 GB (the `history` table 3.1 GB: 26.4 M entries from
+height 767,304, the first block of the ordinals era). Checked with
+`tools/validate/history-check.py`: every move of the last 4,032 blocks is in
+the history (407,095 entries, 90,753 scripts) and nothing else, every sale's
+seller and buyer have their `sale` entry, and `/supply`, `/sales` and the
+lost sats equal those of the previous index.
+
 Validated against an upstream ord with `--index-sats` at the same height
 (`tools/validate/`, 2026-09-30, tip 969,264–969,267): 2,310 sampled tracked
 sats across all 62 rows plus edge sets (burned sats, sats that passed through
