@@ -1115,12 +1115,35 @@ fn uncommon(height: u32) -> u64 {
   Height(height).starting_sat().n()
 }
 
-/// An input of a synthesized transaction: its owner (`script(owner)`),
+/// Owners from `TAPROOT` up hold P2TR scripts in synthesized transactions,
+/// the others `script(owner)` (P2WPKH).
+const TAPROOT: u8 = 0x80;
+
+/// The script of a synthesized transaction's `owner`.
+fn owner_script(owner: u8) -> ScriptBuf {
+  if owner < TAPROOT {
+    return script(owner);
+  }
+  let mut bytes = vec![0x51, 0x20];
+  bytes.extend([owner; 32]);
+  ScriptBuf::from_bytes(bytes)
+}
+
+/// An output of `value` to a synthesized transaction's `owner`.
+fn owner_out(value: u64, owner: u8) -> TxOut {
+  TxOut {
+    value: Amount::from_sat(value),
+    script_pubkey: owner_script(owner),
+  }
+}
+
+/// An input of a synthesized transaction: its owner (`owner_script(owner)`),
 /// value, sighash flag, and the tracked sat at its offset 0, if any.
 type SynthInput = (u8, u64, Option<u8>, Option<u64>);
 
 /// A synthesized transaction at `height`, as a fixture: its txid and its
-/// inputs' outpoints are hashes of its name, its scripts `script(owner)`.
+/// inputs' outpoints are hashes of its name, its scripts
+/// `owner_script(owner)`.
 fn synthesized(name: &str, height: u32, inputs: &[SynthInput], outputs: Vec<TxOut>) -> Fixture {
   let txid = |what: &str| Txid::hash(format!("{name} {what}").as_bytes());
   let mut fixture = Fixture {
@@ -1142,7 +1165,7 @@ fn synthesized(name: &str, height: u32, inputs: &[SynthInput], outputs: Vec<TxOu
   };
   for (vin, &(owner, value, sighash, sat)) in inputs.iter().enumerate() {
     let outpoint = OutPoint::new(txid(&format!("input {vin}")), 0);
-    let script_pubkey = script(owner);
+    let script_pubkey = owner_script(owner);
     fixture.inputs.push(FixtureInput {
       outpoint,
       value,
@@ -1289,8 +1312,8 @@ fn raresats_lookalikes_are_not_sales() {
   // A transfer in an accepted offer's shape: the seller's UTXO (owner 20)
   // signed ALL, another party's funding (owner 30); the item to owner 31,
   // 40,000 sats to owner 32, the fee at vout 2 (Magisat's offer layout), the
-  // funder's change. raresats.net sells by listings only: no sale, with its
-  // fee, its marker or both.
+  // funder's change. A raresats.net offer pays the seller's own script at
+  // vout 1 (`raresats_offers`): no sale, with its fee, its marker or both.
   let transfer = |name: &str, fee: bool, marker: bool| {
     let mut outputs = vec![out_to(546, 31), out_to(40_000, 32)];
     outputs.extend(fee.then(|| raresats_fee(1_000)));
@@ -1385,6 +1408,276 @@ fn raresats_lookalikes_are_not_sales() {
       (30_000, 30_000, 0)
     )]
   );
+}
+
+/// The seller (P2TR) of synthesized raresats.net offers, and its bidder.
+const OFFER_SELLER: u8 = TAPROOT + 1;
+const OFFER_BIDDER: u8 = TAPROOT + 2;
+
+/// A synthesized raresats.net accepted offer, in its layout: the seller's
+/// UTXO of `value` (an uncommon sat at offset 0) at vin 0, signed
+/// `sighash`; the bidder's funding at vin 1.. (`funders`, each signed
+/// `bidder_sighash`); outputs: the item, whole, to the bidder at vout 0,
+/// `price` to the seller's own script at vout 1, the fee (2.5 % of the
+/// price, at least 546 sats) at vout 2, the bidder's `change` at vout 3 if
+/// any, the marker last. The funding covers a 1,000-sat miner fee.
+#[allow(clippy::too_many_arguments)]
+fn raresats_offer(
+  name: &str,
+  seller: u8,
+  value: u64,
+  sighash: u8,
+  bidder: u8,
+  funders: usize,
+  bidder_sighash: u8,
+  price: u64,
+  change: Option<u64>,
+) -> Fixture {
+  let fee = (price / 40).max(546);
+  let funding = price + fee + change.unwrap_or(0) + 1_000;
+  let mut inputs: Vec<SynthInput> = vec![(seller, value, Some(sighash), Some(uncommon(969_200)))];
+  for i in 0..funders as u64 {
+    let share = funding / funders as u64 + u64::from(i == 0) * (funding % funders as u64);
+    inputs.push((bidder, share, Some(bidder_sighash), None));
+  }
+  let mut outputs = vec![
+    owner_out(value, bidder),
+    owner_out(price, seller),
+    raresats_fee(fee),
+  ];
+  outputs.extend(change.map(|change| owner_out(change, bidder)));
+  outputs.push(raresats_marker());
+  synthesized(name, RARESATS_FROM, &inputs, outputs)
+}
+
+/// The P2TR seller's offer: a 546-sat UTXO sold for 100,000 sats (a 2,500
+/// fee) to a P2TR bidder, every input signed SIGHASH_DEFAULT, no change.
+fn taproot_offer(name: &str) -> Fixture {
+  raresats_offer(
+    name,
+    OFFER_SELLER,
+    546,
+    0x00,
+    OFFER_BIDDER,
+    1,
+    0x00,
+    100_000,
+    None,
+  )
+}
+
+#[test]
+fn raresats_offers() {
+  // The P2TR seller: the price is output 1, the bidder's fee is on top.
+  let taproot = taproot_offer("taproot offer");
+  assert!(taproot.inputs[0].script_hash == script_hash(&owner_script(OFFER_SELLER)));
+  assert!(owner_script(OFFER_SELLER).is_p2tr());
+  assert_eq!(taproot.outputs[2].value, 2_500);
+  assert!(paid(&taproot, "raresats") && marked(&taproot, "raresats"));
+  assert_eq!(
+    sales(&taproot),
+    [sold(0, Offer, "raresats", (1, 0), (100_000, 100_000, 0))]
+  );
+  // A P2WPKH seller signing ALL, a 10,000-sat UTXO sold for 20,000 (the
+  // 546-sat minimum fee), to a P2WPKH bidder funding from two inputs, with
+  // change at vout 3.
+  let segwit = raresats_offer(
+    "segwit offer",
+    21,
+    10_000,
+    0x01,
+    31,
+    2,
+    0x01,
+    20_000,
+    Some(7_000),
+  );
+  assert!(owner_script(21).is_p2wpkh());
+  assert_eq!(
+    (
+      segwit.inputs.len(),
+      segwit.outputs.len(),
+      segwit.outputs[2].value
+    ),
+    (3, 5, 546)
+  );
+  assert_eq!(
+    sales(&segwit),
+    [sold(0, Offer, "raresats", (1, 0), (20_000, 20_000, 0))]
+  );
+  // A taproot bidder signing ALL explicitly for a P2WPKH seller.
+  let mixed = raresats_offer(
+    "mixed offer",
+    21,
+    546,
+    0x01,
+    OFFER_BIDDER,
+    1,
+    0x01,
+    50_000,
+    Some(3_000),
+  );
+  assert_eq!(
+    sales(&mixed),
+    [sold(0, Offer, "raresats", (1, 0), (50_000, 50_000, 0))]
+  );
+}
+
+#[test]
+fn raresats_offer_lookalikes_are_not_sales() {
+  let offer = || taproot_offer("lookalike");
+  let mut lookalikes: Vec<(&str, Fixture)> = Vec::new();
+
+  // The fee without the marker (a transfer paying the fee), with or
+  // without change after it.
+  let mut fee_only = offer();
+  fee_only.outputs.pop();
+  lookalikes.push(("fee only", fee_only.clone()));
+  fee_only.outputs.push(FixtureOutput {
+    value: 500,
+    script_pubkey: owner_script(OFFER_BIDDER),
+  });
+  lookalikes.push(("fee only, change", fee_only));
+  // The marker without the fee: the bidder's change in its place.
+  let mut marker_only = offer();
+  marker_only.outputs[2].script_pubkey = owner_script(OFFER_BIDDER);
+  lookalikes.push(("marker only", marker_only));
+  // Neither.
+  let mut neither = offer();
+  neither.outputs.pop();
+  neither.outputs[2].script_pubkey = owner_script(OFFER_BIDDER);
+  lookalikes.push(("neither", neither));
+
+  // Transfers to self: the "bidder" funding from the seller's own script,
+  // or the item back to the seller's script.
+  let mut self_funded = offer();
+  self_funded.inputs[1].script_hash = script_hash(&owner_script(OFFER_SELLER));
+  lookalikes.push(("self-funded", self_funded));
+  let mut item_to_self = offer();
+  item_to_self.outputs[0].script_pubkey = owner_script(OFFER_SELLER);
+  lookalikes.push(("item to self", item_to_self));
+
+  // Output 1 not the seller's script: a third party, the bidder's own
+  // address (change back to the funder: a transfer paying the fee and the
+  // marker), a P2WPKH address of the same owner number.
+  for (name, script) in [
+    ("paid to another", owner_script(TAPROOT + 9)),
+    ("paid to the bidder", owner_script(OFFER_BIDDER)),
+    ("paid to a lookalike script", script(OFFER_SELLER & 0x7f)),
+  ] {
+    let mut fixture = offer();
+    fixture.outputs[1].script_pubkey = script;
+    lookalikes.push((name, fixture));
+  }
+
+  // The sats not landing whole in vout 0: the item output smaller than the
+  // UTXO (the sat, at offset 400, falls into the payment), or larger (the
+  // bidder's sats merged into it).
+  let mut short = offer();
+  short.outputs[0].value = 330;
+  short.outputs[1].value += 216;
+  lookalikes.push(("item short", tracked_at(short, 0, 400)));
+  let mut long = offer();
+  long.outputs[0].value = 1_000;
+  long.outputs[1].value -= 454;
+  lookalikes.push(("item padded", long));
+
+  // The layout out of order: fee and change swapped, the marker before the
+  // change, an extra output, the seller not at vin 0.
+  let segwit_offer = || {
+    raresats_offer(
+      "lookalike change",
+      21,
+      10_000,
+      0x01,
+      31,
+      1,
+      0x01,
+      20_000,
+      Some(7_000),
+    )
+  };
+  let mut swapped = segwit_offer();
+  swapped.outputs.swap(2, 3);
+  lookalikes.push(("fee after the change", swapped));
+  let mut marker_early = segwit_offer();
+  marker_early.outputs.swap(3, 4);
+  lookalikes.push(("marker before the change", marker_early));
+  let mut extra = segwit_offer();
+  extra.outputs.insert(
+    4,
+    FixtureOutput {
+      value: 1_000,
+      script_pubkey: script(32),
+    },
+  );
+  lookalikes.push(("extra output", extra));
+  let mut late = offer();
+  late.inputs.swap(0, 1);
+  late.tracked[0].vin = 1;
+  lookalikes.push(("seller at vin 1", late));
+
+  // Other sighash flags: the seller's or the bidder's ANYONECANPAY or
+  // SINGLE, an unrecognized signature.
+  for (name, vin, flag) in [
+    ("seller SINGLE|ANYONECANPAY", 0, Some(0x83)),
+    ("seller NONE", 0, Some(0x02)),
+    ("bidder ALL|ANYONECANPAY", 1, Some(0x81)),
+    ("bidder unsigned", 1, None),
+  ] {
+    let mut fixture = offer();
+    fixture.inputs[vin].sighash = flag;
+    lookalikes.push((name, fixture));
+  }
+
+  // Before raresats.net's launch, neither the fee nor the marker is its.
+  let mut early = offer();
+  early.height = RARESATS_FROM - 1;
+  lookalikes.push(("before launch", early));
+
+  for (name, mut fixture) in lookalikes {
+    fixture.name = name.into();
+    assert_eq!(sales(&fixture), [], "{name}");
+  }
+}
+
+/// Every recorded fixture's sales are the same with or without raresats'
+/// offer flow: marked offers change nothing else.
+#[test]
+fn raresats_offers_change_no_other_sale() {
+  let without = Marketplaces::from_json(&include_str!("../../data/marketplaces.json").replace(
+    "\"listing_0x83_msigner\",\n        \"offer_sighash_all\"\n      ],\n      \"notes\": \"Rare-sat marketplace",
+    "\"listing_0x83_msigner\"\n      ],\n      \"notes\": \"Rare-sat marketplace",
+  ))
+  .unwrap();
+  assert!(
+    !without
+      .by_id("raresats")
+      .unwrap()
+      .has_flow("offer_sighash_all")
+  );
+  assert!(
+    Marketplaces::embedded()
+      .by_id("raresats")
+      .unwrap()
+      .has_flow("offer_sighash_all")
+  );
+  let ctx = MarketContext::new(
+    catalog_for(&TrackerConfig::default()),
+    without,
+    Chain::Mainnet,
+  );
+  for (name, _) in FIXTURES {
+    let (block, delta) = Fixture::load(name).block_and_delta();
+    assert_eq!(
+      analyze(&block, &delta, &context()).sales,
+      analyze(&block, &delta, &ctx).sales,
+      "{name}"
+    );
+  }
+  // And without it, the offers are no sale.
+  let (block, delta) = taproot_offer("taproot offer").block_and_delta();
+  assert_eq!(analyze(&block, &delta, &ctx).sales, []);
 }
 
 /// Magic Eden's fee address of 2023-2026 (`bc1qcq2…`, to block 940,150).

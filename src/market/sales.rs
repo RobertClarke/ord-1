@@ -24,6 +24,15 @@
 //!    other than the seller's), pay the item's own address or a tool address
 //!    (219 such transactions in Magisat's history, none of them a sale in
 //!    its records; all 102 recorded offers keep matching).
+//!    **Marked offer** (raresats.net, a `proceeds` marketplace with the
+//!    `offer_sighash_all` flow): the same layout, held to the marketplace's
+//!    own contract, since its fee alone is paid by transfers too. The
+//!    seller's input is vin 0 and every input signs DEFAULT (`0x00`,
+//!    taproot) or ALL (`0x01`), none after vin 0 from the seller's script;
+//!    output 0 receives the sold sats, worth exactly the input, at another
+//!    script; output 1 pays vin 0's own script (the price); output 2 is the
+//!    marketplace's fee and the last output its marker, at most one output
+//!    (the bidder's change) between them. Fee and marker both, or no sale.
 //! 3. **Two-party ALL|ANYONECANPAY sale** (`0x81`; Satflow's secure
 //!    purchase): the seller pre-signs `[sats → buyer, payment → seller]` and
 //!    the buyer adds inputs signed without ANYONECANPAY. Every `0x81` input
@@ -41,7 +50,7 @@
 //!    Ordinals Wallet passthrough sales, Satflow's bid acceptances): no
 //!    listing in the transaction, a fee output of a marketplace (not
 //!    Magisat, whose offers are shape 2, nor one priced by its `proceeds`,
-//!    whose fee is paid on listings only, nor a buying tool) and no input
+//!    whose offers are marked offers, nor a buying tool) and no input
 //!    from a fee address (a marketplace's own wallet); at least two input
 //!    scripts; some of the sats leave the seller's script (only those are
 //!    sold: a seller may split one sat out of a UTXO); and a payment: the
@@ -86,7 +95,7 @@
 //!   differ);
 //! * a listing of a marketplace priced by its `proceeds` (raresats.net): `P`
 //!   alone, no `fees`; its fee output is the buyer's taker fee, on top of
-//!   the price;
+//!   the price; a marked offer: output 1 alone (the bidder's fee is extra);
 //! * other marketplaces: proceeds (an offer's net payment) plus the
 //!   transaction's fee outputs, split over its sales in proportion to their
 //!   proceeds; a payment shared by several sales is split by their UTXOs'
@@ -125,6 +134,9 @@ pub const PSBT_SIGHASH: u8 = 0x81;
 /// SIGHASH_ALL, explicit: both sides of a Magisat offer.
 pub const OFFER_SIGHASH: u8 = 0x01;
 
+/// SIGHASH_DEFAULT: a taproot key-path signature without a flag byte.
+const DEFAULT_SIGHASH: u8 = 0x00;
+
 /// The first block with a Magisat maker fee (2024-09-14).
 pub const MAGISAT_MAKER_FEE_HEIGHT: u32 = 861_287;
 
@@ -144,6 +156,11 @@ const SECURE_PURCHASE: &str = "secure_purchase_two_tx";
 /// Flow of marketplaces whose listings settle through an escrow shared with
 /// the seller, paid at the item's index.
 const PASSTHROUGH: &str = "passthrough_2of2";
+
+/// Flow of marketplaces whose accepted offers have Magisat's layout (output
+/// 0 the item, 1 the payment, 2 the fee). Changes the detection only for a
+/// `proceeds` marketplace (`marked_offer`).
+const OFFER_FLOW: &str = "offer_sighash_all";
 
 const UNISAT: &str = "unisat";
 const UNISAT_DUMMY: u64 = 300;
@@ -271,7 +288,9 @@ pub(super) fn detect(
       listings.extend(listing(view, input));
     } else if listing_tx || settlement(input, &marks) {
       // The buyer's dummies or funding; an escrow leg's settlement.
-    } else if let Some(sale) = magisat_offer(view, input, &marks) {
+    } else if let Some(sale) =
+      magisat_offer(view, input, &marks).or_else(|| marked_offer(view, input, &marks))
+    {
       out.push(sale);
     } else if let Some(sale) = psbt(view, input, &marks) {
       psbts.push(sale);
@@ -371,6 +390,49 @@ fn magisat_offer(view: &TxView, input: &MoveInput, marks: &Marks) -> Option<Sale
   Some(sale)
 }
 
+/// Shape 2, marked: an accepted offer of a `proceeds` marketplace with the
+/// offer flow (raresats.net), in its exact layout: `[item → bidder, price →
+/// vin 0's script, fee, (change), marker]`. Its fee alone marks no sale
+/// (transfers pay it too), so the transaction must also carry its marker,
+/// last, and pay vin 0's own script at output 1.
+fn marked_offer(view: &TxView, input: &MoveInput, marks: &Marks) -> Option<Sale> {
+  let (inputs, outputs) = (&view.tx.inputs, &view.tx.outputs);
+  let seller = &input.utxo.script_pubkey;
+  if input.vin != 0
+    || inputs.len() < 2
+    || !(4..=5).contains(&outputs.len())
+    || inputs
+      .iter()
+      .any(|i| !matches!(i.sighash, Some(DEFAULT_SIGHASH | OFFER_SIGHASH)))
+    || inputs[1..]
+      .iter()
+      .any(|i| i.script_hash == inputs[0].script_hash)
+  {
+    return None;
+  }
+  let marketplace = marks
+    .fees
+    .iter()
+    .find(|fee| fee.vout == 2)
+    .map(|fee| fee.marketplace)
+    .filter(|m| m.price_rule == PriceRule::Proceeds && m.has_flow(OFFER_FLOW))?;
+  let last = outputs.len() as u32 - 1;
+  if !marks
+    .markers
+    .iter()
+    .any(|&(vout, m)| vout == last && m.id == marketplace.id)
+    // vin 0's sats fill output 0 exactly (FIFO): the item lands whole.
+    || outputs[0].value.to_sat() != inputs[0].value
+    || outputs[0].script_pubkey == *seller
+    || outputs[1].script_pubkey != *seller
+  {
+    return None;
+  }
+  let mut sale = sale(view, input, SaleKind::Offer, 1, Some(0));
+  sale.marketplace = marketplace.reported_id().into();
+  Some(sale)
+}
+
 /// Shape 3: a two-party ALL|ANYONECANPAY sale.
 fn psbt(view: &TxView, input: &MoveInput, marks: &Marks) -> Option<Sale> {
   let (inputs, outputs) = (&view.tx.inputs, &view.tx.outputs);
@@ -434,8 +496,8 @@ fn payment_to(outputs: &[TxOut], seller: &Script, buyer: u32) -> Option<u32> {
 
 /// A fee that can mark an offer or passthrough sale (shape 4): that of a
 /// marketplace priced proceeds plus fees, not Magisat's (its offers are
-/// shape 2), a `proceeds` marketplace's (paid on its listings only) or a
-/// buying tool's.
+/// shape 2), a `proceeds` marketplace's (transfers pay it too: its offers
+/// are marked offers, shape 2, with its marker) or a buying tool's.
 fn offer_fee(fee: &Fee) -> bool {
   fee.marketplace.role == Role::Marketplace
     && fee.marketplace.price_rule == PriceRule::ProceedsPlusFees

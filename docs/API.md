@@ -405,14 +405,20 @@ SINGLE|ANYONECANPAY, an accepted offer, a legacy Magic Eden trade, …).
 * `marketplace`: an id from `data/marketplaces.json`, by the fee output (or
   marker / layout) the transaction carries; `unknown` when it carries none
   we know (e.g. OKX fills and Magisat fees below dust have no fee output).
-  `raresats` (raresats.net, from height 969,480): its listings, by its fee
-  output or its OP_RETURN `raresats.net` marker.
+  `raresats` (raresats.net, from height 969,480): its listings (`kind`
+  `listing`), by its fee output or its OP_RETURN `raresats.net` marker; its
+  accepted offers (`kind` `offer`), only in its exact offer layout carrying
+  both: the seller's UTXO at vin 0 passing whole to the bidder at vout 0,
+  the price to the seller's own address at vout 1, its fee at vout 2, the
+  bidder's optional change, the marker last (`payment_vout` 1, `buyer`
+  vout 0). A transaction paying its fee address or carrying its marker in
+  any other shape (a transfer) is no sale.
 * `price`: the sale price as the venue states it. Magisat: its listing price
   — the seller's payment plus Magisat's maker fee (⌊payment / 199⌋ from
   height 861,287), excluding the buyer's fee; Magisat offers: the seller's
-  payment plus half the fee output. raresats: its listing price, the
-  seller's payment (no maker fee; the buyer's fee is on top of the price),
-  so `fees` is 0. Elsewhere: the seller's payment plus the marketplace fees
+  payment plus half the fee output. raresats: its listing or offer price,
+  the seller's payment (no maker fee; the buyer's or bidder's fee is on top
+  of the price), so `fees` is 0. Elsewhere: the seller's payment plus the marketplace fees
   attributable to the listing (a shared fee output is split over a
   transaction's sales in proportion to their payments).
   `seller_proceeds`: what the seller netted (the payment output, less the

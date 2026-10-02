@@ -36,17 +36,20 @@
 //!   sale.
 //! * `price_rule`: how a listing's price is derived (`PriceRule`):
 //!   `proceeds_plus_fees` (the default), `proceeds` (the payment alone: the
-//!   fee is the buyer's, on top of the price, and paid on listings only, so
-//!   it never marks an offer) or `magisat` (its maker-fee rule; it also
-//!   enables the Magisat offer shape).
+//!   fee is the buyer's, on top of the price, and transfers pay it too, so
+//!   it alone never marks an offer) or `magisat` (its maker-fee rule; it
+//!   also enables the Magisat offer shape).
 //! * `anonymous`: a venue known only by its fee address: its sales are found
 //!   and its fees counted, but they are reported as `"unknown"`.
-//! * `flows`: the transaction shapes the marketplace uses; two change the
+//! * `flows`: the transaction shapes the marketplace uses; three change the
 //!   detection: `secure_purchase_two_tx` (a seller's ALL|ANYONECANPAY sale
 //!   into an escrow output, settled by a second transaction carrying the
-//!   marketplace's marker or fee) and `passthrough_2of2` (the seller's item
+//!   marketplace's marker or fee), `passthrough_2of2` (the seller's item
 //!   is spent from an escrow shared with the marketplace and paid at the
-//!   same index: a listing, not an offer).
+//!   same index: a listing, not an offer) and, for a `proceeds`
+//!   marketplace, `offer_sighash_all` (its accepted offers in Magisat's
+//!   layout, recognized only with both its fee at output 2 and its marker
+//!   last: `sales::marked_offer`).
 //!
 //! Unknown fields (evidence, notes, statistics) are ignored, so the table
 //! can grow.
@@ -115,8 +118,10 @@ pub enum PriceRule {
   #[default]
   ProceedsPlusFees,
   /// The paired payment `P` alone: the fee output is the buyer's taker fee,
-  /// on top of the listing price, and the seller pays none. The fee is paid
-  /// on listing purchases only, so it never marks an offer.
+  /// on top of the listing price, and the seller pays none. Transfers pay
+  /// the fee too, so it alone never marks an offer: with the
+  /// `offer_sighash_all` flow, an offer in the marketplace's exact layout,
+  /// also carrying its marker, is priced at its payment (output 1) alone.
   Proceeds,
   /// Magisat: the paired payment `P`, plus the 0.5 % maker fee `⌊P/199⌋`
   /// from block 861,287; the buyer's taker fee in the fee output is not
@@ -495,6 +500,7 @@ mod tests {
       )
     );
     assert!(raresats.has_flow("listing_0x83_msigner"));
+    assert!(raresats.has_flow("offer_sighash_all"));
     assert_eq!(table.buying_wallet(&script(fee), 969_480), None);
   }
 
