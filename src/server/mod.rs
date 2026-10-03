@@ -19,6 +19,7 @@ pub mod sales;
 pub mod slice;
 #[cfg(test)]
 mod tests;
+pub mod tx;
 pub mod years;
 
 use {
@@ -90,6 +91,8 @@ pub struct ServerState {
   pub streams: AtomicUsize,
   /// Per-row counts of located inscribed sats, and the height they are for.
   pub inscribed_rows: Mutex<Option<(u32, Arc<Vec<u64>>)>>,
+  /// bitcoind, for `/tx/{txid}` (503 without it).
+  pub node: std::sync::OnceLock<Arc<dyn crate::mempool::TxNode>>,
 }
 
 #[derive(Debug)]
@@ -217,6 +220,7 @@ pub fn router(state: Arc<ServerState>) -> Router {
     .route("/blocks", get(blocks))
     .route("/sales", get(sales_stream))
     .route("/sales/tx/{txid}", get(sales_for_tx))
+    .route("/tx/{txid}", get(tx::tx))
     .route("/mempool", get(mempool::all))
     .route("/mempool/status", get(mempool::status))
     .route("/mempool/sales", get(mempool::sales))
@@ -294,6 +298,8 @@ struct StatusJson {
   mempool: bool,
   /// The mempool overlay is running.
   mempool_enabled: bool,
+  /// `/tx/{txid}` is served (docs/API.md "Transactions").
+  tx: bool,
 }
 
 async fn status(State(state): State<Arc<ServerState>>) -> ServerResult<Json<StatusJson>> {
@@ -339,6 +345,7 @@ async fn status(State(state): State<Arc<ServerState>>) -> ServerResult<Json<Stat
       error: status.error,
       mempool: mempool::status_fields(state).0,
       mempool_enabled: mempool::status_fields(state).1,
+      tx: true,
     }))
   })
   .await

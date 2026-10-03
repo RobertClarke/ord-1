@@ -17,7 +17,7 @@ use {
 const FIRST_SEEN: u64 = 1_800_000_000;
 
 /// The pending sale, and T:0.
-fn pending(server: &TestServer) -> (Arc<PendingTx>, OutPoint) {
+pub(super) fn pending(server: &TestServer) -> (Arc<PendingTx>, OutPoint) {
   let reader = server.store.reader().unwrap();
   let (t0, utxo) = reader
     .utxos_for_script(&p2tr())
@@ -136,7 +136,7 @@ fn pending(server: &TestServer) -> (Arc<PendingTx>, OutPoint) {
   (Arc::new(pending), t0)
 }
 
-fn publish(server: &TestServer, tx: Arc<PendingTx>) {
+pub(super) fn publish(server: &TestServer, tx: Arc<PendingTx>) {
   let hash = server.scenario.deltas[3].hash;
   server.published.set_mempool(Snapshot::new(
     true,

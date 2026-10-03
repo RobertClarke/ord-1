@@ -264,3 +264,109 @@ impl TrackedIndex for StoreIndex {
     }))
   }
 }
+
+#[derive(Deserialize)]
+struct PrevoutJson {
+  value: f64,
+  #[serde(default)]
+  height: Option<u32>,
+  #[serde(rename = "scriptPubKey")]
+  script_pubkey: ScriptJson,
+}
+
+#[derive(Deserialize)]
+struct VinJson {
+  #[serde(default)]
+  prevout: Option<PrevoutJson>,
+}
+
+/// `getrawtransaction <txid> 2`, the parts `TxNode` uses.
+#[derive(Deserialize)]
+struct VerboseTxJson {
+  hex: String,
+  #[serde(default)]
+  blockhash: Option<BlockHash>,
+  #[serde(default)]
+  confirmations: Option<u32>,
+  #[serde(default)]
+  vin: Vec<VinJson>,
+}
+
+#[derive(Deserialize)]
+struct HeaderJson {
+  height: u32,
+  time: u32,
+}
+
+impl super::TxNode for RpcMempoolNode {
+  fn transaction(&self, txid: Txid) -> anyhow::Result<Option<super::NodeTx>> {
+    let Some(result) = self
+      .rpc
+      .batch_lenient::<VerboseTxJson>("getrawtransaction", &[vec![json!(txid), json!(2)]])?
+      .pop()
+    else {
+      return Ok(None);
+    };
+    let verbose = match result {
+      Ok(verbose) => verbose,
+      Err(error) if missing(&error) => return Ok(None),
+      Err(error) => {
+        return Err(anyhow::Error::new(error).context(format!("getrawtransaction {txid}")));
+      }
+    };
+    let tx = decode_tx(txid, &verbose.hex)?;
+    let coinbase = tx.is_coinbase();
+    let block = match verbose.blockhash {
+      Some(hash) => {
+        let header: HeaderJson = self
+          .rpc
+          .call("getblockheader", &[json!(hash), json!(true)])
+          .with_context(|| format!("getblockheader {hash}"))?;
+        Some(super::NodeBlock {
+          hash,
+          height: header.height,
+          time: header.time,
+          confirmations: verbose.confirmations.unwrap_or(1),
+        })
+      }
+      None => None,
+    };
+    let (prevouts, prevout_heights, entry) = if coinbase {
+      (vec![None; tx.input.len()], vec![None; tx.input.len()], None)
+    } else if block.is_some() {
+      // bitcoind gives a confirmed transaction's prevouts from its undo data.
+      let mut prevouts = Vec::with_capacity(tx.input.len());
+      let mut heights = Vec::with_capacity(tx.input.len());
+      for i in 0..tx.input.len() {
+        match verbose.vin.get(i).and_then(|vin| vin.prevout.as_ref()) {
+          Some(prevout) => {
+            prevouts.push(Some(TxOut {
+              value: Amount::from_sat(sats(prevout.value)),
+              script_pubkey: ScriptBuf::from_hex(&prevout.script_pubkey.hex)
+                .context("getrawtransaction returned a bad prevout script")?,
+            }));
+            heights.push(prevout.height);
+          }
+          None => {
+            prevouts.push(None);
+            heights.push(None);
+          }
+        }
+      }
+      (prevouts, heights, None)
+    } else {
+      // In the mempool: the chainstate's outputs, or the parents'.
+      let outpoints: Vec<OutPoint> = tx.input.iter().map(|input| input.previous_output).collect();
+      let prevouts = self.prevouts(&outpoints)?;
+      let entry = self.entries(&[txid])?.pop().flatten();
+      (prevouts, vec![None; tx.input.len()], entry)
+    };
+    Ok(Some(super::NodeTx {
+      tx,
+      prevouts,
+      prevout_heights,
+      block,
+      entry,
+    }))
+  }
+}

@@ -60,7 +60,22 @@ impl Server {
       stream_timeout: api::STREAM_TIMEOUT,
       streams: Default::default(),
       inscribed_rows: Default::default(),
+      node: Default::default(),
     });
+
+    // bitcoind for `/tx/{txid}`.
+    let tx_rpc = crate::source::Rpc::with_retry_policy(
+      settings.rpc.clone(),
+      crate::source::RetryPolicy {
+        attempts: 2,
+        initial_delay: Duration::from_millis(200),
+        max_delay: Duration::from_secs(1),
+      },
+    )?
+    .with_cancel(shutdown.clone());
+    let _ = state
+      .node
+      .set(Arc::new(crate::mempool::RpcMempoolNode::new(tx_rpc)));
 
     let indexer = if self.no_sync {
       let meta = store

@@ -91,6 +91,39 @@ pub trait MempoolNode {
   fn prevouts(&self, outpoints: &[OutPoint]) -> anyhow::Result<Vec<Option<TxOut>>>;
 }
 
+/// The block that confirmed a transaction, as bitcoind reports it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct NodeBlock {
+  pub hash: BlockHash,
+  pub height: u32,
+  pub time: u32,
+  /// bitcoind's confirmation count when asked.
+  pub confirmations: u32,
+}
+
+/// One transaction as bitcoind knows it (`GET /tx/{txid}`): confirmed
+/// (txindex) or in its mempool.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NodeTx {
+  pub tx: Transaction,
+  /// Per input, the output it spends; `None` for the coinbase's input and
+  /// for an output bitcoind no longer knows (an evicted parent).
+  pub prevouts: Vec<Option<TxOut>>,
+  /// Per input, the height of the block that created the spent output, when
+  /// bitcoind says (confirmed transactions).
+  pub prevout_heights: Vec<Option<u32>>,
+  /// The confirming block; `None` in the mempool.
+  pub block: Option<NodeBlock>,
+  /// The mempool entry (unconfirmed transactions).
+  pub entry: Option<MempoolEntry>,
+}
+
+/// bitcoind, as `GET /tx/{txid}` reads it. `None`: bitcoind knows no such
+/// transaction (neither its txindex nor its mempool).
+pub trait TxNode: Send + Sync {
+  fn transaction(&self, txid: Txid) -> anyhow::Result<Option<NodeTx>>;
+}
+
 /// A block's transactions that moved tracked sats, with the tracked
 /// outpoints each spent.
 pub type BlockMoves = Vec<(Txid, Vec<OutPoint>)>;

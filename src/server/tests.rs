@@ -869,6 +869,7 @@ impl TestServer {
       stream_timeout,
       streams: Default::default(),
       inscribed_rows: Default::default(),
+      node: Default::default(),
     });
 
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
@@ -1010,6 +1011,7 @@ fn status() {
       "error": null,
       "mempool": true,
       "mempool_enabled": false,
+      "tx": true,
     })
   );
   assert!(status["timings"]["blocks_per_second"].is_number());
@@ -2550,3 +2552,4 @@ fn address_history_is_unavailable_while_staged() {
 }
 
 mod mempool;
+mod tx;

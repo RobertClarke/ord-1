@@ -736,3 +736,102 @@ status. `at`: when it was seen gone; `seq`: the `seq` that removed it.
   ```
   `sales` are its pending sales; `location` and `sales` of the sat stay
   confirmed.
+
+## Transactions
+
+### `GET /tx/{txid}`
+One transaction as a block explorer shows it, with what it did to tracked
+sats. bitcoind supplies the transaction (its txindex, or its mempool: the
+server's `--bitcoin-rpc-*` settings, also with `--no-sync`); the index
+supplies the sat flow, sales and history. `/status` says `"tx": true` on
+builds that serve it. 400 for a bad txid, 404 when bitcoind knows no such
+transaction (and the mempool overlay never saw it leave), 503 without
+bitcoind.
+
+```json
+{
+  "txid": "…",
+  "status": "confirmed" | "pending" | "replaced" | "conflicted" | "evicted",
+  "height": 969717, "hash": "…", "time": 1791024538, "confirmations": 10,
+  "tx_index": 1408, "indexed": true,
+  "first_seen": null, "removed": null,
+  "version": 2, "locktime": 969671, "size": 11675, "vsize": 11675, "weight": 46700,
+  "coinbase": false,
+  "input_value": 3649149319, "output_value": 3649128183, "fee": 21136, "fee_rate": 1.8,
+  "sat_flow": "complete" | "outputs" | "unknown",
+  "inputs": [TxInput], "outputs": [TxOutput], "flow": [Flow],
+  "fee_pieces": [Piece], "mined_pieces": [Piece], "lost_pieces": [Piece],
+  "kinds": ["sale", "transfer"],
+  "move": Move | null, "sales": [Sale], "entries": [HistoryEntry + "address", "script_pubkey"],
+  "depends": []
+}
+```
+* `status`: `confirmed` (`height`, `hash`, `time`, `confirmations` as
+  bitcoind counts them), `pending` (in bitcoind's mempool: `first_seen`, and
+  `fee`/`vsize`/`fee_rate` from its mempool entry), or, for a transaction the
+  mempool overlay saw leave and bitcoind no longer knows, the overlay's
+  verdict, with `removed` (the overlay's record: `replaced_by`, `at`) and
+  nothing else known (empty `inputs`/`outputs`, `sat_flow: "unknown"`).
+* `indexed`: the index holds the confirming block (same hash).
+* `sat_flow`, how much of the flow is known:
+  * `complete`: the tracker's own Move of the transaction (its block's moves
+    are retained), the mempool overlay's pending one, or, for a pending
+    transaction the overlay does not hold, the same first-in-first-out flow
+    computed on request over the tracked UTXOs it spends. `move: null` with
+    `complete` means it moved no tracked sat.
+  * `outputs`: confirmed before `moves_from` (`--moves-retention`): the
+    inputs' tracked sats are no longer known; `outputs` show only the
+    tracked sats still in its unspent outputs. `sales` and `entries` are
+    kept forever (the address history from `address_history_from_height`).
+  * `unknown`: its block is not indexed yet, the index is behind bitcoind
+    (pending), or the value of an input is unknown.
+* `fee`, `input_value`: `null` for a coinbase or when an input's value is
+  unknown; `fee_rate` in sat/vB, one decimal.
+* `kinds`: its history kinds (`HistoryEntry.kind` of every party), distinct,
+  in the history's precedence order (`mined`, `sale`, `extraction`, `burn`,
+  `consolidation`, `transfer`).
+* `move`: the Move of `/block/{h}/moves` (confirmed) or of
+  `/mempool/tx/{txid}` (pending, `tx_index: null`).
+* `sales`: its Sales (`/sales/tx`; pending ones marked as such);
+  `entries`: one HistoryEntry per party (script) with its `address` and
+  `script_pubkey` (pending: PendingEntries); `depends`: pending parents
+  whose tracked outputs it spends.
+
+**TxInput**
+```json
+{ "vin": 2, "outpoint": "txid:vout" | null, "value": 210587000 | null,
+  "address": "1…" | null, "script_pubkey": "76a9…" | null, "sequence": 4294967293,
+  "created_height": 709400 | null, "sighash": 1 | null, "inscriptions": 0,
+  "tracked": true, "extracted": false, "pieces": [Piece], "inscribed_sats": [] }
+```
+`outpoint`, `value` and `script_pubkey` are `null` for the coinbase's input
+(and `value`/`script_pubkey` for an output bitcoind no longer knows).
+`created_height`: the block that created the spent output, when known.
+`sighash`: the flag of its first signature (`131` = SINGLE|ANYONECANPAY, a
+marketplace listing's), `inscriptions`: inscription envelopes it reveals.
+`tracked`: it spent a tracked UTXO, whose `pieces` (offsets within it),
+`extracted` verdict and inscribed sats follow.
+
+**TxOutput**
+```json
+{ "vout": 0, "value": 3649128183, "address": "3…" | null, "script_pubkey": "a914…",
+  "kind": "spendable" | "unspendable", "tracked": true, "extracted": false,
+  "pieces": [Piece], "inscribed_sats": [], "spent_by_pending": Spend }
+```
+`pieces`: the tracked sats it received (offsets within it);
+`spent_by_pending` (absent when none): the pending transaction spending a
+tracked output.
+
+**Flow**: one run of tracked sats from where the transaction took it to
+where it put it, inputs' runs first by `vin` and `input_offset` (a
+coinbase's by output):
+```json
+{ "source": "input" | "subsidy" | "fees", "vin": 2 | null, "input_offset": 97510060 | null,
+  "dest": "output" | "fee" | "lost", "vout": 0 | null, "offset": 159380060 | null,
+  "start": 1282092500000000, "len": 1, "types": ["uncommon", "alpha"] }
+```
+`source`: a spent UTXO (`vin`, offset within it), newly mined sats
+(`subsidy`, offset within the coinbase's input stream) or the block's fees
+(`fees`, a coinbase). `dest`: an output (`vout`, offset within it), the fee
+(paid to the miner; `offset` within the fee) or `lost` (a coinbase that did
+not claim it). `types` are the run's first sat's.
