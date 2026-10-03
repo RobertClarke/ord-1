@@ -55,6 +55,7 @@ fn luck_rows_and_holders() {
   tracker.verify().unwrap();
   check_lucks(&tracker);
   check_years(&tracker);
+  check_months(&tracker);
 
   let uncommon = id(&tracker, "uncommon");
   let mined = |luck| tracker.luck_stats(uncommon, luck).mined;

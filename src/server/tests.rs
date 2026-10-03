@@ -845,6 +845,7 @@ impl TestServer {
           .collect(),
         years: fake_years(),
         lucks: fake_lucks(),
+        months: Default::default(),
       });
     }
 

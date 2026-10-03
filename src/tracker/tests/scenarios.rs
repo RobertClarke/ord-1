@@ -122,13 +122,18 @@ fn coinbase_outputs_place_uncommon_and_black() {
         format!("{}@{}", rows[usize::from(row)].id, 2009 + year)
       }
       crate::model::TrackedRow::Luck(row, luck) => format!("{}~{luck}", rows[usize::from(row)].id),
+      crate::model::TrackedRow::Month(row, month) => format!(
+        "{}@{}",
+        rows[usize::from(row)].id,
+        crate::model::month_name(month)
+      ),
     })
     .collect();
   let luck = tracker.lucks()[delta.height as usize];
   // Block 840,000's first sat is an epic (and an alpha), not also an
   // uncommon or an alpha uncommon: tiers are exclusive. Each row changes
-  // with its year row (the test chain's blocks are dated 2024) and its
-  // luck row (the block's luck).
+  // with its year row (the test chain's blocks are dated December 2024),
+  // its luck row (the block's luck) and its month row.
   assert_eq!(
     changed,
     [
@@ -138,6 +143,8 @@ fn coinbase_outputs_place_uncommon_and_black() {
       "black@2024".into(),
       format!("epic~{luck}"),
       format!("black~{luck}"),
+      "epic@2024-12".into(),
+      "black@2024-12".into(),
     ]
   );
   tracker.verify().unwrap();

@@ -28,6 +28,11 @@
 //!   the first height whose running-max header time is in it, so years are
 //!   contiguous heights and sats; the boundaries follow the blocks applied
 //!   and undone.
+//! * Likewise every catalog row has one **luck row** per block luck
+//!   (`model::luck_row`) and one **month row** per mint month
+//!   (`model::month_row`). Month rows keep no Fenwick tree: their active
+//!   windows are summed at snapshot time from the height buckets in the
+//!   windows (the trees would cost ~128 KB a cell for some 10,000 cells).
 //!
 //! # Time → height
 //!
@@ -56,7 +61,7 @@ use {
     model::{
       BlockDelta, LUCK_SLOTS, LocationKind, Piece, ResolvedBlock, RowCounts, RowId, RowStats,
       SatLocation, SupplySnapshot, TrackedRow, TrackedUtxo, TrackerConfig, TrackerSnapshot,
-      UtxoKind, luck_row, year_index_of_time, year_row,
+      UtxoKind, luck_row, month_index_of_time, month_row, year_index_of_time, year_row,
     },
     sats::SatCatalog,
   },
@@ -157,7 +162,7 @@ impl RowAcc {
     }
   }
 
-  /// The piece's rows, and their year and luck rows by `blocks`. The
+  /// The piece's rows, and their year, luck and month rows by `blocks`. The
   /// piece is split at block boundaries (a piece rarely spans more than one
   /// block: a block's black and the next block's uncommon, or block 9).
   fn add_piece(&mut self, catalog: &SatCatalog, blocks: &Blocks, piece: &Piece, sign: i128) {
@@ -168,13 +173,14 @@ impl RowAcc {
       // Sats past the supply (never on chain) all count in one piece.
       let next = crate::sats::math::first_sat(height + 1);
       let stop = if next > start { next.min(end) } else { end };
-      let (year, luck) = blocks.of(height);
+      let (year, luck, month) = blocks.of(height);
       let rows = self.rows;
       catalog.add_row_counts(start, stop - start, |row, n| {
         let n = sign * i128::from(n);
         self.add(row, n);
         self.add(year_row(rows, row, year), n);
         self.add(luck_row(rows, row, luck), n);
+        self.add(month_row(rows, row, month), n);
       });
       start = stop;
     }
@@ -209,22 +215,29 @@ struct Blocks {
   year_starts: Vec<u32>,
   /// Each block's luck slot (`model::luck_slot`), by height.
   lucks: Vec<u8>,
+  /// First height of each month index, up to the tip's month.
+  month_starts: Vec<u32>,
 }
 
 impl Blocks {
-  /// The year index and luck slot of an applied block.
-  fn of(&self, height: u64) -> (usize, usize) {
-    // The last year starting at or before `height` (years no block was
-    // mined in start where the next one does).
-    let year = self
-      .year_starts
-      .partition_point(|&first| u64::from(first) <= height)
-      .saturating_sub(1);
+  /// The year index, luck slot and month index of an applied block.
+  fn of(&self, height: u64) -> (usize, usize, usize) {
+    // The last year (month) starting at or before `height` (years no
+    // block was mined in start where the next one does).
+    let last = |starts: &[u32]| {
+      starts
+        .partition_point(|&first| u64::from(first) <= height)
+        .saturating_sub(1)
+    };
     let luck = usize::try_from(height)
       .ok()
       .and_then(|height| self.lucks.get(height));
     debug_assert!(luck.is_some(), "block {height} is not applied");
-    (year, luck.map_or(0, |&luck| usize::from(luck)))
+    (
+      last(&self.year_starts),
+      luck.map_or(0, |&luck| usize::from(luck)),
+      last(&self.month_starts),
+    )
   }
 }
 
@@ -297,12 +310,13 @@ pub struct Tracker {
   lost: Vec<Piece>,
   overwritten: Vec<Overwritten>,
 
-  /// Year starts and lucks of the applied blocks.
+  /// Year and month starts and lucks of the applied blocks.
   blocks: Blocks,
 
-  /// Catalog rows, then their year rows (`model::year_row`) and luck rows
-  /// (`model::luck_row`).
+  /// Catalog rows, then their year rows (`model::year_row`), luck rows
+  /// (`model::luck_row`) and month rows (`model::month_row`).
   stats: Vec<RowStats>,
+  /// One per row id below `model::first_month_row` (month rows have none).
   fenwick: Vec<Fenwick>,
   buckets: Vec<Vec<u32>>,
   scripts: FxHashMap<ScriptBuf, u32>,
@@ -346,7 +360,9 @@ impl Tracker {
       lost: Vec::new(),
       overwritten: Vec::new(),
       stats: vec![RowStats::default(); rows],
-      fenwick: (0..rows).map(|_| Fenwick::default()).collect(),
+      fenwick: (0..crate::model::first_month_row(catalog_rows))
+        .map(|_| Fenwick::default())
+        .collect(),
       buckets: Vec::new(),
       scripts: FxHashMap::default(),
       script_entries: Vec::new(),
@@ -584,7 +600,14 @@ impl Tracker {
     self.row_stats(luck_row(self.catalog_rows(), row, luck))
   }
 
-  /// `uncommon`, `uncommon@2009` or `uncommon~12` (luck 12).
+  /// A row's stats over the sats mined in month index `month` (0 for
+  /// January of `model::FIRST_YEAR`).
+  pub fn month_stats(&self, row: RowId, month: usize) -> RowStats {
+    self.row_stats(month_row(self.catalog_rows(), row, month))
+  }
+
+  /// `uncommon`, `uncommon@2009`, `uncommon~12` (luck 12) or
+  /// `uncommon@2017-12`.
   fn row_name(&self, row: RowId) -> String {
     let rows = self.catalog_rows();
     let name = |base: RowId| &self.catalog.rows()[usize::from(base)].id;
@@ -596,6 +619,9 @@ impl Tracker {
         usize::from(crate::model::FIRST_YEAR) + year
       ),
       TrackedRow::Luck(base, luck) => format!("{}~{luck}", name(base)),
+      TrackedRow::Month(base, month) => {
+        format!("{}@{}", name(base), crate::model::month_name(month))
+      }
     }
   }
 
@@ -660,6 +686,10 @@ impl Tracker {
     while self.blocks.year_starts.len() <= year {
       self.blocks.year_starts.push(height);
     }
+    let month = month_index_of_time(max);
+    while self.blocks.month_starts.len() <= month {
+      self.blocks.month_starts.push(height);
+    }
   }
 
   fn pop_time(&mut self) {
@@ -675,6 +705,14 @@ impl Tracker {
     {
       self.blocks.year_starts.pop();
     }
+    while self
+      .blocks
+      .month_starts
+      .last()
+      .is_some_and(|&start| start >= height)
+    {
+      self.blocks.month_starts.pop();
+    }
   }
 
   /// First height of each mint year from `model::FIRST_YEAR` to the tip's.
@@ -687,8 +725,14 @@ impl Tracker {
     &self.blocks.lucks
   }
 
-  /// Catalog rows (the tracker's other row ids are their year and luck
-  /// rows).
+  /// First height of each mint month from January of `model::FIRST_YEAR`
+  /// to the tip's month.
+  pub fn month_starts(&self) -> &[u32] {
+    &self.blocks.month_starts
+  }
+
+  /// Catalog rows (the tracker's other row ids are their year, luck and
+  /// month rows).
   fn catalog_rows(&self) -> usize {
     self.acc.rows
   }
@@ -842,8 +886,8 @@ impl Tracker {
           let stats = &mut self.stats[usize::from(row)];
           stats.holders += u64::from(new_holder);
           stats.extracted_holders += u64::from(new_extracted_holder);
-          if !extracted {
-            self.fenwick[usize::from(row)].add(bucket, n);
+          if !extracted && let Some(fenwick) = self.fenwick.get_mut(usize::from(row)) {
+            fenwick.add(bucket, n);
           }
         }
       }
@@ -896,8 +940,8 @@ impl Tracker {
           let stats = &mut self.stats[usize::from(row)];
           stats.holders -= u64::from(lost_holder);
           stats.extracted_holders -= u64::from(lost_extracted_holder);
-          if !extracted {
-            self.fenwick[usize::from(row)].sub(bucket, n);
+          if !extracted && let Some(fenwick) = self.fenwick.get_mut(usize::from(row)) {
+            fenwick.sub(bucket, n);
           }
         }
         self.release_script(id);
@@ -1088,6 +1132,7 @@ impl Tracker {
       live == self.utxo_count && self.index.len() == live,
       "slab drifted"
     );
+    let mut acc = RowAcc::new(self.catalog_rows());
     for (id, slot) in self.slots.iter().enumerate() {
       if !slot.live {
         continue;
@@ -1098,7 +1143,6 @@ impl Tracker {
         slot.outpoint
       );
       check_pieces(slot.utxo.value, &slot.utxo.pieces)?;
-      let mut acc = RowAcc::new(self.catalog_rows());
       for piece in &slot.utxo.pieces {
         acc.add_piece(&self.catalog, &self.blocks, piece, 1);
       }

@@ -537,8 +537,8 @@ impl SatCatalog {
   }
 
   fn compile_rows(&mut self, rows: Vec<Row>) -> anyhow::Result<()> {
-    // The tracker also keeps a year row per row and mint year, and a luck
-    // row per row and luck.
+    // The tracker also keeps a year row per row and mint year, a luck row
+    // per row and luck, and a month row per row and mint month.
     ensure!(
       crate::model::tracked_row_ids(rows.len()) <= usize::from(RowId::MAX),
       "too many rows"
@@ -1116,6 +1116,8 @@ impl SatCatalog {
         );
         // And its luck rows (§5.2).
         part(format!("luck rows 0..{}", crate::model::LUCK_SLOTS).as_bytes());
+        // And its month rows (§5.3).
+        part(format!("month rows 0..{}", crate::model::MONTH_SLOTS).as_bytes());
         part(sha256::Hash::hash(EXOTIC_RANGES_BIN).as_byte_array());
         part(sha256::Hash::hash(BOUNTY3_NAMES_BIN).as_byte_array());
         part(

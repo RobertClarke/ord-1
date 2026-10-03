@@ -109,6 +109,7 @@ fn year_rows_follow_the_new_year() {
   assert_eq!(tracker.year_starts(), [0, boundary]);
   tracker.verify().unwrap();
   check_years(&tracker);
+  check_months(&tracker);
 
   let uncommon = id(&tracker, "uncommon");
   let black = id(&tracker, "black");
@@ -163,6 +164,7 @@ fn year_rows_follow_the_new_year() {
     tracker.undo_block(delta).unwrap();
     tracker.verify().unwrap();
     check_years(&tracker);
+    check_months(&tracker);
   }
   assert_eq!(tracker.year_starts(), [0]);
   assert_eq!(tracker.year_stats(uncommon, y2010), RowStats::default());
@@ -181,6 +183,7 @@ fn extracted_holders_by_year() {
   assert_eq!(tracker.year_starts()[year_index(2023)], boundary);
   tracker.verify().unwrap();
   check_years(&tracker);
+  check_months(&tracker);
 
   let uncommon = id(&tracker, "uncommon");
   let (y2022, y2023) = (year_index(2022), year_index(2023));

@@ -4,8 +4,8 @@
 use {
   super::*,
   crate::model::{
-    ACTIVE_YEARS, Holder, LuckMask, LuckSupply, RowLucks, RowSupply, RowYears, TrackedRow,
-    YEAR_TOP_HOLDERS, YearMask, YearSupply, split_row,
+    ACTIVE_YEARS, Holder, LuckMask, LuckSupply, MonthSupply, RowLucks, RowMonths, RowSupply,
+    RowYears, TrackedRow, YEAR_TOP_HOLDERS, YearMask, YearSupply, first_month_row, split_row,
   },
   std::cmp::Ordering,
 };
@@ -94,6 +94,7 @@ impl Tracker {
     let Some(from) = self.active_from() else {
       return active;
     };
+    let with_tree = self.fenwick.len();
     for (window, &from) in from.iter().enumerate() {
       let bucket = from >> BUCKET_SHIFT;
       for (row, fenwick) in self.fenwick.iter().enumerate() {
@@ -109,7 +110,34 @@ impl Tracker {
           continue;
         }
         for &(row, n) in &slot.rows {
-          active[usize::from(row)][window] += n;
+          if usize::from(row) < with_tree {
+            active[usize::from(row)][window] += n;
+          }
+        }
+      }
+    }
+    // Month rows (no trees): every non-extracted UTXO in the widest
+    // window, counted in each window it is in. `slot.rows` is sorted, the
+    // month rows last.
+    let Some(&widest) = from.iter().min() else {
+      return active;
+    };
+    for list in self.buckets.iter().skip(widest >> BUCKET_SHIFT) {
+      for &id in list {
+        let slot = &self.slots[id as usize];
+        let height = slot.utxo.height as usize;
+        if slot.extracted || height < widest {
+          continue;
+        }
+        for &(row, n) in slot.rows.iter().rev() {
+          if usize::from(row) < with_tree {
+            break;
+          }
+          for (window, &from) in from.iter().enumerate() {
+            if height >= from {
+              active[usize::from(row)][window] += n;
+            }
+          }
         }
       }
     }
@@ -117,33 +145,34 @@ impl Tracker {
   }
 
   /// Per row: (top extracted holders, top non-extracted holders); `top`
-  /// per list for a catalog row, `YEAR_TOP_HOLDERS` at most for a year row,
-  /// none for a luck row.
+  /// per list for a catalog row, `YEAR_TOP_HOLDERS` at most for a year or
+  /// month row, none for a luck row.
   fn top_holders(&self, top: usize) -> Vec<(Vec<Holder>, Vec<Holder>)> {
     let catalog_rows = self.catalog_rows();
     let year_top = top.min(YEAR_TOP_HOLDERS);
     let rows = self.stats.len();
-    // Catalog and year rows (the luck rows follow them).
-    let with_top = catalog_rows * (1 + crate::model::YEAR_SLOTS);
+    // Catalog and year rows, then the luck rows (none), then the month
+    // rows.
+    let lucks = catalog_rows * (1 + crate::model::YEAR_SLOTS)..first_month_row(catalog_rows);
     let mut scripts: Vec<Option<&ScriptBuf>> = vec![None; self.script_entries.len()];
     for (script, &entry) in &self.scripts {
       scripts[entry as usize] = Some(script);
     }
     let mut extracted: Vec<Vec<(u64, u32)>> = vec![Vec::new(); rows];
     let mut non_extracted: Vec<Vec<(u64, u32)>> = vec![Vec::new(); rows];
-    for (&script, entry) in scripts.iter().zip(&self.script_entries) {
-      let Some(script) = script else { continue };
-      let id = self.scripts[script.as_script()];
-      for &(row, located, ext) in &entry.rows {
-        // Luck rows keep no top holders.
-        if usize::from(row) >= with_top {
+    for (entry, script) in scripts.iter().enumerate() {
+      if script.is_none() {
+        continue;
+      }
+      for &(row, located, ext) in &self.script_entries[entry].rows {
+        if lucks.contains(&usize::from(row)) {
           continue;
         }
         if ext > 0 {
-          extracted[usize::from(row)].push((ext, id));
+          extracted[usize::from(row)].push((ext, entry as u32));
         }
         if located > ext {
-          non_extracted[usize::from(row)].push((located - ext, id));
+          non_extracted[usize::from(row)].push((located - ext, entry as u32));
         }
       }
     }
@@ -163,42 +192,75 @@ impl Tracker {
       }
       list.sort_unstable_by(order);
     };
-    let holder = |row: RowId, count: u64, entry: u32, want_extracted: bool| {
-      let mut utxos = 0;
-      let mut last = 0;
-      for &id in &self.script_entries[entry as usize].slots {
-        let slot = &self.slots[id as usize];
-        if slot.extracted == want_extracted && slot.rows.iter().any(|(r, _)| *r == row) {
-          utxos += 1;
-          last = last.max(slot.utxo.height);
+    for row in 0..rows {
+      let top = if row < catalog_rows { top } else { year_top };
+      select(&mut extracted[row], top);
+      select(&mut non_extracted[row], top);
+    }
+
+    // Each holder's outputs and last receipt within its list: one pass over
+    // the outputs of every script listed, however many lists it is in.
+    // Requests (script entry, row, extracted list, rank), by script.
+    let mut requests: Vec<(u32, RowId, bool, u32)> = Vec::new();
+    for (lists, want_extracted) in [(&extracted, true), (&non_extracted, false)] {
+      for (row, list) in lists.iter().enumerate() {
+        for (rank, &(_, entry)) in list.iter().enumerate() {
+          requests.push((entry, row as RowId, want_extracted, rank as u32));
         }
       }
-      Holder {
-        script_pubkey: scripts[entry as usize].unwrap().clone(),
-        count,
-        utxos,
-        last_received_height: last,
+    }
+    requests.sort_unstable();
+    // Per list, row and rank: (utxos, last received height).
+    let mut found: [Vec<Vec<(u64, u32)>>; 2] = [&non_extracted, &extracted]
+      .map(|lists| lists.iter().map(|list| vec![(0, 0); list.len()]).collect());
+    // Per row id, the request rank + 1 of the script at hand (0: none), by
+    // list.
+    let mut wanted = [vec![0u32; rows], vec![0u32; rows]];
+    for group in requests.chunk_by(|a, b| a.0 == b.0) {
+      let entry = group[0].0;
+      for &(_, row, want_extracted, rank) in group {
+        wanted[usize::from(want_extracted)][usize::from(row)] = rank + 1;
       }
+      let mut tallies: FxHashMap<(RowId, bool), (u64, u32)> = FxHashMap::default();
+      for &id in &self.script_entries[entry as usize].slots {
+        let slot = &self.slots[id as usize];
+        let list = &wanted[usize::from(slot.extracted)];
+        for &(row, _) in &slot.rows {
+          if list[usize::from(row)] != 0 {
+            let tally = tallies.entry((row, slot.extracted)).or_default();
+            tally.0 += 1;
+            tally.1 = tally.1.max(slot.utxo.height);
+          }
+        }
+      }
+      for &(_, row, want_extracted, rank) in group {
+        wanted[usize::from(want_extracted)][usize::from(row)] = 0;
+        found[usize::from(want_extracted)][usize::from(row)][rank as usize] = tallies
+          .get(&(row, want_extracted))
+          .copied()
+          .unwrap_or_default();
+      }
+    }
+    let holders = |row: usize, list: Vec<(u64, u32)>, want_extracted: bool| -> Vec<Holder> {
+      list
+        .into_iter()
+        .enumerate()
+        .map(|(rank, (count, entry))| {
+          let (utxos, last) = found[usize::from(want_extracted)][row][rank];
+          Holder {
+            script_pubkey: scripts[entry as usize].unwrap().clone(),
+            count,
+            utxos,
+            last_received_height: last,
+          }
+        })
+        .collect()
     };
-    (0..rows)
-      .map(|row| {
-        let mut ext = std::mem::take(&mut extracted[row]);
-        let mut non = std::mem::take(&mut non_extracted[row]);
-        let top = if row < catalog_rows { top } else { year_top };
-        select(&mut ext, top);
-        select(&mut non, top);
-        let row_id = row as RowId;
-        (
-          ext
-            .into_iter()
-            .map(|(n, entry)| holder(row_id, n, entry, true))
-            .collect(),
-          non
-            .into_iter()
-            .map(|(n, entry)| holder(row_id, n, entry, false))
-            .collect(),
-        )
-      })
+    extracted
+      .into_iter()
+      .zip(non_extracted)
+      .enumerate()
+      .map(|(row, (ext, non))| (holders(row, ext, true), holders(row, non, false)))
       .collect()
   }
 
@@ -216,7 +278,7 @@ impl Tracker {
       masks.clear();
       for &(id, held, ext) in &entry.rows {
         let (row, kind, bit) = match split_row(rows, id) {
-          TrackedRow::Catalog(_) => continue,
+          TrackedRow::Catalog(_) | TrackedRow::Month(..) => continue,
           TrackedRow::Year(row, year) => (row, 0, 1u128 << year),
           TrackedRow::Luck(row, luck) => (row, 2, 1u128 << luck),
         };
@@ -292,6 +354,12 @@ impl Tracker {
     let other_supplies = supplies.split_off(catalog_rows);
     let mut years = Vec::with_capacity(catalog_rows);
     let mut lucks = Vec::with_capacity(catalog_rows);
+    let mut months: Vec<RowMonths> = (0..catalog_rows)
+      .map(|row| RowMonths {
+        row: row as RowId,
+        cells: Vec::new(),
+      })
+      .collect();
     for (row, masks) in self.holder_masks().into_iter().enumerate() {
       years.push(RowYears {
         row: row as RowId,
@@ -313,6 +381,7 @@ impl Tracker {
       match split_row(catalog_rows, supply.row) {
         TrackedRow::Year(row, year) => years[usize::from(row)].cells.push((year, supply)),
         TrackedRow::Luck(row, luck) => lucks[usize::from(row)].cells.push((luck, supply)),
+        TrackedRow::Month(row, month) => months[usize::from(row)].cells.push((month, supply)),
         TrackedRow::Catalog(_) => unreachable!("catalog rows come first"),
       }
     }
@@ -328,6 +397,10 @@ impl Tracker {
       lucks: LuckSupply {
         heights: self.blocks.lucks.clone(),
         rows: lucks,
+      },
+      months: MonthSupply {
+        starts: self.blocks.month_starts.clone(),
+        rows: months,
       },
     }
   }
