@@ -79,6 +79,8 @@ struct Naive {
   overwritten: Vec<(OutPoint, u32, NaiveUtxo)>,
   counters: Vec<Counters>,
   times: Vec<u32>,
+  /// Each block's luck slot, from its hash and bits.
+  lucks: Vec<u8>,
   coinbases: Vec<Txid>,
 }
 
@@ -129,6 +131,7 @@ impl Naive {
       overwritten: Vec::new(),
       counters: vec![Counters::default(); rows],
       times,
+      lucks: Vec::new(),
       coinbases: Vec::new(),
     }
   }
@@ -248,6 +251,9 @@ impl Naive {
     let mut seen = NaiveBlock::default();
     let height = block.height;
     self.times.push(block.header.time);
+    self
+      .lucks
+      .push(crate::model::luck_slot(&block.hash, block.header.bits));
     let first = first_sat(height.into());
     let sub = subsidy(height.into());
     for (start, len) in self.catalog.tracked_runs(first, first + sub) {
@@ -437,6 +443,86 @@ impl Naive {
         top(false),
         "row {row} top non-extracted"
       );
+    }
+  }
+}
+
+impl Naive {
+  /// Supply by luck (DESIGN.md §5.2), recomputed from scratch: each
+  /// spendable UTXO's sats split by the luck of their blocks, and for every
+  /// row and every N the scripts holding a sat of luck N or more.
+  fn check_lucks(&self, tracker: &Tracker) {
+    use crate::model::{LUCK_SLOTS, LuckMask};
+    assert_eq!(tracker.lucks(), &self.lucks[..], "block lucks");
+    let rows = self.catalog.rows().len();
+    let supply = tracker.supply(5);
+    // Per row and luck: (located, extracted); per row: script → (located
+    // lucks, extracted lucks).
+    let mut cells = vec![[(0u64, 0u64); LUCK_SLOTS]; rows];
+    let mut masks: Vec<HashMap<&ScriptBuf, (LuckMask, LuckMask)>> = vec![HashMap::new(); rows];
+    for utxo in self.utxos.values() {
+      if utxo.kind != UtxoKind::Spendable {
+        continue;
+      }
+      let ext = self.extracted(utxo);
+      for piece in &utxo.pieces {
+        let mut start = piece.start;
+        while start < piece.end() {
+          let height = crate::sats::math::height_of(start);
+          let stop = first_sat(height + 1).min(piece.end());
+          let luck = usize::from(self.lucks[height as usize]);
+          for (row, n) in self.catalog.row_counts(start, stop - start) {
+            let row = usize::from(row);
+            cells[row][luck].0 += n;
+            let mask = masks[row].entry(&utxo.script).or_default();
+            mask.0 |= 1 << luck;
+            if ext {
+              cells[row][luck].1 += n;
+              mask.1 |= 1 << luck;
+            }
+          }
+          start = stop;
+        }
+      }
+    }
+    for row in 0..rows {
+      let lucks = &supply.lucks.rows[row];
+      let name = &self.catalog.rows()[row].id;
+      for (luck, cell) in cells[row].iter().enumerate() {
+        let stats = lucks
+          .cells
+          .iter()
+          .find(|(l, _)| *l == luck)
+          .map(|(_, cell)| cell.stats)
+          .unwrap_or_default();
+        assert_eq!(
+          (stats.located, stats.extracted),
+          *cell,
+          "{name} luck {luck}"
+        );
+      }
+      // Holders of luck ≥ N and of N..=M, by brute force.
+      for min in 0..LUCK_SLOTS {
+        for max in [min, LUCK_SLOTS - 1] {
+          let range: LuckMask = (min..=max).fold(0, |mask, luck| mask | (1 << luck));
+          let count = |extracted: bool| -> u64 {
+            masks[row]
+              .values()
+              .filter(|(held, ext)| (if extracted { ext } else { held }) & range != 0)
+              .count() as u64
+          };
+          assert_eq!(
+            lucks.holders(range, false),
+            count(false),
+            "{name} {min}..={max}"
+          );
+          assert_eq!(
+            lucks.holders(range, true),
+            count(true),
+            "{name} {min}..={max} extracted"
+          );
+        }
+      }
     }
   }
 }
@@ -638,7 +724,9 @@ fn check_full(tracker: &Tracker, naive: &Naive, rng: &mut Rng) {
     OutPoint::null(),
   );
   naive.check_supply(tracker);
+  naive.check_lucks(tracker);
   super::check_years(tracker);
+  super::check_lucks(tracker);
   tracker.verify().unwrap();
 }
 
@@ -783,10 +871,12 @@ impl Generator {
 /// Runs `blocks` random blocks after `start` (None: from genesis).
 fn run(config: &TrackerConfig, start: Option<u32>, blocks: u32, seed: u64) {
   let (mut tracker, mut chain) = tracker_at(config, start);
-  let history = tracker.snapshot().times;
+  let snapshot = tracker.snapshot();
+  let history = snapshot.times;
   // Start a little before 2022-12-14 so extraction switches on mid-run.
   let time = history.last().copied().unwrap_or(0).max(1_660_000_000);
   let mut naive = Naive::new(tracker.catalog().clone(), config.clone(), history);
+  naive.lucks = snapshot.lucks;
   let mut generator = Generator {
     rng: Rng(seed),
     next_txid: seed << 20,

@@ -54,9 +54,9 @@ pub(crate) mod tests;
 use {
   crate::{
     model::{
-      BlockDelta, LocationKind, Piece, ResolvedBlock, RowCounts, RowId, RowStats, SatLocation,
-      SupplySnapshot, TrackedUtxo, TrackerConfig, TrackerSnapshot, UtxoKind, year_index_of_time,
-      year_row,
+      BlockDelta, LUCK_SLOTS, LocationKind, Piece, ResolvedBlock, RowCounts, RowId, RowStats,
+      SatLocation, SupplySnapshot, TrackedRow, TrackedUtxo, TrackerConfig, TrackerSnapshot,
+      UtxoKind, luck_row, year_index_of_time, year_row,
     },
     sats::SatCatalog,
   },
@@ -126,7 +126,7 @@ struct Overwritten {
   rows: RowCounts,
 }
 
-/// Dense per-row accumulator (catalog rows and their year rows).
+/// Dense per-row accumulator (catalog rows and their year and luck rows).
 struct RowAcc {
   /// Catalog rows.
   rows: usize,
@@ -157,23 +157,24 @@ impl RowAcc {
     }
   }
 
-  /// The piece's rows, and their year rows by `years` (the first sat of
-  /// each year, `Tracker::year_sats`).
-  fn add_piece(&mut self, catalog: &SatCatalog, years: &[u64], piece: &Piece, sign: i128) {
+  /// The piece's rows, and their year and luck rows by `blocks`. The
+  /// piece is split at block boundaries (a piece rarely spans more than one
+  /// block: a block's black and the next block's uncommon, or block 9).
+  fn add_piece(&mut self, catalog: &SatCatalog, blocks: &Blocks, piece: &Piece, sign: i128) {
     let end = piece.end();
     let mut start = piece.start;
     while start < end {
-      // The last year starting at or before `start` (years no block was
-      // mined in start where the next one does).
-      let year = years
-        .partition_point(|&first| first <= start)
-        .saturating_sub(1);
-      let stop = years.get(year + 1).map_or(end, |&next| next.min(end));
+      let height = crate::sats::math::height_of(start);
+      // Sats past the supply (never on chain) all count in one piece.
+      let next = crate::sats::math::first_sat(height + 1);
+      let stop = if next > start { next.min(end) } else { end };
+      let (year, luck) = blocks.of(height);
       let rows = self.rows;
       catalog.add_row_counts(start, stop - start, |row, n| {
         let n = sign * i128::from(n);
         self.add(row, n);
         self.add(year_row(rows, row, year), n);
+        self.add(luck_row(rows, row, luck), n);
       });
       start = stop;
     }
@@ -198,6 +199,32 @@ impl RowAcc {
       "negative row count (tracker state is inconsistent)"
     );
     Ok(out)
+  }
+}
+
+/// What the tracker knows of each applied block to break rows down by.
+#[derive(Default)]
+struct Blocks {
+  /// First height of each year index, up to the tip's year.
+  year_starts: Vec<u32>,
+  /// Each block's luck slot (`model::luck_slot`), by height.
+  lucks: Vec<u8>,
+}
+
+impl Blocks {
+  /// The year index and luck slot of an applied block.
+  fn of(&self, height: u64) -> (usize, usize) {
+    // The last year starting at or before `height` (years no block was
+    // mined in start where the next one does).
+    let year = self
+      .year_starts
+      .partition_point(|&first| u64::from(first) <= height)
+      .saturating_sub(1);
+    let luck = usize::try_from(height)
+      .ok()
+      .and_then(|height| self.lucks.get(height));
+    debug_assert!(luck.is_some(), "block {height} is not applied");
+    (year, luck.map_or(0, |&luck| usize::from(luck)))
   }
 }
 
@@ -270,12 +297,11 @@ pub struct Tracker {
   lost: Vec<Piece>,
   overwritten: Vec<Overwritten>,
 
-  /// First height of each year index, up to the tip's year.
-  year_starts: Vec<u32>,
-  /// `first_sat` of `year_starts`.
-  year_sats: Vec<u64>,
+  /// Year starts and lucks of the applied blocks.
+  blocks: Blocks,
 
-  /// Catalog rows, then their year rows (`model::year_row`).
+  /// Catalog rows, then their year rows (`model::year_row`) and luck rows
+  /// (`model::luck_row`).
   stats: Vec<RowStats>,
   fenwick: Vec<Fenwick>,
   buckets: Vec<Vec<u32>>,
@@ -309,8 +335,7 @@ impl Tracker {
       times: Vec::new(),
       max_times: Vec::new(),
       lost_sats: 0,
-      year_starts: Vec::new(),
-      year_sats: Vec::new(),
+      blocks: Blocks::default(),
       index: FxHashMap::default(),
       slots: Vec::new(),
       free_slots: Vec::new(),
@@ -365,8 +390,18 @@ impl Tracker {
     );
     tracker.height = snapshot.height;
     tracker.hash = snapshot.hash;
-    for &time in &snapshot.times {
-      tracker.push_time(time);
+    ensure!(
+      snapshot.lucks.len() == expected_times,
+      "snapshot has {} block lucks for height {:?}",
+      snapshot.lucks.len(),
+      snapshot.height
+    );
+    for (&time, &luck) in snapshot.times.iter().zip(&snapshot.lucks) {
+      ensure!(
+        usize::from(luck) < LUCK_SLOTS,
+        "luck slot {luck} out of range"
+      );
+      tracker.push_time(time, luck);
     }
     tracker.lost_sats = snapshot.lost_sats;
     let tip = snapshot.height;
@@ -446,6 +481,7 @@ impl Tracker {
       height: self.height,
       hash: self.hash,
       times: self.times.clone(),
+      lucks: self.blocks.lucks.clone(),
       lost_sats: self.lost_sats,
       utxos,
       lost: self.lost.clone(),
@@ -543,16 +579,23 @@ impl Tracker {
     self.row_stats(year_row(self.catalog_rows(), row, year))
   }
 
-  /// `uncommon` or `uncommon@2009`.
+  /// A row's stats over the sats mined in blocks of luck slot `luck`.
+  pub fn luck_stats(&self, row: RowId, luck: usize) -> RowStats {
+    self.row_stats(luck_row(self.catalog_rows(), row, luck))
+  }
+
+  /// `uncommon`, `uncommon@2009` or `uncommon~12` (luck 12).
   fn row_name(&self, row: RowId) -> String {
     let rows = self.catalog_rows();
-    match crate::model::split_year_row(rows, row) {
-      None => self.catalog.rows()[usize::from(row)].id.clone(),
-      Some((base, year)) => format!(
+    let name = |base: RowId| &self.catalog.rows()[usize::from(base)].id;
+    match crate::model::split_row(rows, row) {
+      TrackedRow::Catalog(base) => name(base).clone(),
+      TrackedRow::Year(base, year) => format!(
         "{}@{}",
-        self.catalog.rows()[usize::from(base)].id,
+        name(base),
         usize::from(crate::model::FIRST_YEAR) + year
       ),
+      TrackedRow::Luck(base, luck) => format!("{}~{luck}", name(base)),
     }
   }
 
@@ -606,40 +649,46 @@ impl Tracker {
   // ---------------------------------------------------------------------
   // Internals shared by apply, undo and restore.
 
-  fn push_time(&mut self, time: u32) {
+  /// Notes the next block's header time and luck slot.
+  fn push_time(&mut self, time: u32, luck: u8) {
     let max = self.max_times.last().copied().unwrap_or(0).max(time);
     let height = self.times.len() as u32;
     self.times.push(time);
     self.max_times.push(max);
+    self.blocks.lucks.push(luck);
     let year = year_index_of_time(max);
-    while self.year_starts.len() <= year {
-      self.year_starts.push(height);
-      self
-        .year_sats
-        .push(crate::sats::math::first_sat(u64::from(height)));
+    while self.blocks.year_starts.len() <= year {
+      self.blocks.year_starts.push(height);
     }
   }
 
   fn pop_time(&mut self) {
     self.times.pop();
     self.max_times.pop();
+    self.blocks.lucks.pop();
     let height = self.times.len() as u32;
     while self
+      .blocks
       .year_starts
       .last()
       .is_some_and(|&start| start >= height)
     {
-      self.year_starts.pop();
-      self.year_sats.pop();
+      self.blocks.year_starts.pop();
     }
   }
 
   /// First height of each mint year from `model::FIRST_YEAR` to the tip's.
   pub fn year_starts(&self) -> &[u32] {
-    &self.year_starts
+    &self.blocks.year_starts
   }
 
-  /// Catalog rows (the tracker's other row ids are their year rows).
+  /// Each applied block's luck slot (`model::luck_slot`), by height.
+  pub fn lucks(&self) -> &[u8] {
+    &self.blocks.lucks
+  }
+
+  /// Catalog rows (the tracker's other row ids are their year and luck
+  /// rows).
   fn catalog_rows(&self) -> usize {
     self.acc.rows
   }
@@ -656,7 +705,7 @@ impl Tracker {
 
   fn piece_rows(&mut self, pieces: &[Piece]) -> anyhow::Result<RowCounts> {
     for piece in pieces {
-      self.acc.add_piece(&self.catalog, &self.year_sats, piece, 1);
+      self.acc.add_piece(&self.catalog, &self.blocks, piece, 1);
     }
     self.acc.take()
   }
@@ -912,9 +961,7 @@ impl Tracker {
     }
     let index = self.lost.len() as u32;
     self.locator_insert(&piece, Loc::Lost(index))?;
-    self
-      .acc
-      .add_piece(&self.catalog, &self.year_sats, &piece, 1);
+    self.acc.add_piece(&self.catalog, &self.blocks, &piece, 1);
     for (row, n) in self.acc.take()? {
       self.touch(row).lost += n;
     }
@@ -925,9 +972,7 @@ impl Tracker {
   fn pop_lost(&mut self) -> anyhow::Result<Piece> {
     let piece = self.lost.pop().context("no lost piece to remove")?;
     self.locator_remove(&piece);
-    self
-      .acc
-      .add_piece(&self.catalog, &self.year_sats, &piece, 1);
+    self.acc.add_piece(&self.catalog, &self.blocks, &piece, 1);
     for (row, n) in self.acc.take()? {
       self.touch(row).lost -= n;
     }
@@ -1055,7 +1100,7 @@ impl Tracker {
       check_pieces(slot.utxo.value, &slot.utxo.pieces)?;
       let mut acc = RowAcc::new(self.catalog_rows());
       for piece in &slot.utxo.pieces {
-        acc.add_piece(&self.catalog, &self.year_sats, piece, 1);
+        acc.add_piece(&self.catalog, &self.blocks, piece, 1);
       }
       ensure!(
         acc.take()? == slot.rows,

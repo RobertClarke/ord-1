@@ -26,6 +26,7 @@ fn tracker_before(boundary: u32, new_year: u32) -> (Tracker, Chain) {
     height: Some(tip),
     hash: Some(chain.prev),
     times: (0..=tip).map(|h| time_of(boundary, new_year, h)).collect(),
+    lucks: vec![0; tip as usize + 1],
     mined: vec![0; crate::model::tracked_row_ids(catalog.rows().len())],
     ..TrackerSnapshot::default()
   };

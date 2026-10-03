@@ -135,6 +135,7 @@ fn tracker_throughput() {
     height: Some(start - 1),
     hash: Some(chain.prev),
     times: (0..start).map(|h| chain.time_of(h)).collect(),
+    lucks: vec![0; start as usize],
     lost_sats: 0,
     utxos: snapshot_utxos,
     lost: Vec::new(),

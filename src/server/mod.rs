@@ -13,7 +13,9 @@
 pub mod catalog;
 pub mod history;
 pub mod json;
+pub mod lucks;
 pub mod sales;
+pub mod slice;
 #[cfg(test)]
 mod tests;
 pub mod years;
@@ -197,6 +199,7 @@ pub fn router(state: Arc<ServerState>) -> Router {
     .route("/rows", get(rows))
     .route("/supply", get(supply))
     .route("/supply/years", get(supply_years))
+    .route("/supply/lucks", get(supply_lucks))
     .route("/supply/{row}", get(supply_row))
     .route("/supply/{row}/history", get(supply_history))
     .route("/sat/{sat}", get(sat))
@@ -268,6 +271,13 @@ struct StatusJson {
   year_stats: bool,
   /// The mint years of the indexed blocks.
   years: Vec<years::YearSpanJson>,
+  /// The supply by block luck is served (`luck=` on `/supply…`,
+  /// `/supply/lucks`).
+  luck_stats: bool,
+  /// The highest luck broken down (it also counts any luckier block).
+  max_luck: u32,
+  /// Blocks of each luck up to the tip.
+  lucks: Vec<lucks::LuckBlocksJson>,
   timings: Timings,
   error: Option<String>,
 }
@@ -275,6 +285,7 @@ struct StatusJson {
 async fn status(State(state): State<Arc<ServerState>>) -> ServerResult<Json<StatusJson>> {
   read(&state, |state, reader| {
     let status = state.published.status();
+    let supply = state.published.supply();
     let commit = env!("GIT_COMMIT").trim();
     let history_from = reader.history_from()?;
     Ok(Json(StatusJson {
@@ -306,10 +317,10 @@ async fn status(State(state): State<Arc<ServerState>>) -> ServerResult<Json<Stat
       },
       address_history_building: reader.history_building()?,
       year_stats: true,
-      years: {
-        let supply = state.published.supply();
-        years::year_spans(&supply.years, supply.height)
-      },
+      years: years::year_spans(&supply.years, supply.height),
+      luck_stats: true,
+      max_luck: lucks::MAX_LUCK,
+      lucks: lucks::luck_blocks(&supply),
       timings: status.timings,
       error: status.error,
     }))
@@ -348,7 +359,7 @@ struct SupplyJson {
 }
 
 /// Located inscribed sats per row at the published supply's height, by
-/// tracker row id (the catalog's `RowId`s, then their year rows), computed
+/// tracker row id (the catalog's `RowId`s, then their year and luck rows), computed
 /// from the `inscribed` table and the sats' current locations, once per
 /// height.
 fn inscribed_rows(
@@ -369,7 +380,7 @@ fn inscribed_rows(
       .locate(sat)?
       .is_some_and(|location| location.kind == LocationKind::Unspent)
     {
-      years::inscribed_by_year(state, &supply.years.starts, sat, &mut counts);
+      years::inscribed_by_row(state, supply, sat, &mut counts);
     }
   }
   let counts = Arc::new(counts);
@@ -430,19 +441,18 @@ async fn supply(
   read(&state, move |state, reader| {
     let supply = state.published.supply();
     let height = supply.height.ok_or(ServerError::NotReady)?;
-    let years = years::parse_years(&params, &supply)?;
+    let slice = slice::parse_slice(&params, &supply)?;
     let inscribed = inscribed_rows(state, reader, &supply, height)?;
-    let rows = match &years {
+    let rows = match &slice {
       None => supply
         .rows
         .iter()
         .map(|row| row_supply(state, reader, row, height, None, &inscribed))
         .collect::<ServerResult<_>>()?,
-      Some(years) => supply
-        .years
-        .rows
+      Some(slice) => slice
+        .subsets(&supply)
         .iter()
-        .map(|row| years::row_supply(state, reader, row, years, height, None, &inscribed))
+        .map(|subset| slice::row_supply(state, reader, subset, height, None, &inscribed))
         .collect::<ServerResult<_>>()?,
     };
     Ok(Json(SupplyJson {
@@ -467,6 +477,18 @@ async fn supply_years(
   .await
 }
 
+async fn supply_lucks(
+  State(state): State<Arc<ServerState>>,
+) -> ServerResult<Json<lucks::SupplyLucksJson>> {
+  read(&state, |state, reader| {
+    let supply = state.published.supply();
+    let height = years::ready(&supply)?;
+    let inscribed = inscribed_rows(state, reader, &supply, height)?;
+    Ok(Json(lucks::supply_lucks(state, &supply, &inscribed)))
+  })
+  .await
+}
+
 async fn supply_row(
   State(state): State<Arc<ServerState>>,
   Path(id): Path<String>,
@@ -480,20 +502,16 @@ async fn supply_row(
     let (row, _) = state.row(&id)?;
     let supply = state.published.supply();
     let height = supply.height.ok_or(ServerError::NotReady)?;
-    let years = years::parse_years(&params, &supply)?;
+    let slice = slice::parse_slice(&params, &supply)?;
     let inscribed = inscribed_rows(state, reader, &supply, height)?;
-    if let Some(years) = years {
-      let row_years = supply
-        .years
-        .rows
-        .iter()
-        .find(|supply| supply.row == row)
+    if let Some(slice) = slice {
+      let subset = slice
+        .subset(&supply, row)
         .ok_or_else(|| not_found(format!("no supply for row `{id}`")))?;
-      return Ok(Json(years::row_supply(
+      return Ok(Json(slice::row_supply(
         state,
         reader,
-        row_years,
-        &years,
+        &subset,
         height,
         Some(top.min(crate::model::YEAR_TOP_HOLDERS)),
         &inscribed,
@@ -523,8 +541,8 @@ struct HistoryPoint {
   stats: HistoryStats,
 }
 
-/// `RowStats`, but holder counts are `null` over more than one year (they
-/// do not add up).
+/// `RowStats`, but holder counts are `null` over more than one year or luck
+/// (they do not add up).
 #[derive(Serialize)]
 struct HistoryStats {
   mined: u64,
@@ -558,6 +576,9 @@ struct HistoryJson {
   /// The years asked for (`years=`), else absent.
   #[serde(skip_serializing_if = "Option::is_none")]
   years: Option<Vec<u16>>,
+  /// The lucks asked for (`luck=`), `[min, max]`, else absent.
+  #[serde(skip_serializing_if = "Option::is_none")]
+  luck: Option<[u32; 2]>,
   points: Vec<HistoryPoint>,
 }
 
@@ -572,17 +593,12 @@ async fn supply_history(
   read(&state, move |state, reader| {
     let (row, info) = state.row(&id)?;
     let tip = tip(reader)?;
-    let years = years::parse_years(&params, &state.published.supply())?;
-    // The tracker rows to add up: the row, or its year rows.
-    let ids: Vec<RowId> = match &years {
-      None => vec![row],
-      Some(years) => years
-        .list
-        .iter()
-        .map(|&year| crate::model::year_row(state.catalog.rows().len(), row, year))
-        .collect(),
+    let slice = slice::parse_slice(&params, &state.published.supply())?;
+    // The tracker rows to add up: the row, or its year or luck rows.
+    let (ids, holders) = match &slice {
+      None => (vec![row], true),
+      Some(slice) => slice.history_ids(state.catalog.rows().len(), row),
     };
-    let holders = years.as_ref().is_none_or(|years| years.single());
     let from = from.unwrap_or(0);
     let to = to.unwrap_or(tip).min(tip);
     if from > to {
@@ -628,13 +644,8 @@ async fn supply_history(
     }
     Ok(Json(HistoryJson {
       row: info.id.clone(),
-      years: years.map(|years| {
-        years
-          .list
-          .iter()
-          .map(|&year| crate::model::FIRST_YEAR + year as u16)
-          .collect()
-      }),
+      years: slice.as_ref().and_then(slice::Slice::years),
+      luck: slice.as_ref().and_then(slice::Slice::luck),
       points: result,
     }))
   })
@@ -1281,6 +1292,11 @@ struct BlockLine {
   height: u32,
   hash: BlockHash,
   time: u32,
+  /// The header's compact target, 8 hex digits.
+  bits: String,
+  /// The block's luck (`model::block_luck`), `null` for a hash above its
+  /// target.
+  luck: Option<u32>,
 }
 
 async fn blocks(
@@ -1295,10 +1311,15 @@ async fn blocks(
       reader
         .headers(from, to)?
         .into_iter()
-        .map(|(height, header)| BlockLine {
-          height,
-          hash: header.block_hash(),
-          time: header.time,
+        .map(|(height, header)| {
+          let hash = header.block_hash();
+          BlockLine {
+            height,
+            hash,
+            time: header.time,
+            bits: format!("{:08x}", header.bits.to_consensus()),
+            luck: crate::model::block_luck(&hash, header.bits),
+          }
         })
         .collect(),
     ))

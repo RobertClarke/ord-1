@@ -4,20 +4,20 @@
 //!
 //! The tracker keeps every row's counters per year (DESIGN.md §5.1); a set
 //! of years adds them up, but for the holders, which it counts from the
-//! published year masks (exact for any set).
+//! published year masks (exact for any set). `slice` renders it.
 
 use {
   super::{
     ServerError, ServerResult, ServerState, bad_request,
-    json::{DeltaJson, RowSupplyJson, SupplyStatsJson, YearsMap},
+    json::{SupplyStatsJson, YearsMap},
+    slice::Subset,
   },
   crate::{
     model::{
-      FIRST_YEAR, RowStats, RowSupply, RowYears, SupplySnapshot, YearMask, YearSupply,
-      tracked_row_ids, year_row,
+      FIRST_YEAR, RowYears, SupplySnapshot, YearMask, YearSupply, luck_row, tracked_row_ids,
+      year_row,
     },
     sats::math::height_of,
-    store::Reader,
   },
   serde::Serialize,
   std::collections::{BTreeMap, HashMap},
@@ -123,52 +123,46 @@ pub fn parse_years(
   Ok(Some(Years { list, mask }))
 }
 
-/// The cells of `years` a row has.
-fn cells<'a>(row: &'a RowYears, years: &'a Years) -> impl Iterator<Item = &'a RowSupply> {
-  row
-    .cells
-    .iter()
-    .filter(|(year, _)| years.list.binary_search(year).is_ok())
-    .map(|(_, cell)| cell)
-}
-
-/// Every counter added up, but the holders.
-fn add(sum: &mut RowStats, stats: &RowStats) {
-  sum.mined += stats.mined;
-  sum.located += stats.located;
-  sum.burned += stats.burned;
-  sum.lost += stats.lost;
-  sum.overwritten += stats.overwritten;
-  sum.extracted += stats.extracted;
-}
-
-/// A row's stats and active windows over `years`.
-pub fn year_stats(row: &RowYears, years: &Years) -> (RowStats, Vec<(u32, u64)>) {
-  let mut stats = RowStats::default();
-  let mut active: Vec<(u32, u64)> = crate::model::ACTIVE_YEARS
-    .iter()
-    .map(|&window| (window, 0))
-    .collect();
-  for cell in cells(row, years) {
-    add(&mut stats, &cell.stats);
-    for ((_, total), (_, n)) in active.iter_mut().zip(&cell.active_non_extracted) {
-      *total += n;
-    }
+/// A row restricted to `years`.
+pub fn subset<'a>(rows: usize, row: &'a RowYears, years: &Years) -> Subset<'a> {
+  Subset {
+    row: row.row,
+    cells: row
+      .cells
+      .iter()
+      .filter(|(year, _)| years.list.binary_search(year).is_ok())
+      .map(|(_, cell)| cell)
+      .collect(),
+    ids: years
+      .list
+      .iter()
+      .map(|&year| year_row(rows, row.row, year))
+      .collect(),
+    holders: row.holders(years.mask, false),
+    extracted_holders: row.holders(years.mask, true),
+    top_holders: true,
   }
-  stats.holders = row.holders(years.mask, false);
-  stats.extracted_holders = row.holders(years.mask, true);
-  (stats, active)
 }
 
 /// Located inscribed sats per tracker row id (catalog rows, then their
-/// year rows), as `ServerState::inscribed_rows` counts them.
-pub fn inscribed_by_year(state: &ServerState, starts: &[u32], sat: u64, counts: &mut [u64]) {
+/// year and luck rows), as `ServerState::inscribed_rows` counts them.
+pub fn inscribed_by_row(
+  state: &ServerState,
+  supply: &SupplySnapshot,
+  sat: u64,
+  counts: &mut [u64],
+) {
   let rows = state.catalog.rows().len();
-  let year = year_of_sat(starts, sat).min(crate::model::YEAR_SLOTS - 1);
+  let year = year_of_sat(&supply.years.starts, sat).min(crate::model::YEAR_SLOTS - 1);
+  let luck = usize::try_from(height_of(sat))
+    .ok()
+    .and_then(|height| supply.lucks.heights.get(height))
+    .map_or(0, |&luck| usize::from(luck));
   for row in state.catalog.sat_rows(sat) {
     if usize::from(row) < rows {
       counts[usize::from(row)] += 1;
       counts[usize::from(year_row(rows, row, year))] += 1;
+      counts[usize::from(luck_row(rows, row, luck))] += 1;
     }
   }
 }
@@ -176,110 +170,6 @@ pub fn inscribed_by_year(state: &ServerState, starts: &[u32], sat: u64, counts: 
 /// Room for every tracker row id.
 pub fn inscribed_len(state: &ServerState) -> usize {
   tracked_row_ids(state.catalog.rows().len())
-}
-
-/// One row's `RowSupplyJson` over `years`: top holders for a single year
-/// only (`None` for a set).
-pub fn row_supply(
-  state: &ServerState,
-  reader: &Reader,
-  row: &RowYears,
-  years: &Years,
-  height: u32,
-  top: Option<usize>,
-  inscribed: &[u64],
-) -> ServerResult<RowSupplyJson> {
-  let render = state.render(reader);
-  let rows = state.catalog.rows().len();
-  let (stats, active) = year_stats(row, years);
-  let inscribed = years
-    .list
-    .iter()
-    .map(|&year| {
-      inscribed
-        .get(usize::from(year_row(rows, row.row, year)))
-        .copied()
-        .unwrap_or_default()
-    })
-    .sum();
-
-  // The tip block's change: the years it changed, plus the others as
-  // they are.
-  let mut changed = false;
-  let (mut before, mut after) = (RowStats::default(), RowStats::default());
-  for cell in cells(row, years) {
-    let (old, new) = match reader.row_delta(cell.row, height)? {
-      Some(delta) => {
-        changed = true;
-        delta
-      }
-      None => (cell.stats, cell.stats),
-    };
-    add(&mut before, &old);
-    add(&mut after, &new);
-    if years.single() {
-      before.holders = old.holders;
-      before.extracted_holders = old.extracted_holders;
-      after.holders = new.holders;
-      after.extracted_holders = new.extracted_holders;
-    }
-  }
-  let delta = changed
-    .then_some((before, after))
-    .map(|(mut before, mut after)| {
-      if !years.single() {
-        // The holders of a set of years before the block are not known:
-        // reported unchanged.
-        before.holders = stats.holders;
-        before.extracted_holders = stats.extracted_holders;
-        after.holders = stats.holders;
-        after.extracted_holders = stats.extracted_holders;
-      }
-      DeltaJson {
-        height,
-        before,
-        after,
-      }
-    });
-
-  let single = years.single().then(|| cells(row, years).next()).flatten();
-  let holders = |list: Option<&Vec<crate::model::Holder>>, top: usize| -> ServerResult<_> {
-    Ok(
-      list
-        .map(|list| {
-          list
-            .iter()
-            .take(top)
-            .map(|holder| render.holder(holder))
-            .collect::<anyhow::Result<Vec<_>>>()
-        })
-        .transpose()?
-        .unwrap_or_default(),
-    )
-  };
-  let (top_extracted_holders, top_non_extracted_holders) = match top {
-    Some(top) if years.single() => (
-      Some(holders(
-        single.map(|cell| &cell.top_extracted_holders),
-        top,
-      )?),
-      Some(holders(
-        single.map(|cell| &cell.top_non_extracted_holders),
-        top,
-      )?),
-    ),
-    _ => (None, None),
-  };
-
-  Ok(RowSupplyJson {
-    id: render.row_name(row.row),
-    total: stats.mined,
-    stats: SupplyStatsJson { stats, inscribed },
-    active_non_extracted: YearsMap(active),
-    delta,
-    top_extracted_holders,
-    top_non_extracted_holders,
-  })
 }
 
 /// `GET /supply/years`: every row's cells.

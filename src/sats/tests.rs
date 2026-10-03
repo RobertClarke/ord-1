@@ -664,11 +664,11 @@ fn fingerprint() {
     assert_ne!(a, SatCatalog::new(&config).unwrap().fingerprint());
   }
   // Pinned (rules version 4, with the address history from the ordinals
-  // era and the tracker's year rows): indexes built under another
+  // era and the tracker's year and luck rows): indexes built under another
   // fingerprint are refused, so a change here means a reindex.
   assert_eq!(
     a,
-    "e26c040d19b7ee77ef65885b4556524d1d1949e4a32b46047ef7fbefcba4e8b5"
+    "59a9b93b716e097b2ec0bee6fd5fcfc1b7421a8dee31e349f073e0fa9ff8c240"
   );
 }
 

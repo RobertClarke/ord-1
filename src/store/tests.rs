@@ -89,6 +89,7 @@ pub(crate) struct TestChain {
   pub(crate) height: Option<u32>,
   pub(crate) hash: Option<BlockHash>,
   pub(crate) times: Vec<u32>,
+  pub(crate) lucks: Vec<u8>,
   pub(crate) utxos: BTreeMap<OutPoint, TrackedUtxo>,
   pub(crate) lost: Vec<Piece>,
   pub(crate) overwritten: Vec<(OutPoint, u32, TrackedUtxo)>,
@@ -118,6 +119,7 @@ impl TestChain {
       height: None,
       hash: None,
       times: Vec::new(),
+      lucks: Vec::new(),
       utxos: BTreeMap::new(),
       lost: Vec::new(),
       overwritten: Vec::new(),
@@ -139,6 +141,7 @@ impl TestChain {
       height: self.height,
       hash: self.hash,
       times: self.times.clone(),
+      lucks: self.lucks.clone(),
       lost_sats: self.lost_sats,
       utxos: self
         .utxos
@@ -428,6 +431,9 @@ impl TestChain {
     self.height = Some(height);
     self.hash = Some(hash);
     self.times.push(header.time);
+    self
+      .lucks
+      .push(crate::model::luck_slot(&header.block_hash(), header.bits));
 
     BlockDelta {
       height,

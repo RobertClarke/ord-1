@@ -588,6 +588,13 @@ fn scenario() -> Scenario {
       before,
       after,
     });
+    // And its luck rows: blocks 0 and 1 of luck 0, 2 and 3 of luck 12
+    // (`fake_lucks`), so 2009 is luck 0 and 2023 luck 12.
+    deltas[height].rows.push(RowDelta {
+      row: crate::model::luck_row(4, 0, if year == 0 { 0 } else { 12 }),
+      before,
+      after,
+    });
   }
 
   let catalog = FakeCatalog::new();
@@ -671,6 +678,44 @@ fn fake_years() -> crate::model::YearSupply {
           Vec::new()
         },
         extracted_holder_masks: if row == 0 { vec![(1, 1)] } else { Vec::new() },
+      })
+      .collect(),
+  }
+}
+
+/// The published supply by luck of `TestServer`: `fake_years` with luck 0
+/// for 2009 and luck 12 for 2023 (its luck rows in `scenario`), without top
+/// holders.
+fn fake_lucks() -> crate::model::LuckSupply {
+  let years = fake_years();
+  crate::model::LuckSupply {
+    heights: vec![0, 0, 12, 12],
+    rows: years
+      .rows
+      .into_iter()
+      .map(|row| crate::model::RowLucks {
+        row: row.row,
+        cells: row
+          .cells
+          .into_iter()
+          .map(|(year, mut cell)| {
+            let luck = if year == 0 { 0 } else { 12 };
+            cell.row = crate::model::luck_row(4, row.row, luck);
+            cell.top_extracted_holders.clear();
+            cell.top_non_extracted_holders.clear();
+            (luck, cell)
+          })
+          .collect(),
+        holder_masks: row
+          .holder_masks
+          .iter()
+          .map(|&(mask, n)| (if mask == 1 { 1 } else { 1 << 12 }, n))
+          .collect(),
+        extracted_holder_masks: row
+          .extracted_holder_masks
+          .iter()
+          .map(|&(mask, n)| (if mask == 1 { 1 } else { 1 << 12 }, n))
+          .collect(),
       })
       .collect(),
   }
@@ -799,6 +844,7 @@ impl TestServer {
           })
           .collect(),
         years: fake_years(),
+        lucks: fake_lucks(),
       });
     }
 
@@ -957,6 +1003,9 @@ fn status() {
       "address_history_building": false,
       "year_stats": true,
       "years": status["years"],
+      "luck_stats": true,
+      "max_luck": 31,
+      "lucks": [{ "luck": 0, "blocks": 2 }, { "luck": 12, "blocks": 2 }],
       "timings": status["timings"],
       "error": null,
     })
@@ -1177,6 +1226,106 @@ fn supply_by_year() {
   let server = TestServer::new(None);
   server.error("/supply/years", 503);
   server.error("/supply?years=2009", 503);
+}
+
+#[test]
+fn supply_by_luck() {
+  let server = TestServer::new(Some(3));
+  let status = server.json("/status");
+  assert_eq!(status["luck_stats"], true);
+  assert_eq!(status["max_luck"], 31);
+  assert_eq!(
+    status["lucks"],
+    json!([{ "luck": 0, "blocks": 2 }, { "luck": 12, "blocks": 2 }])
+  );
+
+  // Exactly luck 0 is 2009 here, luck 12 or more 2023 (without top
+  // holders).
+  let strip = |mut row: Value| {
+    let object = row.as_object_mut().unwrap();
+    object.remove("top_extracted_holders");
+    object.remove("top_non_extracted_holders");
+    row
+  };
+  for (luck, year) in [
+    ("0-0", "2009"),
+    ("12", "2023"),
+    ("12-12", "2023"),
+    ("1-31", "2023"),
+  ] {
+    let by_luck = server.json(&format!("/supply?luck={luck}"));
+    let by_year = server.json(&format!("/supply?years={year}"));
+    assert_eq!(by_luck["rows"], by_year["rows"], "luck {luck}");
+    assert_eq!(
+      strip(server.json(&format!("/supply/uncommon?luck={luck}&top=5"))),
+      strip(server.json(&format!("/supply/uncommon?years={year}&top=5"))),
+      "luck {luck}"
+    );
+  }
+  // Every luck is the row.
+  let all = server.json("/supply");
+  let every = server.json("/supply?luck=0");
+  assert_eq!(every["rows"][0]["stats"], all["rows"][0]["stats"]);
+  assert_eq!(every["rows"][0]["delta"]["before"]["holders"], 3);
+  assert_eq!(server.json("/supply?luck=13")["rows"][0]["total"], 0);
+  // No top holders by luck.
+  let row = server.json("/supply/uncommon?luck=12-12&top=5");
+  assert!(row.get("top_non_extracted_holders").is_none());
+  assert_eq!(row["stats"]["holders"], 1);
+
+  // History: a single luck's holders, a range's without; every luck is
+  // the row's own history.
+  let located = |history: &Value| {
+    history["points"]
+      .as_array()
+      .unwrap()
+      .iter()
+      .map(|point| point["stats"]["located"].as_u64().unwrap())
+      .collect::<Vec<u64>>()
+  };
+  let history = server.json("/supply/uncommon/history?every=1&luck=12-12");
+  assert_eq!(history["luck"], json!([12, 12]));
+  assert!(history.get("years").is_none());
+  assert_eq!(located(&history), [0, 0, 1, 1]);
+  assert_eq!(history["points"][3]["stats"]["holders"], 1);
+  let history = server.json("/supply/uncommon/history?every=1&luck=10");
+  assert_eq!(history["luck"], json!([10, 31]));
+  assert_eq!(located(&history), [0, 0, 1, 1]);
+  assert_eq!(history["points"][3]["stats"]["holders"], Value::Null);
+  let history = server.json("/supply/uncommon/history?every=1&luck=0");
+  let all = server.json("/supply/uncommon/history?every=1");
+  assert_eq!(history["points"], all["points"]);
+
+  // Every row's lucks.
+  let lucks = server.json("/supply/lucks");
+  assert_eq!(lucks["height"], 3);
+  assert_eq!(lucks["lucks"], status["lucks"]);
+  assert_eq!(lucks["rows"][0]["id"], "uncommon");
+  assert_eq!(lucks["rows"][0]["lucks"]["0"]["total"], 2);
+  assert_eq!(lucks["rows"][0]["lucks"]["0"]["stats"]["inscribed"], 1);
+  assert_eq!(lucks["rows"][0]["lucks"]["12"]["stats"]["burned"], 1);
+  assert_eq!(lucks["rows"][1]["lucks"], json!({}));
+
+  // The blocks carry their bits and luck.
+  let blocks = server.json("/blocks?from=0&to=0");
+  assert_eq!(blocks[0]["bits"], "207fffff");
+  assert!(blocks[0].get("luck").is_some());
+
+  for (path, needle) in [
+    ("/supply?luck=32", "up to 31"),
+    ("/supply?luck=x", "N-M"),
+    ("/supply?luck=5-3", "above"),
+    ("/supply?luck=-3", "N-M"),
+    ("/supply/uncommon?luck=1-", "N-M"),
+    ("/supply?luck=1&years=2009", "cannot be combined"),
+    ("/supply/uncommon/history?luck=99", "up to 31"),
+  ] {
+    assert!(server.error(path, 400).contains(needle), "{path}");
+  }
+
+  let server = TestServer::new(None);
+  server.error("/supply/lucks", 503);
+  server.error("/supply?luck=1", 503);
 }
 
 #[test]
@@ -1747,12 +1896,19 @@ fn sats_count() {
 #[test]
 fn blocks() {
   let server = TestServer::new(Some(3));
+  let line = |height: u32| {
+    let delta = &server.scenario.deltas[height as usize];
+    json!({
+      "height": height,
+      "hash": server.hash(height),
+      "time": TIMES[height as usize],
+      "bits": format!("{:08x}", delta.header.bits.to_consensus()),
+      "luck": crate::model::block_luck(&delta.hash, delta.header.bits),
+    })
+  };
   assert_eq!(
     server.json("/blocks?from=1&to=2"),
-    json!([
-      { "height": 1, "hash": server.hash(1), "time": TIMES[1] },
-      { "height": 2, "hash": server.hash(2), "time": TIMES[2] },
-    ])
+    json!([line(1), line(2)])
   );
   assert_eq!(server.json("/blocks?from=0").as_array().unwrap().len(), 4);
   // Past the tip: only indexed blocks.

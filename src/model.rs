@@ -6,7 +6,9 @@
 //! user in the same commit.
 
 use {
-  bitcoin::{BlockHash, OutPoint, Script, ScriptBuf, TxOut, Txid, block::Header},
+  bitcoin::{
+    BlockHash, OutPoint, Script, ScriptBuf, TxOut, Txid, block::Header, hashes::Hash as _,
+  },
   serde::{Deserialize, Serialize},
 };
 
@@ -254,15 +256,113 @@ pub fn year_row(rows: usize, row: RowId, year: usize) -> RowId {
 }
 
 /// The catalog row and year index of a year row id; `None` for a catalog
-/// row (`id < rows`).
+/// row (`id < rows`) or a luck row.
 pub fn split_year_row(rows: usize, id: RowId) -> Option<(RowId, usize)> {
-  let index = usize::from(id).checked_sub(rows)?;
-  Some(((index / YEAR_SLOTS) as RowId, index % YEAR_SLOTS))
+  match split_row(rows, id) {
+    TrackedRow::Year(row, year) => Some((row, year)),
+    _ => None,
+  }
+}
+
+/// Luck values the tracker breaks every row down by (DESIGN.md §5.2):
+/// `0..LUCK_SLOTS`, a block of higher luck counting in the last one (the
+/// luckiest mainnet block so far has 21).
+pub const LUCK_SLOTS: usize = 32;
+
+/// Bit `luck` set for luck `luck`.
+pub type LuckMask = u32;
+
+/// The tracker's id of row `row` restricted to the sats mined in blocks of
+/// luck `luck` (DESIGN.md §5.2): after the year rows, one block of
+/// `LUCK_SLOTS` ids per catalog row.
+pub fn luck_row(rows: usize, row: RowId, luck: usize) -> RowId {
+  debug_assert!(usize::from(row) < rows && luck < LUCK_SLOTS);
+  (rows * (1 + YEAR_SLOTS) + usize::from(row) * LUCK_SLOTS + luck) as RowId
+}
+
+/// The catalog row and luck of a luck row id; `None` for any other id.
+pub fn split_luck_row(rows: usize, id: RowId) -> Option<(RowId, usize)> {
+  match split_row(rows, id) {
+    TrackedRow::Luck(row, luck) => Some((row, luck)),
+    _ => None,
+  }
+}
+
+/// What a tracker row id counts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TrackedRow {
+  /// A catalog row.
+  Catalog(RowId),
+  /// A catalog row's sats of one mint year (index).
+  Year(RowId, usize),
+  /// A catalog row's sats of one luck.
+  Luck(RowId, usize),
+}
+
+/// Splits a tracker row id (`id < tracked_row_ids(rows)`).
+pub fn split_row(rows: usize, id: RowId) -> TrackedRow {
+  let id = usize::from(id);
+  if id < rows {
+    return TrackedRow::Catalog(id as RowId);
+  }
+  let index = id - rows;
+  if index < rows * YEAR_SLOTS {
+    return TrackedRow::Year((index / YEAR_SLOTS) as RowId, index % YEAR_SLOTS);
+  }
+  let index = index - rows * YEAR_SLOTS;
+  TrackedRow::Luck((index / LUCK_SLOTS) as RowId, index % LUCK_SLOTS)
 }
 
 /// Ids the tracker keeps counters for, given the catalog's row count.
 pub fn tracked_row_ids(rows: usize) -> usize {
-  rows * (1 + YEAR_SLOTS)
+  rows * (1 + YEAR_SLOTS + LUCK_SLOTS)
+}
+
+/// Leading zero bits of a 256-bit number given big-endian.
+fn leading_zero_bits(bytes: impl IntoIterator<Item = u8>) -> u32 {
+  let mut zeros = 0;
+  for byte in bytes {
+    if byte != 0 {
+      return zeros + byte.leading_zeros();
+    }
+    zeros += 8;
+  }
+  zeros
+}
+
+/// Leading zero bits (of 256) of the target compact `bits` encode, as
+/// bitcoin-monitoring's `targetHexFromBits` reads them (sign bit dropped;
+/// a target wider than 256 bits has none).
+fn target_zero_bits(bits: u32) -> u32 {
+  let exponent = bits >> 24;
+  let mantissa = bits & 0x007f_ffff;
+  let width = if exponent <= 3 {
+    let shifted = mantissa.checked_shr(8 * (3 - exponent)).unwrap_or(0);
+    32 - shifted.leading_zeros()
+  } else if mantissa == 0 {
+    0
+  } else {
+    32 - mantissa.leading_zeros() + 8 * (exponent - 3)
+  };
+  256u32.saturating_sub(width)
+}
+
+/// A block's **luck** (DESIGN.md §5.2): the leading zero bits of its hash
+/// (as shown, big-endian) less those of the target its header's `bits`
+/// encode; `None` when negative (a hash above its target: no valid block).
+/// The same definition and values as bitcoin-monitoring's
+/// `calculateLuckFromHashAndTarget`.
+pub fn block_luck(hash: &BlockHash, bits: bitcoin::CompactTarget) -> Option<u32> {
+  let bytes: [u8; 32] = hash.to_byte_array();
+  let hash_zeros = leading_zero_bits(bytes.into_iter().rev());
+  hash_zeros.checked_sub(target_zero_bits(bits.to_consensus()))
+}
+
+/// The luck the tracker counts a block's sats under: `block_luck`, a
+/// block with none (only on chains without valid proof of work, as in
+/// tests) as luck 0, capped at `LUCK_SLOTS - 1`.
+pub fn luck_slot(hash: &BlockHash, bits: bitcoin::CompactTarget) -> u8 {
+  block_luck(hash, bits).map_or(0, |luck| luck.min(LUCK_SLOTS as u32 - 1) as u8)
 }
 
 /// The UTC calendar year of a unix time.
@@ -560,6 +660,8 @@ pub struct TrackerSnapshot {
   pub hash: Option<BlockHash>,
   /// Header times for heights `0..=height`.
   pub times: Vec<u32>,
+  /// Luck slots (`luck_slot`) for heights `0..=height`, from the headers.
+  pub lucks: Vec<u8>,
   /// All sats (tracked or not) lost so far.
   pub lost_sats: u64,
   /// Every tracked UTXO, spendable or not.
@@ -611,6 +713,48 @@ pub struct SupplySnapshot {
   pub rows: Vec<RowSupply>,
   /// The same broken down by mint year (DESIGN.md §5.1).
   pub years: YearSupply,
+  /// The same broken down by block luck (DESIGN.md §5.2).
+  pub lucks: LuckSupply,
+}
+
+/// Every row's supply by the luck of the blocks its sats were mined in.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LuckSupply {
+  /// Each block's luck slot (`luck_slot`), by height up to the tip.
+  pub heights: Vec<u8>,
+  /// One per catalog row, in `RowId` order.
+  pub rows: Vec<RowLucks>,
+}
+
+/// One catalog row's supply by luck.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RowLucks {
+  pub row: RowId,
+  /// The lucks the row has mined sats of, ascending: each luck's supply
+  /// under its luck row id (`luck_row`), without top holders.
+  pub cells: Vec<(usize, RowSupply)>,
+  /// Holders by the set of lucks they hold located sats of: (luck mask,
+  /// scripts); the holders of any set of lucks are exact.
+  pub holder_masks: Vec<(LuckMask, u64)>,
+  /// The same for extracted sats.
+  pub extracted_holder_masks: Vec<(LuckMask, u64)>,
+}
+
+impl RowLucks {
+  /// Scripts holding located (`extracted`: extracted) sats of the row mined
+  /// in blocks of any luck in `lucks`.
+  pub fn holders(&self, lucks: LuckMask, extracted: bool) -> u64 {
+    let masks = if extracted {
+      &self.extracted_holder_masks
+    } else {
+      &self.holder_masks
+    };
+    masks
+      .iter()
+      .filter(|(mask, _)| mask & lucks != 0)
+      .map(|(_, count)| count)
+      .sum()
+  }
 }
 
 /// Every row's supply by the year its sats were mined.
@@ -711,14 +855,92 @@ mod tests {
   #[test]
   fn year_row_ids() {
     let rows = 72;
-    assert_eq!(tracked_row_ids(rows), 72 * 129);
+    assert_eq!(tracked_row_ids(rows), 72 * 161);
     assert!(tracked_row_ids(rows) <= usize::from(RowId::MAX));
     assert_eq!(split_year_row(rows, 71), None);
+    assert_eq!(split_row(rows, 71), TrackedRow::Catalog(71));
     for (row, year) in [(0, 0), (0, 127), (5, 17), (71, 127)] {
       let id = year_row(rows, row, year);
       assert!(usize::from(id) >= rows && usize::from(id) < tracked_row_ids(rows));
       assert_eq!(split_year_row(rows, id), Some((row, year)));
+      assert_eq!(split_luck_row(rows, id), None);
     }
+    for (row, luck) in [(0, 0), (0, 31), (5, 17), (71, 31)] {
+      let id = luck_row(rows, row, luck);
+      assert!(usize::from(id) >= rows * 129 && usize::from(id) < tracked_row_ids(rows));
+      assert_eq!(split_luck_row(rows, id), Some((row, luck)));
+      assert_eq!(split_year_row(rows, id), None);
+    }
+    assert_eq!(
+      usize::from(luck_row(rows, 71, LUCK_SLOTS - 1)),
+      tracked_row_ids(rows) - 1
+    );
+  }
+
+  #[test]
+  fn block_lucks() {
+    use bitcoin::CompactTarget;
+    let hash = |hex: &str| hex.parse::<BlockHash>().unwrap();
+    let bits = CompactTarget::from_consensus;
+    // Real mainnet blocks: genesis (luck 11), block 1 and 840,000.
+    assert_eq!(
+      block_luck(
+        &hash("000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f"),
+        bits(0x1d00_ffff)
+      ),
+      Some(11)
+    );
+    assert_eq!(
+      block_luck(
+        &hash("00000000839a8e6886ab5951d76f411475428afc90947ee320161bbf18eb6048"),
+        bits(0x1d00_ffff)
+      ),
+      Some(0)
+    );
+    assert_eq!(
+      block_luck(
+        &hash("0000000000000000000320283a032748cef8227873ff4872689bf23f1cda83a5"),
+        bits(0x1703_4219)
+      ),
+      Some(0)
+    );
+    // The target's leading zeros, as targetHexFromBits reads them.
+    assert_eq!(target_zero_bits(0x1d00_ffff), 32);
+    assert_eq!(target_zero_bits(0x207f_ffff), 1);
+    assert_eq!(target_zero_bits(0x1703_4219), 78);
+    assert_eq!(target_zero_bits(0x0300_0001), 255);
+    assert_eq!(target_zero_bits(0x0100_8000), 256);
+    assert_eq!(target_zero_bits(0x2200_ffff), 0);
+    assert_eq!(target_zero_bits(0x1d80_ffff), 32);
+    // A hash above its target has no luck; the tracker counts it as 0, and
+    // caps the luckiest at the last slot.
+    let high = hash("00ff000000000000000000000000000000000000000000000000000000000000");
+    assert_eq!(block_luck(&high, bits(0x1d00_ffff)), None);
+    assert_eq!(luck_slot(&high, bits(0x1d00_ffff)), 0);
+    let lucky = hash("0000000000000000000000000000000000000000000000000000000000000001");
+    assert_eq!(block_luck(&lucky, bits(0x1d00_ffff)), Some(255 - 32));
+    assert_eq!(
+      usize::from(luck_slot(&lucky, bits(0x1d00_ffff))),
+      LUCK_SLOTS - 1
+    );
+  }
+
+  #[test]
+  fn holders_of_luck_sets() {
+    let lucks = RowLucks {
+      holder_masks: vec![(0b0001, 10), (0b0011, 5), (0b1100, 2)],
+      extracted_holder_masks: vec![(0b0010, 3)],
+      ..RowLucks::default()
+    };
+    // Luck ≥ N: the masks with a bit at N or above.
+    let at_least = |n: u32| LuckMask::MAX << n;
+    assert_eq!(lucks.holders(at_least(0), false), 17);
+    assert_eq!(lucks.holders(at_least(1), false), 7);
+    assert_eq!(lucks.holders(at_least(2), false), 2);
+    assert_eq!(lucks.holders(at_least(4), false), 0);
+    assert_eq!(lucks.holders(0b0010, false), 5);
+    assert_eq!(lucks.holders(at_least(1), true), 3);
+    assert_eq!(lucks.holders(at_least(2), true), 0);
   }
 
   #[test]

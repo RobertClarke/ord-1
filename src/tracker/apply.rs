@@ -103,7 +103,10 @@ impl Tracker {
     );
 
     self.begin_rows();
-    self.push_time(block.header.time);
+    self.push_time(
+      block.header.time,
+      crate::model::luck_slot(&block.hash, block.header.bits),
+    );
     let mut ctx = BlockCtx {
       seq: self.block_seq,
       moves: Vec::new(),
@@ -350,9 +353,7 @@ impl Tracker {
         self.acc.add_counts(&slot.rows, 1);
         for (orig, piece) in slot.utxo.pieces.iter().enumerate() {
           if fates[k][orig] != Fate::Intact(vout) {
-            self
-              .acc
-              .add_piece(&self.catalog, &self.year_sats, piece, -1);
+            self.acc.add_piece(&self.catalog, &self.blocks, piece, -1);
           }
         }
       }
@@ -360,7 +361,7 @@ impl Tracker {
         if !(reuse == Some(part.input) && part.intact) {
           self
             .acc
-            .add_piece(&self.catalog, &self.year_sats, &part.piece, 1);
+            .add_piece(&self.catalog, &self.blocks, &part.piece, 1);
         }
       }
       let rows = self.acc.take()?;
@@ -541,7 +542,7 @@ impl Tracker {
       })
       .collect();
     for piece in &mined {
-      self.acc.add_piece(&self.catalog, &self.year_sats, piece, 1);
+      self.acc.add_piece(&self.catalog, &self.blocks, piece, 1);
     }
     for (row, n) in self.acc.take().unwrap_or_default() {
       self.touch(row).mined += n;
@@ -608,7 +609,7 @@ impl Tracker {
       };
       debug_assert!(check_pieces(txout.value.to_sat(), &pieces).is_ok());
       for piece in &pieces {
-        self.acc.add_piece(&self.catalog, &self.year_sats, piece, 1);
+        self.acc.add_piece(&self.catalog, &self.blocks, piece, 1);
       }
       let rows = self.acc.take().unwrap_or_default();
       move_outputs.push(MoveOutput {

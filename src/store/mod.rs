@@ -136,8 +136,9 @@ use {
 /// Bumped whenever a table layout or encoding changes (2: sales and
 /// inscriptions; 3: an inscription's first transaction index, so a sale and
 /// an inscription in one block are ordered; 4: the address history; 5: the
-/// year rows' history in `row_history` and their `mined` counters).
-pub const SCHEMA_VERSION: u32 = 5;
+/// year rows' history in `row_history` and their `mined` counters; 6: the
+/// same for the luck rows).
+pub const SCHEMA_VERSION: u32 = 6;
 
 /// Undo records are kept for this many blocks below and including the tip.
 pub const UNDO_DEPTH: u32 = 144;
@@ -636,8 +637,10 @@ impl Store {
     let meta = reader.meta()?.context("the index is not initialized")?;
 
     let mut times = Vec::new();
+    let mut lucks = Vec::new();
     if let Some(height) = meta.height {
       times.reserve(usize::try_from(height).unwrap() + 1);
+      lucks.reserve(usize::try_from(height).unwrap() + 1);
       let headers = reader.tx.open_table(HEADERS)?;
       for (expected, entry) in (0..).zip(headers.range(0..=height)?) {
         let (key, value) = entry?;
@@ -645,9 +648,9 @@ impl Store {
           key.value() == expected,
           "corrupt index: header {expected} is missing"
         );
-        times.push(u32::from_le_bytes(
-          value.value()[68..72].try_into().unwrap(),
-        ));
+        let header = header_from_bytes(value.value())?;
+        times.push(header.time);
+        lucks.push(crate::model::luck_slot(&header.block_hash(), header.bits));
       }
       ensure!(
         times.len() == usize::try_from(height).unwrap() + 1,
@@ -683,6 +686,7 @@ impl Store {
       height: meta.height,
       hash: meta.hash,
       times,
+      lucks,
       lost_sats: reader.lost_sats()?,
       utxos,
       lost,

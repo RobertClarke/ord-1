@@ -4,8 +4,8 @@
 use {
   super::*,
   crate::model::{
-    ACTIVE_YEARS, Holder, RowSupply, RowYears, YEAR_TOP_HOLDERS, YearMask, YearSupply,
-    split_year_row,
+    ACTIVE_YEARS, Holder, LuckMask, LuckSupply, RowLucks, RowSupply, RowYears, TrackedRow,
+    YEAR_TOP_HOLDERS, YearMask, YearSupply, split_row,
   },
   std::cmp::Ordering,
 };
@@ -70,9 +70,6 @@ impl Fenwick {
 
 const YEAR: u32 = 365 * 86_400;
 
-/// Scripts per set of years held (`RowYears::holder_masks`).
-type MaskCounts = Vec<(YearMask, u64)>;
-
 impl Tracker {
   /// Heights from which a UTXO counts as active within each of
   /// `ACTIVE_YEARS` (see the module docs on time → height).
@@ -120,11 +117,14 @@ impl Tracker {
   }
 
   /// Per row: (top extracted holders, top non-extracted holders); `top`
-  /// per list for a catalog row, `YEAR_TOP_HOLDERS` at most for a year row.
+  /// per list for a catalog row, `YEAR_TOP_HOLDERS` at most for a year row,
+  /// none for a luck row.
   fn top_holders(&self, top: usize) -> Vec<(Vec<Holder>, Vec<Holder>)> {
     let catalog_rows = self.catalog_rows();
     let year_top = top.min(YEAR_TOP_HOLDERS);
     let rows = self.stats.len();
+    // Catalog and year rows (the luck rows follow them).
+    let with_top = catalog_rows * (1 + crate::model::YEAR_SLOTS);
     let mut scripts: Vec<Option<&ScriptBuf>> = vec![None; self.script_entries.len()];
     for (script, &entry) in &self.scripts {
       scripts[entry as usize] = Some(script);
@@ -135,6 +135,10 @@ impl Tracker {
       let Some(script) = script else { continue };
       let id = self.scripts[script.as_script()];
       for &(row, located, ext) in &entry.rows {
+        // Luck rows keep no top holders.
+        if usize::from(row) >= with_top {
+          continue;
+        }
         if ext > 0 {
           extracted[usize::from(row)].push((ext, id));
         }
@@ -198,54 +202,64 @@ impl Tracker {
       .collect()
   }
 
-  /// Per catalog row: (located, extracted) holder counts by the set of
-  /// years each script holds sats of.
-  fn holder_masks(&self) -> Vec<(MaskCounts, MaskCounts)> {
+  /// Per catalog row: holder counts by the set of years, and by the set of
+  /// lucks, each script holds sats of (located, then extracted).
+  fn holder_masks(&self) -> Vec<HolderMasks> {
     let rows = self.catalog_rows();
-    let mut located: Vec<FxHashMap<YearMask, u64>> = vec![FxHashMap::default(); rows];
-    let mut extracted: Vec<FxHashMap<YearMask, u64>> = vec![FxHashMap::default(); rows];
-    // Per script: (catalog row, located years, extracted years).
-    let mut masks: Vec<(RowId, YearMask, YearMask)> = Vec::new();
+    // Per catalog row: [year located, year extracted, luck located, luck
+    // extracted], mask -> scripts.
+    let mut counts: Vec<[FxHashMap<u128, u64>; 4]> = vec![Default::default(); rows];
+    // Per script: (catalog row, the same four masks).
+    let mut masks: Vec<(RowId, [u128; 4])> = Vec::new();
     // A free entry holds no rows.
     for entry in &self.script_entries {
       masks.clear();
       for &(id, held, ext) in &entry.rows {
-        let Some((row, year)) = split_year_row(rows, id) else {
-          continue;
+        let (row, kind, bit) = match split_row(rows, id) {
+          TrackedRow::Catalog(_) => continue,
+          TrackedRow::Year(row, year) => (row, 0, 1u128 << year),
+          TrackedRow::Luck(row, luck) => (row, 2, 1u128 << luck),
         };
-        let bit: YearMask = 1 << year;
-        let slot = match masks.iter_mut().find(|(r, _, _)| *r == row) {
+        let slot = match masks.iter_mut().find(|(r, _)| *r == row) {
           Some(slot) => slot,
           None => {
-            masks.push((row, 0, 0));
+            masks.push((row, [0; 4]));
             masks.last_mut().unwrap()
           }
         };
         if held > 0 {
-          slot.1 |= bit;
+          slot.1[kind] |= bit;
         }
         if ext > 0 {
-          slot.2 |= bit;
+          slot.1[kind + 1] |= bit;
         }
       }
-      for &(row, held, ext) in &masks {
-        if held != 0 {
-          *located[usize::from(row)].entry(held).or_default() += 1;
-        }
-        if ext != 0 {
-          *extracted[usize::from(row)].entry(ext).or_default() += 1;
+      for (row, masks) in &masks {
+        for (counts, &mask) in counts[usize::from(*row)].iter_mut().zip(masks) {
+          if mask != 0 {
+            *counts.entry(mask).or_default() += 1;
+          }
         }
       }
     }
-    let sorted = |map: FxHashMap<YearMask, u64>| {
-      let mut list: Vec<(YearMask, u64)> = map.into_iter().collect();
+    fn sorted<M: TryFrom<u128> + Ord>(map: FxHashMap<u128, u64>) -> Vec<(M, u64)> {
+      let mut list: Vec<(M, u64)> = map
+        .into_iter()
+        .filter_map(|(mask, n)| Some((M::try_from(mask).ok()?, n)))
+        .collect();
       list.sort_unstable();
       list
-    };
-    located
+    }
+    counts
       .into_iter()
-      .zip(extracted)
-      .map(|(located, extracted)| (sorted(located), sorted(extracted)))
+      .map(
+        |[years, extracted_years, lucks, extracted_lucks]| HolderMasks {
+          years: sorted(years),
+          extracted_years: sorted(extracted_years),
+          lucks: sorted(lucks),
+          extracted_lucks: sorted(extracted_lucks),
+        },
+      )
       .collect()
   }
 
@@ -275,24 +289,32 @@ impl Tracker {
       )
       .collect();
     let catalog_rows = self.catalog_rows();
-    let year_supplies = supplies.split_off(catalog_rows);
-    let mut years: Vec<RowYears> = self
-      .holder_masks()
-      .into_iter()
-      .enumerate()
-      .map(|(row, (holder_masks, extracted_holder_masks))| RowYears {
+    let other_supplies = supplies.split_off(catalog_rows);
+    let mut years = Vec::with_capacity(catalog_rows);
+    let mut lucks = Vec::with_capacity(catalog_rows);
+    for (row, masks) in self.holder_masks().into_iter().enumerate() {
+      years.push(RowYears {
         row: row as RowId,
         cells: Vec::new(),
-        holder_masks,
-        extracted_holder_masks,
-      })
-      .collect();
-    for supply in year_supplies {
+        holder_masks: masks.years,
+        extracted_holder_masks: masks.extracted_years,
+      });
+      lucks.push(RowLucks {
+        row: row as RowId,
+        cells: Vec::new(),
+        holder_masks: masks.lucks,
+        extracted_holder_masks: masks.extracted_lucks,
+      });
+    }
+    for supply in other_supplies {
       if supply.stats == RowStats::default() {
         continue;
       }
-      let (row, year) = split_year_row(catalog_rows, supply.row).expect("a year row");
-      years[usize::from(row)].cells.push((year, supply));
+      match split_row(catalog_rows, supply.row) {
+        TrackedRow::Year(row, year) => years[usize::from(row)].cells.push((year, supply)),
+        TrackedRow::Luck(row, luck) => lucks[usize::from(row)].cells.push((luck, supply)),
+        TrackedRow::Catalog(_) => unreachable!("catalog rows come first"),
+      }
     }
     SupplySnapshot {
       height: self.height,
@@ -300,11 +322,24 @@ impl Tracker {
       time: self.times.last().copied(),
       rows: supplies,
       years: YearSupply {
-        starts: self.year_starts.clone(),
+        starts: self.blocks.year_starts.clone(),
         rows: years,
+      },
+      lucks: LuckSupply {
+        heights: self.blocks.lucks.clone(),
+        rows: lucks,
       },
     }
   }
+}
+
+/// One catalog row's holders by the set of years and by the set of lucks
+/// they hold (`RowYears::holder_masks`, `RowLucks::holder_masks`).
+struct HolderMasks {
+  years: Vec<(YearMask, u64)>,
+  extracted_years: Vec<(YearMask, u64)>,
+  lucks: Vec<(LuckMask, u64)>,
+  extracted_lucks: Vec<(LuckMask, u64)>,
 }
 
 #[cfg(test)]

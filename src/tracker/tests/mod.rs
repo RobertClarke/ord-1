@@ -3,6 +3,7 @@
 
 mod bench;
 mod differential;
+mod lucks;
 mod mainnet;
 mod scenarios;
 mod years;
@@ -69,6 +70,7 @@ pub(crate) fn tracker_at(config: &TrackerConfig, height: Option<u32>) -> (Tracke
     height,
     hash: height.map(|_| chain.prev),
     times: height.map_or(Vec::new(), |h| (0..=h).map(|i| chain.time_of(i)).collect()),
+    lucks: height.map_or(Vec::new(), |h| vec![0; h as usize + 1]),
     lost_sats: 0,
     utxos: Vec::new(),
     lost: Vec::new(),
@@ -156,6 +158,8 @@ pub(crate) struct Chain {
   pub prev: BlockHash,
   /// Overrides for the next block's time.
   pub next_time: Option<u32>,
+  /// The next block's luck slot: its nonce is ground until it has it.
+  pub next_luck: Option<u8>,
 }
 
 impl Chain {
@@ -166,11 +170,13 @@ impl Chain {
         next: 0,
         prev: BlockHash::all_zeros(),
         next_time: None,
+        next_luck: None,
       },
       Some(h) => Self {
         next: h + 1,
         prev: BlockHash::from_byte_array([0xab; 32]),
         next_time: None,
+        next_luck: None,
       },
     }
   }
@@ -189,7 +195,7 @@ impl Chain {
     if let Some(first) = txs.first() {
       merkle[12..].copy_from_slice(&first.txid.as_byte_array()[..20]);
     }
-    let header = Header {
+    let mut header = Header {
       version: Version::ONE,
       prev_blockhash: self.prev,
       merkle_root: TxMerkleNode::from_byte_array(merkle),
@@ -197,6 +203,11 @@ impl Chain {
       bits: CompactTarget::from_consensus(0x207f_ffff),
       nonce: height,
     };
+    if let Some(luck) = self.next_luck.take() {
+      while crate::model::luck_slot(&header.block_hash(), header.bits) != luck {
+        header.nonce = header.nonce.wrapping_add(0x9e37_79b9);
+      }
+    }
     let hash = header.block_hash();
     self.prev = hash;
     self.next += 1;
@@ -270,6 +281,60 @@ pub(crate) fn check_years(tracker: &Tracker) {
         .map(|(_, n)| *n)
         .collect::<Vec<_>>(),
       "{name}: active by year"
+    );
+  }
+}
+
+/// The luck rows add up to their catalog rows (DESIGN.md §5.2), as the
+/// year rows do (`check_years`); every luck cell's row id is its luck row.
+pub(crate) fn check_lucks(tracker: &Tracker) {
+  use crate::model::{LUCK_SLOTS, LuckMask, luck_row};
+  let supply = tracker.supply(5);
+  let rows = tracker.catalog().rows().len();
+  assert_eq!(supply.lucks.rows.len(), rows);
+  assert_eq!(supply.lucks.heights, tracker.lucks());
+  let all: LuckMask = LuckMask::MAX;
+  for (row, lucks) in supply.rows.iter().zip(&supply.lucks.rows) {
+    assert_eq!(row.row, lucks.row);
+    let name = &tracker.catalog().rows()[usize::from(row.row)].id;
+    let mut sum = RowStats::default();
+    let mut active = vec![0u64; row.active_non_extracted.len()];
+    let mut last = None;
+    for (luck, cell) in &lucks.cells {
+      assert!(last < Some(*luck), "{name}: lucks out of order");
+      last = Some(*luck);
+      assert!(*luck < LUCK_SLOTS);
+      assert_eq!(cell.row, luck_row(rows, row.row, *luck), "{name}");
+      assert_eq!(cell.stats, tracker.luck_stats(row.row, *luck), "{name}");
+      assert!(cell.top_extracted_holders.is_empty() && cell.top_non_extracted_holders.is_empty());
+      let s = cell.stats;
+      sum.mined += s.mined;
+      sum.located += s.located;
+      sum.burned += s.burned;
+      sum.lost += s.lost;
+      sum.overwritten += s.overwritten;
+      sum.extracted += s.extracted;
+      assert_eq!(lucks.holders(1 << luck, false), s.holders, "{name} {luck}");
+      assert_eq!(
+        lucks.holders(1 << luck, true),
+        s.extracted_holders,
+        "{name} {luck}"
+      );
+      for (total, (_, n)) in active.iter_mut().zip(&cell.active_non_extracted) {
+        *total += n;
+      }
+    }
+    sum.holders = lucks.holders(all, false);
+    sum.extracted_holders = lucks.holders(all, true);
+    assert_eq!(sum, row.stats, "{name}: the lucks do not add up");
+    assert_eq!(
+      active,
+      row
+        .active_non_extracted
+        .iter()
+        .map(|(_, n)| *n)
+        .collect::<Vec<_>>(),
+      "{name}: active by luck"
     );
   }
 }
