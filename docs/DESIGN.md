@@ -354,10 +354,53 @@ histogram reduces to for it), but not a bounded range `N-M` or a single
 luck; the mask costs the same pass and barely more entries (on mainnet the
 256,807 uncommon holders hold 614 distinct sets of lucks, against 22
 highest lucks; alpha uncommon 534 for 195,831), so it is kept instead. Luck
-rows keep no top holders (the snapshot only lists them for catalog and year
-rows), and years and lucks are not crossed: a (row, year, luck) cell would
+rows keep no top holders (the snapshot only lists them for catalog, year
+and month rows), and years and lucks are not crossed: a (row, year, luck) cell would
 take `R × 128 × 32` ids, past `RowId`'s range and 30× the year rows' state,
 for a filter nobody asked for. Measured on mainnet: see the README.
+
+### 5.3 Mint months
+
+Every row is also kept per **mint month** (index schema 7): the UTC
+calendar month of the block that mined the sat, by the running-max header
+time like the years, so months are contiguous heights, January starts where
+its year does, and a year's month rows add up to its year row. Month rows
+follow the luck rows: id `R + R × (128 + 32) + row × 600 + month` with
+`month = (year − 2009) × 12 + month − 1` (`model::month_row`). They are
+plain tracker rows like the others: each block's `(row, n)` of a piece (the
+pieces are already split per block for the lucks) is also counted for its
+month row, so every aggregate, the row history and undo hold for them. The
+tracker derives the month starts from the header times as it does the
+years'. Unlike the years, the running-max month is not every mainnet
+block's own: five blocks (272,376–272,380), stamped 2013-11-30 after block
+272,375's 2013-12-01, count in December 2013 (checked on all 969,639
+headers; 214 months to October 2026).
+
+600 months (2009-01 to 2058-12; a later month counts in the last) is what
+`RowId` (16 bits) leaves: `R × (1 + 128 + 32 + 600)` ids fit for up to 86
+catalog rows (72 today). Widening `RowId` would cost nothing in memory (the
+per-UTXO and per-script tallies are padded to 16 and 24 bytes either way)
+but touches every row-keyed table and the codec, for months 30+ years out.
+
+Costs, and what is not built:
+
+* **Active windows without trees.** A Fenwick tree per row costs up to
+  ~128 KB (16,384 buckets of 64 heights), and month rows have some 10,000
+  non-empty cells, so they keep none: at snapshot time one pass over the
+  height buckets inside the widest window (7 years) adds each
+  non-extracted UTXO's month rows to every window it is in. The catalog,
+  year and luck rows keep their trees.
+* **Holders: one month at a time.** A month row's holders are exact, as any
+  row's. Holders of a set of months would need masks of 600 bits per script
+  and row (or the year rows' mask histograms over 600 bits); nobody asked
+  for a set, so months are queried one at a time, and a year is its year
+  row.
+* **Top holders: 100 per list** for every month cell, like the year cells.
+  Each listed holder's outputs and last receipt are now tallied in one
+  pass over each listed script's outputs (however many lists it is in),
+  not once per list.
+
+Measured on mainnet: see the README.
 
 ## 6. Architecture
 

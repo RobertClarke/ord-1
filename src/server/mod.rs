@@ -15,6 +15,7 @@ pub mod history;
 pub mod json;
 pub mod lucks;
 pub mod mempool;
+pub mod months;
 pub mod sales;
 pub mod slice;
 #[cfg(test)]
@@ -202,6 +203,7 @@ pub fn router(state: Arc<ServerState>) -> Router {
     .route("/supply", get(supply))
     .route("/supply/years", get(supply_years))
     .route("/supply/lucks", get(supply_lucks))
+    .route("/supply/months", get(supply_months))
     .route("/supply/{row}", get(supply_row))
     .route("/supply/{row}/history", get(supply_history))
     .route("/sat/{sat}", get(sat))
@@ -288,6 +290,11 @@ struct StatusJson {
   max_luck: u32,
   /// Blocks of each luck up to the tip.
   lucks: Vec<lucks::LuckBlocksJson>,
+  /// The supply by mint month is served (`months=` on `/supply…`,
+  /// `/supply/months`).
+  month_stats: bool,
+  /// The mint months of the indexed blocks.
+  months: Vec<months::MonthSpanJson>,
   timings: Timings,
   error: Option<String>,
   /// `/mempool*` is served (docs/API.md "Mempool").
@@ -335,6 +342,8 @@ async fn status(State(state): State<Arc<ServerState>>) -> ServerResult<Json<Stat
       luck_stats: true,
       max_luck: lucks::MAX_LUCK,
       lucks: lucks::luck_blocks(&supply),
+      month_stats: true,
+      months: months::month_spans(&supply.months, supply.height),
       timings: status.timings,
       error: status.error,
       mempool: mempool::status_fields(state).0,
@@ -375,7 +384,8 @@ struct SupplyJson {
 }
 
 /// Located inscribed sats per row at the published supply's height, by
-/// tracker row id (the catalog's `RowId`s, then their year and luck rows), computed
+/// tracker row id (the catalog's `RowId`s, then their year, luck and month
+/// rows), computed
 /// from the `inscribed` table and the sats' current locations, once per
 /// height.
 fn inscribed_rows(
@@ -505,6 +515,18 @@ async fn supply_lucks(
   .await
 }
 
+async fn supply_months(
+  State(state): State<Arc<ServerState>>,
+) -> ServerResult<Json<months::SupplyMonthsJson>> {
+  read(&state, |state, reader| {
+    let supply = state.published.supply();
+    let height = years::ready(&supply)?;
+    let inscribed = inscribed_rows(state, reader, &supply, height)?;
+    Ok(Json(months::supply_months(state, &supply, &inscribed)))
+  })
+  .await
+}
+
 async fn supply_row(
   State(state): State<Arc<ServerState>>,
   Path(id): Path<String>,
@@ -558,7 +580,7 @@ struct HistoryPoint {
 }
 
 /// `RowStats`, but holder counts are `null` over more than one year or luck
-/// (they do not add up).
+/// (they do not add up; one month's are exact).
 #[derive(Serialize)]
 struct HistoryStats {
   mined: u64,
@@ -595,6 +617,9 @@ struct HistoryJson {
   /// The lucks asked for (`luck=`), `[min, max]`, else absent.
   #[serde(skip_serializing_if = "Option::is_none")]
   luck: Option<[u32; 2]>,
+  /// The month asked for (`months=`), else absent.
+  #[serde(skip_serializing_if = "Option::is_none")]
+  month: Option<String>,
   points: Vec<HistoryPoint>,
 }
 
@@ -610,7 +635,7 @@ async fn supply_history(
     let (row, info) = state.row(&id)?;
     let tip = tip(reader)?;
     let slice = slice::parse_slice(&params, &state.published.supply())?;
-    // The tracker rows to add up: the row, or its year or luck rows.
+    // The tracker rows to add up: the row, or its year, luck or month rows.
     let (ids, holders) = match &slice {
       None => (vec![row], true),
       Some(slice) => slice.history_ids(state.catalog.rows().len(), row),
@@ -662,6 +687,7 @@ async fn supply_history(
       row: info.id.clone(),
       years: slice.as_ref().and_then(slice::Slice::years),
       luck: slice.as_ref().and_then(slice::Slice::luck),
+      month: slice.as_ref().and_then(slice::Slice::month),
       points: result,
     }))
   })

@@ -88,6 +88,9 @@ extracted.
             { "year": 2026, "from_height": 930341, "to_height": 969237 }],
   "luck_stats": true, "max_luck": 31,
   "lucks": [{ "luck": 0, "blocks": 272084 }, …, { "luck": 21, "blocks": 1 }],
+  "month_stats": true,
+  "months": [{ "month": "2009-01", "from_height": 0, "to_height": 2543 }, …,
+             { "month": "2026-10", "from_height": 969370, "to_height": 969637 }],
   "timings": { "blocks_per_second": 0.1, "last_commit_blocks": 1,
                "last_commit_seconds": 0.02, "last_commit_at": 1790734130,
                "last_poll_ok_at": 1790734141, "commits": 12,
@@ -114,7 +117,10 @@ year (below); `years` are the mint years of the indexed blocks (empty until
 the first commit). `luck_stats` (additive, index schema 6) is `true` on
 builds that serve the supply by block luck; `max_luck` is the highest luck
 broken down (it also counts any luckier block) and `lucks` the indexed
-blocks of each luck (lucks without a block left out).
+blocks of each luck (lucks without a block left out). `month_stats`
+(additive, index schema 7) is `true` on builds that serve the supply by
+mint month; `months` are the months of the indexed blocks (months without
+a block left out).
 
 Staleness: `mode` stays `live` while bitcoind is unreachable; `error` then
 says why, and two unix times tell how stale the index may be:
@@ -147,7 +153,7 @@ also `uncommon`; a rare sat is `rare` only), so the `uncommon`, `black`,
 `rare`, `epic`, `black_rare` rows and every row combining them count each
 sat under its highest tier only (totals in docs/DESIGN.md §2).
 
-### `GET /supply[?years=|?luck=]`
+### `GET /supply[?years=|?luck=|?months=]`
 ```json
 {
   "height": 969237, "hash": "…", "time": 1790734122,
@@ -162,7 +168,7 @@ sat under its highest tier only (totals in docs/DESIGN.md §2).
 ```
 `delta` is the change the tip block made to the row (`null` if none).
 
-### `GET /supply/{row}?top=100[&years=|&luck=]`
+### `GET /supply/{row}?top=100[&years=|&luck=|&months=]`
 One row as in `/supply` plus holders:
 ```json
 { …row…,
@@ -172,7 +178,7 @@ One row as in `/supply` plus holders:
 ```
 `top` ≤ 1000, default 100.
 
-### `GET /supply/{row}/history?from=&to=&every=[&years=|&luck=]`
+### `GET /supply/{row}/history?from=&to=&every=[&years=|&luck=|&months=]`
 Row counters over time (only heights where the row changed are stored; each
 bucket of `every` blocks reports the last value at or before its end).
 ```json
@@ -245,7 +251,7 @@ chains in tests) counts as 0. Additive since index schema version 6 (a new
 `/supply`, `/supply/{row}` and `/supply/{row}/history` restricts every row
 to the sats mined in blocks of those lucks; anything else is a 400, and so
 is `luck` together with `years` (the supply is broken down by one or the
-other, not both).
+other, not both), or with `months`.
 
 * The counters, `total`, `inscribed`, `active_non_extracted` and `delta`
   are as for `years` (the selected lucks added up), and so are the holders:
@@ -274,6 +280,51 @@ Every row's counters for each luck it has mined sats of:
   }]
 }
 ```
+
+## Supply by mint month
+
+Every row's counters are also kept per **mint month**: the UTC calendar
+month of the block that mined the sat, by the running maximum of the header
+times like the years, so a month is a contiguous range of heights, January
+starts where its year does, and a year's months add up to it (on mainnet
+five blocks, 272,376–272,380, stamped 30 November 2013 after a block of 1
+December, count in December 2013). Months are
+counted from 2009-01 to 2058-12 (a later month counts in 2058-12). Additive
+since index schema version 7 (a new `catalog_fingerprint`: reindex);
+`/status` says `"month_stats": true`.
+
+`months=2017-12` (or `month=`) on `/supply`, `/supply/{row}` and
+`/supply/{row}/history` restricts every row to the sats mined in that
+month. One month at a time: it must be a month blocks were mined in
+(`/status` `months`); a list, a malformed month or one without blocks is a
+400, and so is `months` together with `years` or `luck` (a month is
+already in its year).
+
+* The counters, `total`, `inscribed`, `active_non_extracted` and `delta`
+  are the month's, as for a single year; so are `holders` and
+  `extracted_holders` (exact).
+* `/supply/{row}?months=` lists top holders, at most 100 per list.
+* `/supply/{row}/history?months=` is the month's own history, holders
+  included, and echoes `"month": "2017-12"`.
+* A row with no sats of that month is reported with zeros (`delta`
+  `null`).
+
+### `GET /supply/months`
+Every row's counters for each month it has mined sats of, compactly: each
+month an array of the counters `fields` names.
+```json
+{
+  "height": 969237, "hash": "…", "time": 1790734122,
+  "months": [{ "month": "2009-01", "from_height": 0, "to_height": 2543 }, …],
+  "fields": ["mined", "located", "burned", "lost", "overwritten", "extracted",
+             "holders", "extracted_holders", "inscribed"],
+  "rows": [{
+    "id": "uncommon",
+    "months": { "2009-01": [4562, 4198, 0, 0, 0, 312, 2077, 288, 9], … }
+  }]
+}
+```
+Active windows are not included: ask `/supply?months=` for one month's.
 
 ### `GET /sat/{n}`
 ```json
