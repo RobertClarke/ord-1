@@ -21,6 +21,12 @@ pub struct Server {
   /// Serve the index as it is, without indexing
   #[arg(long, env = "ORD_NO_SYNC")]
   pub no_sync: bool,
+  /// Do not follow bitcoind's mempool (no pending activity in the API)
+  #[arg(long, env = "ORD_NO_MEMPOOL")]
+  pub no_mempool: bool,
+  /// Seconds between mempool polls (also polled right after each block)
+  #[arg(long, env = "ORD_MEMPOOL_INTERVAL", default_value_t = 5.0)]
+  pub mempool_interval: f64,
 }
 
 impl Server {
@@ -33,6 +39,7 @@ impl Server {
 
     let store = Arc::new(open_store(&settings, !self.no_sync)?);
     let catalog = catalog(&settings)?;
+    let catalog_arc = catalog.clone();
     let published = Arc::new(Published::default());
     let shutdown = Arc::new(AtomicBool::new(false));
     handle_signals(shutdown.clone());
@@ -99,6 +106,45 @@ impl Server {
       )
     };
 
+    let mempool = if self.no_sync || self.no_mempool {
+      None
+    } else {
+      anyhow::ensure!(
+        self.mempool_interval.is_finite() && self.mempool_interval >= 0.1,
+        "--mempool-interval must be at least 0.1 seconds"
+      );
+      let options = crate::mempool::MempoolOptions {
+        interval: Duration::from_secs_f64(self.mempool_interval),
+        ..Default::default()
+      };
+      let rpc = crate::source::Rpc::with_retry_policy(
+        settings.rpc.clone(),
+        crate::source::RetryPolicy {
+          attempts: 2,
+          initial_delay: Duration::from_millis(200),
+          max_delay: Duration::from_secs(1),
+        },
+      )?
+      .with_cancel(shutdown.clone());
+      let node = crate::mempool::RpcMempoolNode::new(rpc);
+      let ctx = crate::market::MarketContext::new(
+        catalog_arc.clone(),
+        crate::market::Marketplaces::embedded(),
+        settings.chain,
+      );
+      let store = store.clone();
+      let published = published.clone();
+      let shutdown = shutdown.clone();
+      Some(
+        thread::Builder::new()
+          .name("mempool".into())
+          .spawn(move || {
+            crate::mempool::run(store, &node, &ctx, &published, options, &shutdown);
+          })
+          .context("failed to spawn the mempool thread")?,
+      )
+    };
+
     let runtime = tokio::runtime::Builder::new_multi_thread()
       .enable_all()
       .thread_name("http")
@@ -148,6 +194,12 @@ impl Server {
         .map_err(|_| anyhow::anyhow!("the indexer thread panicked"))?,
       None => Ok(()),
     };
+
+    if let Some(handle) = mempool
+      && handle.join().is_err()
+    {
+      log::error!("the mempool thread panicked");
+    }
 
     served?;
     indexed

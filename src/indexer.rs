@@ -100,6 +100,9 @@ pub struct Status {
 pub struct Published {
   status: RwLock<Status>,
   supply: RwLock<Arc<SupplySnapshot>>,
+  /// The mempool overlay's view (`crate::mempool`); disabled until its
+  /// thread publishes one.
+  mempool: RwLock<Arc<crate::mempool::Snapshot>>,
 }
 
 impl Published {
@@ -117,6 +120,14 @@ impl Published {
 
   pub fn set_supply(&self, supply: SupplySnapshot) {
     *self.supply.write().unwrap() = Arc::new(supply);
+  }
+
+  pub fn mempool(&self) -> Arc<crate::mempool::Snapshot> {
+    self.mempool.read().unwrap().clone()
+  }
+
+  pub fn set_mempool(&self, snapshot: crate::mempool::Snapshot) {
+    *self.mempool.write().unwrap() = Arc::new(snapshot);
   }
 }
 

@@ -393,6 +393,30 @@ impl Rpc {
     })
   }
 
+  /// Like `batch`, but a call bitcoind answers with an error (e.g. -5 for a
+  /// transaction gone from the mempool) gives that error in its slot instead
+  /// of failing the batch. Transport failures still fail it.
+  pub fn batch_lenient<T: DeserializeOwned>(
+    &self,
+    method: &str,
+    params: &[Vec<Value>],
+  ) -> anyhow::Result<Vec<Result<T, RpcError>>> {
+    if params.is_empty() {
+      return Ok(Vec::new());
+    }
+    let first = self.reserve_ids(params.len());
+    let requests = params
+      .iter()
+      .zip(first..)
+      .map(|(params, id)| Request { id, method, params })
+      .collect::<Vec<Request>>();
+    let body = serde_json::to_vec(&requests).expect("JSON values serialize");
+    self.retry(method, || {
+      let (status, bytes) = self.post(&body)?;
+      parse_batch_lenient(status, &bytes, first, params.len())
+    })
+  }
+
   /// A call whose response body is handed to `parse` as is (for large
   /// results parsed into borrowed structures). `parse` must report JSON-RPC
   /// errors as `ParseError::Rpc` so they are classified for retrying.
@@ -728,6 +752,59 @@ fn parse_batch<T: DeserializeOwned>(
   results
     .into_iter()
     .collect::<Option<Vec<T>>>()
+    .ok_or_else(|| Failure::Fatal(anyhow!("batch response is missing results")))
+}
+
+/// `parse_batch`, with per-call JSON-RPC errors kept in their slots.
+fn parse_batch_lenient<T: DeserializeOwned>(
+  status: StatusCode,
+  body: &[u8],
+  first_id: u64,
+  n: usize,
+) -> Result<Vec<Result<T, RpcError>>, Failure> {
+  let envelopes = match serde_json::from_slice::<Vec<Envelope>>(body) {
+    Ok(envelopes) => envelopes,
+    Err(error) => {
+      return Err(match serde_json::from_slice::<Envelope>(body) {
+        Ok(Envelope {
+          error: Some(error), ..
+        }) => rpc_failure(error),
+        _ => unparseable(status, body, error),
+      });
+    }
+  };
+  if envelopes.len() != n {
+    return Err(Failure::Fatal(anyhow!(
+      "batch of {n} requests got {} responses",
+      envelopes.len()
+    )));
+  }
+  let mut results = (0..n)
+    .map(|_| None)
+    .collect::<Vec<Option<Result<T, RpcError>>>>();
+  for envelope in envelopes {
+    let index = envelope
+      .id
+      .as_u64()
+      .and_then(|id| id.checked_sub(first_id))
+      .and_then(|index| usize::try_from(index).ok())
+      .filter(|index| *index < n)
+      .ok_or_else(|| Failure::Fatal(anyhow!("unexpected response id {}", envelope.id)))?;
+    if results[index].is_some() {
+      return Err(Failure::Fatal(anyhow!(
+        "duplicate response id {}",
+        envelope.id
+      )));
+    }
+    results[index] = Some(match envelope.error {
+      Some(error) if error.is_transient() => return Err(rpc_failure(error)),
+      Some(error) => Err(error),
+      None => Ok(parse_result(envelope.result)?),
+    });
+  }
+  results
+    .into_iter()
+    .collect::<Option<Vec<_>>>()
     .ok_or_else(|| Failure::Fatal(anyhow!("batch response is missing results")))
 }
 

@@ -1,0 +1,266 @@
+//! The overlay's bitcoind (`RpcMempoolNode`) and index (`StoreIndex`).
+
+use {
+  super::{MempoolEntry, MempoolNode, RawMempool, TrackedIndex},
+  crate::{
+    model::TrackedUtxo,
+    source::{Rpc, RpcError},
+    store::Reader,
+  },
+  anyhow::{Context, ensure},
+  bitcoin::{Amount, BlockHash, OutPoint, ScriptBuf, Transaction, TxOut, Txid, consensus::encode},
+  serde::Deserialize,
+  serde_json::{Value, json},
+  std::collections::HashMap,
+};
+
+/// Calls per JSON-RPC batch.
+const BATCH: usize = 1000;
+/// Batches in flight while fetching many transactions.
+const FETCH_THREADS: usize = 4;
+
+pub struct RpcMempoolNode {
+  rpc: Rpc,
+}
+
+impl RpcMempoolNode {
+  pub fn new(rpc: Rpc) -> Self {
+    Self { rpc }
+  }
+}
+
+#[derive(Deserialize)]
+struct RawMempoolJson {
+  txids: Vec<Txid>,
+  #[serde(default)]
+  mempool_sequence: Option<u64>,
+}
+
+#[derive(Deserialize)]
+struct FeesJson {
+  base: f64,
+}
+
+#[derive(Deserialize)]
+struct EntryJson {
+  time: u64,
+  vsize: u64,
+  fees: FeesJson,
+}
+
+#[derive(Deserialize)]
+struct ScriptJson {
+  hex: String,
+}
+
+#[derive(Deserialize)]
+struct TxOutJson {
+  value: f64,
+  #[serde(rename = "scriptPubKey")]
+  script_pubkey: ScriptJson,
+}
+
+/// A BTC amount as bitcoind prints it (8 decimals) in sats.
+fn sats(btc: f64) -> u64 {
+  (btc * 100_000_000.0).round().max(0.0) as u64
+}
+
+/// A missing transaction or output: not an error for the overlay.
+fn missing(error: &RpcError) -> bool {
+  error.code == RpcError::INVALID_ADDRESS_OR_KEY
+}
+
+fn decode_tx(txid: Txid, hex: &str) -> anyhow::Result<Transaction> {
+  let tx: Transaction =
+    encode::deserialize_hex(hex).with_context(|| format!("decoding transaction {txid}"))?;
+  ensure!(
+    tx.compute_txid() == txid,
+    "getrawtransaction {txid} returned {}",
+    tx.compute_txid()
+  );
+  Ok(tx)
+}
+
+impl RpcMempoolNode {
+  fn raw_transactions(&self, txids: &[Txid]) -> anyhow::Result<Vec<Option<Transaction>>> {
+    let chunk = |txids: &[Txid]| -> anyhow::Result<Vec<Option<Transaction>>> {
+      let params: Vec<Vec<Value>> = txids
+        .iter()
+        .map(|txid| vec![json!(txid), json!(false)])
+        .collect();
+      let results = self
+        .rpc
+        .batch_lenient::<String>("getrawtransaction", &params)?;
+      txids
+        .iter()
+        .zip(results)
+        .map(|(txid, result)| match result {
+          Ok(hex) => decode_tx(*txid, &hex).map(Some),
+          Err(error) if missing(&error) => Ok(None),
+          Err(error) => Err(anyhow::Error::new(error).context(format!("getrawtransaction {txid}"))),
+        })
+        .collect()
+    };
+    let chunks: Vec<&[Txid]> = txids.chunks(BATCH).collect();
+    if chunks.len() <= 1 {
+      return chunks.first().map_or(Ok(Vec::new()), |txids| chunk(txids));
+    }
+    let mut out: Vec<Option<anyhow::Result<Vec<Option<Transaction>>>>> =
+      (0..chunks.len()).map(|_| None).collect();
+    for group in (0..chunks.len()).collect::<Vec<_>>().chunks(FETCH_THREADS) {
+      std::thread::scope(|scope| {
+        let handles: Vec<_> = group
+          .iter()
+          .map(|&i| {
+            let chunk = &chunk;
+            let txids = chunks[i];
+            (i, scope.spawn(move || chunk(txids)))
+          })
+          .collect();
+        for (i, handle) in handles {
+          out[i] = Some(
+            handle
+              .join()
+              .unwrap_or_else(|_| Err(anyhow::anyhow!("transaction fetch panicked"))),
+          );
+        }
+      });
+    }
+    let mut txs = Vec::with_capacity(txids.len());
+    for result in out {
+      txs.extend(result.expect("every chunk fetched")?);
+    }
+    Ok(txs)
+  }
+}
+
+impl MempoolNode for RpcMempoolNode {
+  fn best_block_hash(&self) -> anyhow::Result<BlockHash> {
+    self.rpc.best_block_hash()
+  }
+
+  fn raw_mempool(&self) -> anyhow::Result<RawMempool> {
+    let raw: RawMempoolJson = self
+      .rpc
+      .call("getrawmempool", &[json!(false), json!(true)])?;
+    Ok(RawMempool {
+      txids: raw.txids,
+      sequence: raw.mempool_sequence,
+    })
+  }
+
+  fn transactions(&self, txids: &[Txid]) -> anyhow::Result<Vec<Option<Transaction>>> {
+    self.raw_transactions(txids)
+  }
+
+  fn entries(&self, txids: &[Txid]) -> anyhow::Result<Vec<Option<MempoolEntry>>> {
+    let mut entries = Vec::with_capacity(txids.len());
+    for chunk in txids.chunks(BATCH) {
+      let params: Vec<Vec<Value>> = chunk.iter().map(|txid| vec![json!(txid)]).collect();
+      for (txid, result) in chunk.iter().zip(
+        self
+          .rpc
+          .batch_lenient::<EntryJson>("getmempoolentry", &params)?,
+      ) {
+        entries.push(match result {
+          Ok(entry) => Some(MempoolEntry {
+            time: entry.time,
+            fee: sats(entry.fees.base),
+            vsize: entry.vsize,
+          }),
+          Err(error) if missing(&error) => None,
+          Err(error) => {
+            return Err(anyhow::Error::new(error).context(format!("getmempoolentry {txid}")));
+          }
+        });
+      }
+    }
+    Ok(entries)
+  }
+
+  fn prevouts(&self, outpoints: &[OutPoint]) -> anyhow::Result<Vec<Option<TxOut>>> {
+    let mut out: Vec<Option<TxOut>> = vec![None; outpoints.len()];
+    // Confirmed outputs: the chainstate (spent or not in the mempool).
+    for (base, chunk) in outpoints.chunks(BATCH).enumerate() {
+      let params: Vec<Vec<Value>> = chunk
+        .iter()
+        .map(|outpoint| vec![json!(outpoint.txid), json!(outpoint.vout), json!(false)])
+        .collect();
+      for (i, result) in self
+        .rpc
+        .batch_lenient::<Option<TxOutJson>>("gettxout", &params)?
+        .into_iter()
+        .enumerate()
+      {
+        if let Ok(Some(output)) = result {
+          out[base * BATCH + i] = Some(TxOut {
+            value: Amount::from_sat(sats(output.value)),
+            script_pubkey: ScriptBuf::from_hex(&output.script_pubkey.hex)
+              .context("gettxout returned a bad script")?,
+          });
+        }
+      }
+    }
+    // The others (unconfirmed parents): their transactions.
+    let mut parents: Vec<Txid> = outpoints
+      .iter()
+      .zip(&out)
+      .filter(|(_, output)| output.is_none())
+      .map(|(outpoint, _)| outpoint.txid)
+      .collect();
+    parents.sort();
+    parents.dedup();
+    if !parents.is_empty() {
+      let txs: HashMap<Txid, Transaction> = parents
+        .iter()
+        .copied()
+        .zip(self.raw_transactions(&parents)?)
+        .filter_map(|(txid, tx)| Some((txid, tx?)))
+        .collect();
+      for (outpoint, output) in outpoints.iter().zip(out.iter_mut()) {
+        if output.is_none() {
+          *output = txs
+            .get(&outpoint.txid)
+            .and_then(|tx| tx.output.get(outpoint.vout as usize))
+            .cloned();
+        }
+      }
+    }
+    Ok(out)
+  }
+}
+
+/// The index through one read transaction.
+pub struct StoreIndex(pub Reader);
+
+impl TrackedIndex for StoreIndex {
+  fn tip(&self) -> anyhow::Result<Option<(u32, BlockHash)>> {
+    let Some(height) = self.0.height()? else {
+      return Ok(None);
+    };
+    Ok(self.0.block_hash(height)?.map(|hash| (height, hash)))
+  }
+
+  fn utxo(&self, outpoint: OutPoint) -> anyhow::Result<Option<TrackedUtxo>> {
+    self.0.utxo(outpoint)
+  }
+
+  fn time(&self, height: u32) -> anyhow::Result<Option<u32>> {
+    Ok(self.0.header(height)?.map(|header| header.time))
+  }
+
+  fn block_moves(&self, height: u32) -> anyhow::Result<Option<super::BlockMoves>> {
+    Ok(self.0.moves(height)?.map(|moves| {
+      moves
+        .into_iter()
+        .filter(|m| !m.coinbase)
+        .map(|m| {
+          (
+            m.txid,
+            m.inputs.iter().map(|input| input.outpoint).collect(),
+          )
+        })
+        .collect()
+    }))
+  }
+}
