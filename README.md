@@ -116,3 +116,19 @@ cargo test
 
 then bump `RULES_VERSION` in `src/sats/mod.rs` if behaviour changed, and
 reindex.
+
+Mempool overlay (2026-10-02, same box, a copy of the live index at
+969,650, followed for 70 min over blocks 969,651–969,655; no reindex,
+nothing written to the index): the mempool held 34–39k transactions; at
+any time 40–160 of them moved tracked sats (pending). Over the run 370
+pending transactions were seen (57 of them chained on another pending
+one), including 16 extractions and 1 sale (an accepted offer of a
+450x sat, spending an untracked unconfirmed parent); 350 confirmed, and
+each one's move was identical to its block's (350 of 350, compared over
+the API); 10 were replaced by fee. A poll that changed the pending set took
+71 ms at the median, 281 ms at p95; a new tip, which re-examines the whole
+mempool against the index, about 0.6 s; the first full read of the mempool
+1.3 s. CPU: under 1% of one core on average (indexer included). The
+overlay's own memory (the inputs of every mempool transaction, the pending
+set) is about 10 MB at 40k transactions; the process RSS stayed within
+the live service's (1.4–1.7 GB, mostly redb's cache).
