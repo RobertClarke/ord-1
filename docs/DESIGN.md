@@ -53,8 +53,8 @@ uncommon).
   jpeg / hitman / Silk Road / Nakamoto / 2009 ranges (only their special sats
   above; the runtime's standalone `block78`/`block286` ≥1M-sat chunks are out of
   scope), `common_name`, `requests`,
-  inscriptions, luck (luck is a per-block property of already-tracked sats and
-  can be derived from the stored headers).
+  inscriptions, luck (luck is a per-block property of already-tracked sats,
+  derived from the headers; the rows are broken down by it, §5.2).
 
 Size at height ~969k under rules version 3: ≈2.8 M individual sats (≈969k
 uncommon + ≈969k black, ≈296k Jan–Feb 2009 alphas, ≈50k vintage omegas,
@@ -321,6 +321,43 @@ from the per-script tallies the holders are counted from: the holders of
 any set of years are the scripts whose mask meets it, exact. Top holders are
 kept for each year row too, 100 per list. Measured on mainnet: see the
 README.
+
+### 5.2 Block luck
+
+Every row is also kept per **luck** of the block that mined the sat (index
+schema 6). A block's luck is the leading zero bits of its hash (as shown,
+big-endian) less the leading zero bits of the target its header's `bits`
+encode (`model::block_luck`): bitcoin-monitoring's sat luck, the same
+definition and values. Lucks are kept in 32 slots, 0–31 (the luckiest
+mainnet block has 21; a luckier one counts in 31); a hash above its target
+has no luck, which no valid chain has, and counts as 0 (`model::luck_slot`).
+
+Luck rows are year rows' siblings: id `R + R × 128 + row × 32 + luck`
+(`model::luck_row`), plain tracker rows. Unlike a year, a luck is not a
+contiguous sat range, so a piece's row counts are taken **per block**:
+the piece is split at block boundaries and each block's `(row, n)` is
+counted for the row, its year row and its luck row. A piece rarely spans
+two blocks (a block's black and the next block's uncommon; a block 9 run
+with block 8's black or block 10's uncommon), so the hot path costs one
+`height_of` per piece and a third row entry per slot. The tracker keeps one
+luck byte per height: pushed with each applied block (from its hash and
+bits), popped on undo, and recomputed from the stored headers on a restart
+(a double SHA-256 per header, ~0.5 s on mainnet).
+
+Holders do not add up across lucks either. The snapshot counts, per row,
+the scripts by the **set of lucks** they hold (a 32-bit mask → number of
+scripts), in the same pass as the year masks, so the holders of any range
+of lucks are exact: the scripts whose mask meets it. "Luck N or more" is
+the masks with a bit at N or above. A histogram of each script's *highest*
+luck would answer "N or more" just as cheaply (and is what the mask
+histogram reduces to for it), but not a bounded range `N-M` or a single
+luck; the mask costs the same pass and barely more entries (on mainnet the
+256,807 uncommon holders hold 614 distinct sets of lucks, against 22
+highest lucks; alpha uncommon 534 for 195,831), so it is kept instead. Luck
+rows keep no top holders (the snapshot only lists them for catalog and year
+rows), and years and lucks are not crossed: a (row, year, luck) cell would
+take `R × 128 × 32` ids, past `RowId`'s range and 30× the year rows' state,
+for a filter nobody asked for. Measured on mainnet: see the README.
 
 ## 6. Architecture
 

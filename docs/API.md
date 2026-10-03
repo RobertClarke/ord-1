@@ -86,6 +86,8 @@ extracted.
   "year_stats": true,
   "years": [{ "year": 2009, "from_height": 0, "to_height": 32489 }, …,
             { "year": 2026, "from_height": 930341, "to_height": 969237 }],
+  "luck_stats": true, "max_luck": 31,
+  "lucks": [{ "luck": 0, "blocks": 272084 }, …, { "luck": 21, "blocks": 1 }],
   "timings": { "blocks_per_second": 0.1, "last_commit_blocks": 1,
                "last_commit_seconds": 0.02, "last_commit_at": 1790734130,
                "last_poll_ok_at": 1790734141, "commits": 12,
@@ -109,7 +111,10 @@ lowest height whose moves are kept. `error` is the last indexing error
 while the initial sync is still staging it (history requests answer 503).
 `year_stats` (additive) is `true` on builds that serve the supply by mint
 year (below); `years` are the mint years of the indexed blocks (empty until
-the first commit).
+the first commit). `luck_stats` (additive, index schema 6) is `true` on
+builds that serve the supply by block luck; `max_luck` is the highest luck
+broken down (it also counts any luckier block) and `lucks` the indexed
+blocks of each luck (lucks without a block left out).
 
 Staleness: `mode` stays `live` while bitcoind is unreachable; `error` then
 says why, and two unix times tell how stale the index may be:
@@ -142,7 +147,7 @@ also `uncommon`; a rare sat is `rare` only), so the `uncommon`, `black`,
 `rare`, `epic`, `black_rare` rows and every row combining them count each
 sat under its highest tier only (totals in docs/DESIGN.md §2).
 
-### `GET /supply[?years=]`
+### `GET /supply[?years=|?luck=]`
 ```json
 {
   "height": 969237, "hash": "…", "time": 1790734122,
@@ -157,7 +162,7 @@ sat under its highest tier only (totals in docs/DESIGN.md §2).
 ```
 `delta` is the change the tip block made to the row (`null` if none).
 
-### `GET /supply/{row}?top=100[&years=]`
+### `GET /supply/{row}?top=100[&years=|&luck=]`
 One row as in `/supply` plus holders:
 ```json
 { …row…,
@@ -167,7 +172,7 @@ One row as in `/supply` plus holders:
 ```
 `top` ≤ 1000, default 100.
 
-### `GET /supply/{row}/history?from=&to=&every=[&years=]`
+### `GET /supply/{row}/history?from=&to=&every=[&years=|&luck=]`
 Row counters over time (only heights where the row changed are stored; each
 bucket of `every` blocks reports the last value at or before its end).
 ```json
@@ -218,6 +223,52 @@ Every row's counters for each year it has mined sats of:
     "years": {
       "2009": { "total": 32473, "stats": RowStats + "inscribed",
                 "active_non_extracted": { "1y": …, … } },
+      …
+    }
+  }]
+}
+```
+
+## Supply by luck
+
+Every row's counters are also kept per **block luck**: the leading zero
+bits of the block's hash (as shown, big-endian) less the leading zero bits
+of the target its header's `bits` encode, the definition and values of
+bitcoin-monitoring's sat luck (`calculateLuckFromHashAndTarget`). Most
+blocks are luck 0–3; on mainnet (to 969,652) 1,328 blocks have luck 10 or
+more and the luckiest (756,951) has 21. Lucks are counted up to `max_luck` (31), a luckier block
+in 31; a block whose hash misses its target (none on a valid chain; mock
+chains in tests) counts as 0. Additive since index schema version 6 (a new
+`catalog_fingerprint`: reindex); `/status` says `"luck_stats": true`.
+
+`luck=N` (luck N or more) or `luck=N-M` (N to M), from 0 to 31, on
+`/supply`, `/supply/{row}` and `/supply/{row}/history` restricts every row
+to the sats mined in blocks of those lucks; anything else is a 400, and so
+is `luck` together with `years` (the supply is broken down by one or the
+other, not both).
+
+* The counters, `total`, `inscribed`, `active_non_extracted` and `delta`
+  are as for `years` (the selected lucks added up), and so are the holders:
+  `holders` and `extracted_holders` count the scripts holding sats of any
+  of the selected lucks, exact for any range (a script holding sats of two
+  of them counts once).
+* `/supply/{row}?luck=` lists no top holders.
+* `/supply/{row}/history?luck=` adds up the lucks' history point by point
+  and echoes `"luck": [N, M]` (`[N, 31]` for `luck=N`); `holders` and
+  `extracted_holders` are those of the row for `luck=0` (every luck: the
+  row's own history), of the luck for `N-N`, and `null` otherwise.
+
+### `GET /supply/lucks`
+Every row's counters for each luck it has mined sats of:
+```json
+{
+  "height": 969237, "hash": "…", "time": 1790734122,
+  "lucks": [{ "luck": 0, "blocks": 272084 }, …],
+  "rows": [{
+    "id": "uncommon",
+    "lucks": {
+      "12": { "total": 172, "stats": RowStats + "inscribed",
+              "active_non_extracted": { "1y": …, … } },
       …
     }
   }]
@@ -309,7 +360,10 @@ locator range in one read transaction, without output lookups or JSON per
 piece.
 
 ### `GET /blocks?from=&to=`
-`[{ "height": …, "hash": "…", "time": … }]`, `to - from` ≤ 10,000.
+`[{ "height": …, "hash": "…", "time": …, "bits": "1d00ffff", "luck": 11 }]`,
+`to - from` ≤ 10,000. `bits` is the header's compact target (8 hex digits),
+`luck` the block's luck ("Supply by luck"; `null` for a hash above its
+target). Both are additive.
 
 ## Address history
 

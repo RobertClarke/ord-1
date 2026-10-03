@@ -91,6 +91,22 @@ rows the years add up to the row (mined, located, burned, lost,
 overwritten, extracted, inscribed, active) and the holders of every year
 equal the row's.
 
+With the luck rows (index schema 6, 2026-10-03, same box, to 969,638):
+fast sync 48.1 min (2,884 s; +3% on schema 5), peak memory 28.2 GB
+(cgroup), RSS live after a restart ~1.4 GB (restore 2.5 s, which now
+hashes every stored header for its luck), index 6.5 GB (`row_history` 37.4 M
+entries, 0.74 GB stored), the published supply ~1.3–1.7 s a block (1.6 s on
+schema 5: luck rows keep no top holders). Checked at 969,652: every block's
+luck and bits equal those bitcoin-monitoring's luck table derives from the
+headers (969,653 heights, `GET /blocks`); for all 70 rows the lucks add up
+to the row (mined, located, burned, lost, overwritten, extracted,
+inscribed, active, totals) and `luck=0` is the row, holders included;
+`/supply`, `/supply/years` and `years=` answers equal the schema 5 index's
+at the same height; the holders of luck N or more and of N-N (N 0–21, both
+lists) equal a brute-force count over `/sats` for rare, epic, black rare,
+Nakamoto alpha, vintage uncommon, megasat alpha, alpha uncommon (195,831
+holders) and uncommon (256,807).
+
 Validated against an upstream ord with `--index-sats` at the same height
 (`tools/validate/`, 2026-09-30, tip 969,264–969,267): 2,310 sampled tracked
 sats across all 62 rows plus edge sets (burned sats, sats that passed through
