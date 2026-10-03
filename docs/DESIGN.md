@@ -395,6 +395,66 @@ bulk insert, which leaves leaves half full; the bulk inserts write three
 entries in five first and the other two in a second pass, which fills
 them to about 80%.
 
+### 6.2 Mempool overlay
+
+`src/mempool/` (docs/API.md "Mempool") shows unconfirmed transactions that
+move tracked sats, everywhere confirmed activity shows, without touching the
+index: an in-memory overlay rebuilt from bitcoind at every start, so it
+needs no reindex and no schema change.
+
+* **Source.** Polling, not ZMQ: the target's bitcoind publishes no `rawtx`
+  over ZMQ, and polling recovers from anything by itself. Every
+  `--mempool-interval` (5 s), and within ~0.25 s of each index commit, the
+  overlay thread calls `getbestblockhash` (it goes on only when it is the
+  index's tip, before and after the listing), `getrawmempool false true`
+  (txids and `mempool_sequence`; nothing more to do when the sequence and
+  the tip are unchanged) and `getrawtransaction` for the new txids
+  (batches of 1,000, 4 in flight, 200,000 per poll at most; one gone in the
+  meantime is skipped). It runs only while the indexer is `live`, and not
+  with `--no-sync` or `--no-mempool`.
+* **State.** Every mempool transaction's input outpoints (~9 MB at 100k
+  transactions); the pending set (transactions spending tracked sats) with
+  their raw transactions, moves and classification; the values of their
+  untracked inputs; tombstones of the last hour.
+* **Candidates.** A transaction is pending when an input is a tracked UTXO
+  of the index (a redb point lookup in one read transaction per poll) or a
+  tracked output of another pending transaction. New transactions are
+  examined parents first (a topological order within the poll), so chains
+  of any depth are followed. On a new tip every mempool transaction is
+  examined again: parents that confirmed now come from the index, and a
+  reorg may track other inputs.
+* **Classification**, as at the next height, with the block pipeline's own
+  pure functions: `mempool::flow::tx_move` (a read-only port of the
+  tracker's sat flow, §4; a test checks it against the tracker's moves on
+  randomly cut block 9 pieces), `market::analyze` on a pseudo-block
+  `[placeholder coinbase, tx, its pending spenders]` (so a two-transaction
+  sale settled in the mempool is attributed as in a block; a test checks
+  every sale fixture classifies as in its block), and
+  `history::move_entries`. Untracked inputs are valued with `gettxout
+  <txid> <n> false` (the chainstate) or, for unconfirmed parents, the
+  parent's raw transaction (`getrawtransaction` reads mempool transactions
+  without `txindex`; a confirmed parent that is spent in the chainstate
+  needs `txindex`); `getrawtransaction … 2` gives no prevouts for mempool
+  transactions. `getmempoolentry` gives the fee, vsize and first-seen time.
+  A transaction whose inputs or entry cannot be resolved yet is retried at
+  the next poll.
+* **Removal.** A pending transaction that leaves the mempool is
+  `confirmed` (a move of a block indexed since the last poll, looked up in
+  at most 24 blocks), `conflicted` (such a block spent one of its tracked
+  inputs), `replaced` (a mempool transaction spends one of its inputs) or
+  `evicted`; a child of a parent that left unconfirmed shares its fate.
+* **Publication.** After every poll the thread publishes an immutable
+  `Snapshot` (`Published::mempool`); the handlers render only that, with
+  the same renderers as confirmed records, then mark the result pending.
+  `seq` changes only when the pending set does, so clients poll
+  `/mempool/status` and refetch on change (ETag `"mempool-<seq>"`).
+
+Limits: a pending transaction is classified for the next height (fee
+tables are per height; the next block may be later); tracked sats paid as
+fee have no location until a coinbase claims them; inscriptions revealed in
+the mempool are reported as the block would (`market::analyze`), but the
+index's inscribed counters ignore them.
+
 ## 7. Contracts
 
 The shared types live in `src/model.rs` and are the interface between the

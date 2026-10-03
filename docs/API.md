@@ -529,3 +529,156 @@ nothing tracked).
   located sats of the row that carry inscriptions now, from the inscribed
   sats and their current locations (recomputed once per block). History
   points and `delta` stats do not have it.
+
+## Mempool
+
+Unconfirmed transactions that move tracked sats, classified exactly as a
+block would classify them: their sat flow (`Move`), sales (`Sale`, every
+marketplace) and address history (`HistoryEntry`), as if mined at the next
+height. They come from an in-memory overlay that follows bitcoind's mempool
+(docs/DESIGN.md §6.2) and are never written to the index: `/supply*`,
+`/sales`, `/sales/tx`, `/moves`, `/block*` and `/rows` never hold them, so
+no total, volume or holder count includes a pending item. A pending
+transaction that confirms becomes the normal confirmed record, with the
+same `txid` (and `vin` for a sale).
+
+`/status` says `"mempool": true` on builds that serve the endpoints below
+(the way a client detects them) and `"mempool_enabled"`, whether the
+overlay runs (`false` with `--no-mempool` or `--no-sync`; every endpoint
+then answers as with an empty mempool).
+
+**A pending object** is its confirmed shape plus `"pending": true`,
+`"first_seen"` (unix seconds bitcoind first saw the transaction) and
+`"fee_rate"` (the transaction's sat/vB, one decimal), with `"height": null`,
+`"tx_index": null` and `"time"` = `first_seen`. Pending sales, entries and
+outputs are judged at `first_seen` where a block time would be used (the
+`extracted` verdict).
+
+### `GET /mempool/status`
+The change feed: poll it every few seconds and refetch the rest when `seq`
+changes.
+```json
+{
+  "enabled": true, "ready": true,
+  "seq": 42,
+  "height": 969650, "hash": "…",
+  "mempool_sequence": 5966578, "mempool_txs": 36111, "scanned_txs": 36111,
+  "pending_txs": 105, "pending_sales": 3, "pending_extractions": 1, "removed": 7,
+  "interval_ms": 5000, "last_poll_at": 1790734141, "last_poll_ms": 312,
+  "last_change_at": 1790734100, "error": null
+}
+```
+* `seq`: bumped whenever the pending set changes (a transaction added,
+  reclassified or removed); it starts at 0 with the process.
+* `height`, `hash`: the index tip the pending set is consistent with
+  (pending transactions are classified as at `height + 1`). The overlay
+  only advances while bitcoind's best block is the index's tip, so a
+  transaction that just confirmed is never reported dropped before its
+  block is indexed.
+* `ready`: the first poll is done. `mempool_txs`: transactions in bitcoind's
+  mempool at the last poll; `scanned_txs`: those whose inputs were checked
+  (fewer only while a huge mempool is being read, 200,000 per poll).
+* `error`: the last poll's error (bitcoind unreachable…), cleared by the
+  next good poll.
+
+### `GET /mempool[?kind=][&row=]`
+Every pending transaction, newest `first_seen` first, and the recently
+removed ones. Answers carry `ETag: "mempool-<seq>"`; a request with
+`If-None-Match` of the current tag gets 304 (also on the lists below).
+```json
+{ "seq": 42, "height": 969650, "hash": "…", "txs": [PendingTx], "removed": [Removed] }
+```
+`kind` (`sale`, `extraction`, `transfer`, `consolidation`, `burn`) keeps
+transactions with an entry of that kind (400 for another); `row` those
+that moved sats of the row (404 for an unknown row).
+
+**PendingTx**
+```json
+{
+  "txid": "…", "pending": true, "first_seen": 1790734000,
+  "fee": 2100, "vsize": 210, "fee_rate": 10.0,
+  "depends": ["txid"],
+  "kinds": ["sale"],
+  "move": Move,
+  "sales": [Sale],
+  "entries": [PendingEntry]
+}
+```
+* `depends`: the pending transactions whose tracked outputs it spends (a
+  chain; `[]` if none). Chains of any depth are followed.
+* `kinds`: its entries' kinds, distinct, in the order `mined`, `sale`,
+  `extraction`, `burn`, `consolidation`, `transfer`.
+* `move`: as in `/block/{height}/moves`, with `tx_index` `null`; an input
+  that is a pending parent's output has `created_height` and
+  `created_time` `null`. Tracked sats paid as fee are its `fee_pieces`:
+  they go to a coinbase not mined yet.
+* `sales`: pending Sales (the Sale shape of `/sales`, marked pending), by
+  input.
+* `entries`: one PendingEntry per address (script) that sent or received
+  tracked sats: the `HistoryEntry` of the address history marked pending,
+  plus `address` and `script_pubkey`; its `sales` are pending Sales.
+
+**Removed**
+```json
+{ "txid": "…", "status": "confirmed" | "replaced" | "conflicted" | "evicted",
+  "height": 969651 | null, "replaced_by": "txid" | null, "at": 1790734200, "seq": 43 }
+```
+A pending transaction that left the mempool, kept for an hour (at most
+1,000): `confirmed` in block `height` (indexed since); `conflicted`, a
+block spent one of its tracked inputs in another transaction; `replaced`,
+a transaction now in the mempool (`replaced_by`) spends one of its inputs
+(replace-by-fee); `evicted`, none of these (expiry, the size limit).
+A transaction whose pending parent left unconfirmed shares the parent's
+status. `at`: when it was seen gone; `seq`: the `seq` that removed it.
+
+### Lists
+* `GET /mempool/sales[?row=]`: `{ "seq", "height", "hash", "sales": [Sale] }`,
+  every pending sale (newest first); `row`: sales that sold sats of the row.
+* `GET /mempool/extractions[?row=]`: `{ "seq", "height", "hash", "txs":
+  [PendingTx] }`, transactions with an `extraction` entry (`isolated > 0`).
+* `GET /mempool/transfers[?row=]`: the same, transactions with neither a
+  `sale` nor an `extraction` entry (transfers, consolidations, burns).
+* `GET /mempool/tx/{txid}`: one PendingTx; 404 when it is not pending,
+  with `"removed": Removed` in the body when it left recently.
+* `GET /mempool/address/{address}` (or `/mempool/script/{hex}`):
+  ```json
+  { "address": "…", "script_pubkey": "…", "seq": 42,
+    "entries": [PendingEntry],
+    "spent": [Spend + "outpoint"],
+    "outputs": [PendingOutput] }
+  ```
+  the address's pending entries, its confirmed tracked outputs being spent,
+  and the pending tracked outputs paying it.
+
+### Additions to other endpoints
+* **Output** (`/output`, `/address`, `/sat` `location.output`):
+  `"spent_by_pending": Spend` when a pending transaction spends it; the key
+  is absent otherwise.
+  **Spend**: `{ "txid": "…", "vin": 1, "first_seen": …, "fee_rate": 10.0,
+  "sale": true, "replaceable": true }`; `sale`: the spend is a pending sale
+  of this output; `replaceable` is always `true` (bitcoind replaces by fee
+  whether or not a transaction signals it).
+* `GET /output/{outpoint}` of a tracked output a pending transaction
+  creates (not in the index) is a **PendingOutput**: the Output shape with
+  `"pending": true`, `"txid"`, `"first_seen"`, `"fee_rate"`,
+  `"created_height": null` and `"created_time": null` (it may itself carry
+  `spent_by_pending`, a chain).
+* `GET /address/{address}` (and `/script/{hex}`): `"pending_outputs":
+  [PendingOutput]`, present when the overlay runs; `outputs` and `rows`
+  stay confirmed (their outputs carry `spent_by_pending`).
+* `GET /address/{address}/history?pending=true` (and the script form):
+  the address's PendingEntries first, newest first, on the first page only
+  (no `before`) and only when `to` is not given; they follow `kinds` and
+  `row`, do not count toward `limit` and do not move `next`. Without
+  `pending=true` the answer is unchanged.
+* `GET /sat/{n}`: `"pending"` when a pending transaction moves the sat
+  (absent otherwise), its latest pending location (the end of a chain):
+  ```json
+  "pending": { "txid": "…", "first_seen": …, "fee_rate": …,
+               "kind": "unspent" | "burned" | "fee",
+               "satpoint": "txid:vout:offset" | null, "outpoint": "txid:vout" | null,
+               "offset": 330 | null, "output": PendingOutput | null,
+               "sales": [Sale] }
+  ```
+  `sales` are its pending sales; `location` and `sales` of the sat stay
+  confirmed.
