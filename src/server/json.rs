@@ -67,6 +67,10 @@ pub struct OutputJson {
   pub rows: RowMap,
   /// Tracked sats of the output that carry inscriptions.
   pub inscribed_sats: Vec<u64>,
+  /// The pending (mempool) transaction spending it; omitted when none
+  /// (docs/API.md "Mempool").
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub spent_by_pending: Option<super::mempool::SpendJson>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -92,6 +96,9 @@ pub struct SatJson {
   pub inscriptions: u32,
   /// Sales that sold it, oldest first.
   pub sales: Vec<super::sales::SaleJson>,
+  /// Where a pending (mempool) transaction moves it; omitted when none.
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub pending: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -192,6 +199,8 @@ pub struct Render<'a> {
   pub network: Network,
   pub config: &'a TrackerConfig,
   times: RefCell<HashMap<u32, Option<u32>>>,
+  /// The mempool overlay's view, for pending additions (`with_mempool`).
+  pub mempool: Option<std::sync::Arc<crate::mempool::Snapshot>>,
 }
 
 impl<'a> Render<'a> {
@@ -207,7 +216,21 @@ impl<'a> Render<'a> {
       network,
       config,
       times: RefCell::default(),
+      mempool: None,
     }
+  }
+
+  /// Adds the mempool overlay's pending spends, outputs and locations to
+  /// what this renders.
+  pub fn with_mempool(mut self, mempool: std::sync::Arc<crate::mempool::Snapshot>) -> Self {
+    self.mempool = Some(mempool);
+    self
+  }
+
+  /// Uses `time` as the header time of `height` (a pending transaction's
+  /// first-seen time for the height it would be mined at).
+  pub fn set_time(&self, height: u32, time: Option<u32>) {
+    self.times.borrow_mut().insert(height, time);
   }
 
   /// Header time of a block, if indexed.
@@ -319,6 +342,7 @@ impl<'a> Render<'a> {
         .into_iter()
         .map(|(sat, _)| sat)
         .collect(),
+      spent_by_pending: self.spent_by_pending(&outpoint),
     })
   }
 
@@ -389,6 +413,7 @@ impl<'a> Render<'a> {
       inscribed: inscribed.is_some(),
       inscriptions: inscribed.map_or(0, |inscribed| inscribed.count),
       sales,
+      pending: self.sat_pending(sat)?,
     })
   }
 

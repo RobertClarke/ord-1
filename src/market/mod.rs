@@ -27,7 +27,7 @@ mod units;
 mod view;
 
 #[cfg(test)]
-mod fixtures;
+pub(crate) mod fixtures;
 #[cfg(test)]
 mod tests;
 

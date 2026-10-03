@@ -3,6 +3,7 @@
 pub mod history;
 pub mod indexer;
 pub mod market;
+pub mod mempool;
 pub mod model;
 pub mod sats;
 pub mod server;

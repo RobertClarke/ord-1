@@ -13,6 +13,7 @@
 pub mod catalog;
 pub mod history;
 pub mod json;
+pub mod mempool;
 pub mod sales;
 #[cfg(test)]
 mod tests;
@@ -151,6 +152,7 @@ async fn read<T: Send + 'static>(
 impl ServerState {
   fn render<'a>(&'a self, reader: &'a Reader) -> Render<'a> {
     Render::new(&*self.catalog, reader, self.chain.network(), &self.config)
+      .with_mempool(self.published.mempool())
   }
 
   fn row(&self, id: &str) -> ServerResult<(RowId, &RowInfo)> {
@@ -212,6 +214,14 @@ pub fn router(state: Arc<ServerState>) -> Router {
     .route("/blocks", get(blocks))
     .route("/sales", get(sales_stream))
     .route("/sales/tx/{txid}", get(sales_for_tx))
+    .route("/mempool", get(mempool::all))
+    .route("/mempool/status", get(mempool::status))
+    .route("/mempool/sales", get(mempool::sales))
+    .route("/mempool/extractions", get(mempool::extractions))
+    .route("/mempool/transfers", get(mempool::transfers))
+    .route("/mempool/tx/{txid}", get(mempool::tx))
+    .route("/mempool/address/{address}", get(mempool::address))
+    .route("/mempool/script/{script}", get(mempool::script))
     .fallback(|| async { not_found("no such endpoint; see docs/API.md") })
     .layer(CompressionLayer::new())
     .layer(CorsLayer::permissive())
@@ -270,6 +280,10 @@ struct StatusJson {
   years: Vec<years::YearSpanJson>,
   timings: Timings,
   error: Option<String>,
+  /// `/mempool*` is served (docs/API.md "Mempool").
+  mempool: bool,
+  /// The mempool overlay is running.
+  mempool_enabled: bool,
 }
 
 async fn status(State(state): State<Arc<ServerState>>) -> ServerResult<Json<StatusJson>> {
@@ -312,6 +326,8 @@ async fn status(State(state): State<Arc<ServerState>>) -> ServerResult<Json<Stat
       },
       timings: status.timings,
       error: status.error,
+      mempool: mempool::status_fields(state).0,
+      mempool_enabled: mempool::status_fields(state).1,
     }))
   })
   .await
@@ -662,14 +678,18 @@ async fn sat(
 async fn output(
   State(state): State<Arc<ServerState>>,
   Path(outpoint): Path<String>,
-) -> ServerResult<Json<json::OutputJson>> {
+) -> ServerResult<Response> {
   let outpoint = parse::<OutPoint>("outpoint", &outpoint)?;
   read(&state, move |state, reader| {
     tip(reader)?;
-    let utxo = reader
-      .utxo(outpoint)?
-      .ok_or_else(|| not_found(format!("output {outpoint} holds no tracked sat")))?;
-    Ok(Json(state.render(reader).output(outpoint, &utxo)?))
+    let render = state.render(reader);
+    match reader.utxo(outpoint)? {
+      Some(utxo) => Ok(Json(render.output(outpoint, &utxo)?).into_response()),
+      None => match mempool::pending_output(&render, outpoint)? {
+        Some(pending) => Ok(Json(pending).into_response()),
+        None => Err(not_found(format!("output {outpoint} holds no tracked sat"))),
+      },
+    }
   })
   .await
 }
@@ -680,6 +700,10 @@ struct ScriptJson {
   script_pubkey: String,
   outputs: Vec<json::OutputJson>,
   rows: RowMap,
+  /// Tracked outputs pending transactions pay it (omitted when the mempool
+  /// overlay is off).
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pending_outputs: Option<Vec<serde_json::Value>>,
 }
 
 fn script_outputs(
@@ -700,6 +724,10 @@ fn script_outputs(
     script_pubkey: script.to_hex_string(),
     outputs,
     rows: render.row_map(&counts),
+    pending_outputs: match &render.mempool {
+      Some(mempool) if mempool.enabled => Some(render.pending_outputs(&script)?),
+      _ => None,
+    },
   })
 }
 

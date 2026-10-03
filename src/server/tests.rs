@@ -959,6 +959,8 @@ fn status() {
       "years": status["years"],
       "timings": status["timings"],
       "error": null,
+      "mempool": true,
+      "mempool_enabled": false,
     })
   );
   assert!(status["timings"]["blocks_per_second"].is_number());
@@ -2390,3 +2392,5 @@ fn address_history_is_unavailable_while_staged() {
   assert!(server.error(&path, 503).contains("being built"));
   assert_eq!(server.json("/status")["address_history_building"], true);
 }
+
+mod mempool;

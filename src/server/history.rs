@@ -3,7 +3,11 @@
 
 use {
   super::{
-    ServerError, ServerResult, ServerState, bad_request, json::RowMap, param, sales::SaleJson, tip,
+    ServerError, ServerResult, ServerState, bad_request,
+    json::{Render, RowMap},
+    param,
+    sales::SaleJson,
+    tip,
   },
   crate::{
     history::{HistoryEntry, HistoryKind, history_key},
@@ -57,18 +61,30 @@ pub struct HistoryEntryJson {
   pub sales: Vec<SaleJson>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+/// A history entry: confirmed, or pending (`HistoryEntryJson` plus the
+/// pending fields, docs/API.md "Mempool").
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(untagged)]
+pub enum EntryJson {
+  Confirmed(Box<HistoryEntryJson>),
+  Pending(serde_json::Value),
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct HistoryJson {
   pub address: Option<String>,
   pub script_pubkey: String,
   /// The first height the history covers (`null`: none indexed yet).
   pub history_from: Option<u32>,
-  pub entries: Vec<HistoryEntryJson>,
+  /// Pending (mempool) entries first when asked for (`pending=true`).
+  pub entries: Vec<EntryJson>,
   pub next: Option<String>,
 }
 
 /// The query of a history request, validated.
 pub struct HistoryQuery {
+  /// `pending=true`: pending (mempool) entries first, on the first page.
+  pub pending: bool,
   limit: usize,
   before: Option<(u32, u32)>,
   kinds: Option<Vec<HistoryKind>>,
@@ -132,7 +148,13 @@ impl HistoryQuery {
     {
       return Err(bad_request(format!("from {from} is above to {to}")));
     }
+    let pending = match params.get("pending").map(String::as_str) {
+      None | Some("" | "false" | "0") => false,
+      Some("true" | "1") => true,
+      Some(other) => return Err(bad_request(format!("invalid pending `{other}`"))),
+    };
     Ok(Self {
+      pending,
       limit,
       before,
       kinds,
@@ -208,6 +230,14 @@ pub fn script_history(
   }
 
   let mut json = Vec::with_capacity(entries.len());
+  if query.pending && query.before.is_none() && query.to.is_none() {
+    json.extend(
+      render
+        .pending_entries(&script, query.kinds.as_deref(), row)?
+        .into_iter()
+        .map(EntryJson::Pending),
+    );
+  }
   for entry in &entries {
     let sales = if entry.seller || entry.buyer {
       reader
@@ -222,54 +252,9 @@ pub fn script_history(
     } else {
       Vec::new()
     };
-    let mut roles = Vec::new();
-    if entry.seller {
-      roles.push("seller");
-    }
-    if entry.buyer {
-      roles.push("buyer");
-    }
-    let row_map = |rows: &[(RowId, u64)]| {
-      let mut counts = Vec::new();
-      render.add(&mut counts, &rows.to_vec());
-      render.row_map(&counts)
-    };
-    json.push(HistoryEntryJson {
-      txid: entry.txid,
-      height: entry.height,
-      time: render.time(entry.height)?,
-      tx_index: entry.tx_index,
-      direction: entry.direction.name(),
-      kind: entry.kind.name(),
-      rows_in: row_map(&entry.received.rows),
-      rows_out: row_map(&entry.sent.rows),
-      sats_in: entry.received.sats,
-      sats_out: entry.sent.sats,
-      value_in: entry.received.value,
-      value_out: entry.sent.value,
-      outputs_in: entry.received.count,
-      inputs_out: entry.sent.count,
-      extracted_in: entry.extracted_in,
-      extracted_out: entry.extracted_out,
-      extracted_sats: entry.extracted_sats,
-      isolated: entry.isolated,
-      burned: entry.burned,
-      roles,
-      counterparty: entry
-        .counterparty
-        .as_ref()
-        .and_then(|script| render.address(script)),
-      counterparty_script_pubkey: entry
-        .counterparty
-        .as_ref()
-        .map(|script| script.to_hex_string()),
-      counterparties: entry.counterparties,
-      lead_sat: entry.lead_sat.map(|sat| LeadSatJson {
-        sat,
-        types: render.catalog.types(sat),
-      }),
-      sales,
-    });
+    json.push(EntryJson::Confirmed(Box::new(entry_json(
+      &render, entry, sales,
+    )?)));
   }
 
   Ok(HistoryJson {
@@ -278,5 +263,61 @@ pub fn script_history(
     history_from: reader.history_from()?,
     entries: json,
     next,
+  })
+}
+
+/// One entry as the API shows it, with its `sales` rendered.
+pub fn entry_json(
+  render: &Render,
+  entry: &HistoryEntry,
+  sales: Vec<SaleJson>,
+) -> anyhow::Result<HistoryEntryJson> {
+  let mut roles = Vec::new();
+  if entry.seller {
+    roles.push("seller");
+  }
+  if entry.buyer {
+    roles.push("buyer");
+  }
+  let row_map = |rows: &[(RowId, u64)]| {
+    let mut counts = Vec::new();
+    render.add(&mut counts, &rows.to_vec());
+    render.row_map(&counts)
+  };
+  Ok(HistoryEntryJson {
+    txid: entry.txid,
+    height: entry.height,
+    time: render.time(entry.height)?,
+    tx_index: entry.tx_index,
+    direction: entry.direction.name(),
+    kind: entry.kind.name(),
+    rows_in: row_map(&entry.received.rows),
+    rows_out: row_map(&entry.sent.rows),
+    sats_in: entry.received.sats,
+    sats_out: entry.sent.sats,
+    value_in: entry.received.value,
+    value_out: entry.sent.value,
+    outputs_in: entry.received.count,
+    inputs_out: entry.sent.count,
+    extracted_in: entry.extracted_in,
+    extracted_out: entry.extracted_out,
+    extracted_sats: entry.extracted_sats,
+    isolated: entry.isolated,
+    burned: entry.burned,
+    roles,
+    counterparty: entry
+      .counterparty
+      .as_ref()
+      .and_then(|script| render.address(script)),
+    counterparty_script_pubkey: entry
+      .counterparty
+      .as_ref()
+      .map(|script| script.to_hex_string()),
+    counterparties: entry.counterparties,
+    lead_sat: entry.lead_sat.map(|sat| LeadSatJson {
+      sat,
+      types: render.catalog.types(sat),
+    }),
+    sales,
   })
 }

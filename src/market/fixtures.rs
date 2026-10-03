@@ -2593,3 +2593,29 @@ fn measure() {
     eprintln!("{key}: {n}");
   }
 }
+
+/// Every fixture file's name, block and delta (as the tests here build
+/// them), for other modules' tests: the mempool overlay classifies each
+/// transaction as pending and must find the same sales.
+pub(crate) fn fixture_blocks() -> Vec<(String, ResolvedBlock, BlockDelta)> {
+  let mut names: Vec<String> = std::fs::read_dir(dir())
+    .unwrap()
+    .filter_map(|entry| {
+      let name = entry.unwrap().file_name().into_string().unwrap();
+      name.strip_suffix(".json").map(str::to_owned)
+    })
+    .collect();
+  names.sort();
+  names
+    .into_iter()
+    .map(|name| {
+      let (block, delta) = Fixture::load(&name).block_and_delta();
+      (name, block, delta)
+    })
+    .collect()
+}
+
+/// The market context the fixtures are analyzed with.
+pub(crate) fn fixture_context() -> MarketContext {
+  context()
+}
