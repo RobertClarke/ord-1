@@ -32,7 +32,8 @@
 //!   (`model::luck_row`) and one **month row** per mint month
 //!   (`model::month_row`). Month rows keep no Fenwick tree: their active
 //!   windows are summed at snapshot time from the height buckets in the
-//!   windows (the trees would cost ~128 KB a cell for some 10,000 cells).
+//!   windows (the trees would cost ~128 KB a cell, for 3,691 cells on
+//!   mainnet).
 //!
 //! # Time → height
 //!

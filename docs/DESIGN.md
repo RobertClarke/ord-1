@@ -385,8 +385,8 @@ but touches every row-keyed table and the codec, for months 30+ years out.
 Costs, and what is not built:
 
 * **Active windows without trees.** A Fenwick tree per row costs up to
-  ~128 KB (16,384 buckets of 64 heights), and month rows have some 10,000
-  non-empty cells, so they keep none: at snapshot time one pass over the
+  ~128 KB (16,384 buckets of 64 heights), and month rows have 3,691
+  non-empty cells on mainnet (about 470 MB of trees), so they keep none: at snapshot time one pass over the
   height buckets inside the widest window (7 years) adds each
   non-extracted UTXO's month rows to every window it is in. The catalog,
   year and luck rows keep their trees.

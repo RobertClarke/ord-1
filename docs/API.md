@@ -320,7 +320,7 @@ month an array of the counters `fields` names.
              "holders", "extracted_holders", "inscribed"],
   "rows": [{
     "id": "uncommon",
-    "months": { "2009-01": [4562, 4198, 0, 0, 0, 312, 2077, 288, 9], … }
+    "months": { "2009-01": [2542, 2542, 0, 0, 0, 49, 2456, 29, 1], … }
   }]
 }
 ```
