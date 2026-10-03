@@ -1,14 +1,16 @@
 //! A row's supply restricted to some of its sats: those mined in a set of
-//! years (`years=`, DESIGN.md §5.1) or in blocks of a set of lucks
-//! (`luck=`, §5.2). The tracker keeps a row's counters per year and per
-//! luck; a slice adds the selected cells up, and counts the holders from
-//! the published holder masks (exact for any set).
+//! years (`years=`, DESIGN.md §5.1), in blocks of a set of lucks (`luck=`,
+//! §5.2) or in one month (`months=`, §5.3). The tracker keeps a row's
+//! counters per year, per luck and per month; a slice adds the selected
+//! cells up, and counts the holders from the published holder masks (exact
+//! for any set), or a month's own.
 
 use {
   super::{
     ServerResult, ServerState, bad_request,
     json::{DeltaJson, RowSupplyJson, SupplyStatsJson, YearsMap},
     lucks::{self, Lucks},
+    months,
     years::{self, Years},
   },
   crate::{
@@ -23,23 +25,27 @@ use {
 pub enum Slice {
   Years(Years),
   Lucks(Lucks),
+  /// One month index.
+  Month(usize),
 }
 
-/// `years=` or `luck=`, `None` when neither is given; both at once are a
-/// 400 (the tracker does not cross them).
+/// `years=`, `luck=` or `months=`, `None` when none is given; two at once
+/// are a 400 (the tracker does not cross them).
 pub fn parse_slice(
   params: &HashMap<String, String>,
   supply: &SupplySnapshot,
 ) -> ServerResult<Option<Slice>> {
   let years = years::parse_years(params, supply)?;
   let lucks = lucks::parse_lucks(params)?;
-  match (years, lucks) {
-    (Some(_), Some(_)) => Err(bad_request(
-      "years and luck cannot be combined: the supply is broken down by one or the other",
+  let month = months::parse_month(params, supply)?;
+  match (years, lucks, month) {
+    (Some(years), None, None) => Ok(Some(Slice::Years(years))),
+    (None, Some(lucks), None) => Ok(Some(Slice::Lucks(lucks))),
+    (None, None, Some(month)) => Ok(Some(Slice::Month(month))),
+    (None, None, None) => Ok(None),
+    _ => Err(bad_request(
+      "years, luck and months cannot be combined: the supply is broken down by one of them",
     )),
-    (Some(years), None) => Ok(Some(Slice::Years(years))),
-    (None, Some(lucks)) => Ok(Some(Slice::Lucks(lucks))),
-    (None, None) => Ok(None),
   }
 }
 
@@ -55,6 +61,10 @@ impl Slice {
       Self::Lucks(lucks) => {
         let row = supply.lucks.rows.iter().find(|entry| entry.row == row)?;
         Some(lucks::subset(rows, row, lucks))
+      }
+      Self::Month(month) => {
+        let row = supply.months.rows.iter().find(|entry| entry.row == row)?;
+        Some(months::subset(rows, row, *month))
       }
     }
   }
@@ -74,6 +84,12 @@ impl Slice {
         .rows
         .iter()
         .map(|row| lucks::subset(rows, row, lucks))
+        .collect(),
+      Self::Month(month) => supply
+        .months
+        .rows
+        .iter()
+        .map(|row| months::subset(rows, row, *month))
         .collect(),
     }
   }
@@ -100,6 +116,7 @@ impl Slice {
           .collect(),
         lucks.list.len() == 1,
       ),
+      Self::Month(month) => (vec![crate::model::month_row(rows, row, *month)], true),
     }
   }
 
@@ -113,7 +130,7 @@ impl Slice {
           .map(|&year| FIRST_YEAR + year as u16)
           .collect(),
       ),
-      Self::Lucks(_) => None,
+      Self::Lucks(_) | Self::Month(_) => None,
     }
   }
 
@@ -121,7 +138,15 @@ impl Slice {
   pub fn luck(&self) -> Option<[u32; 2]> {
     match self {
       Self::Lucks(lucks) => Some([lucks.min, lucks.max]),
-      Self::Years(_) => None,
+      Self::Years(_) | Self::Month(_) => None,
+    }
+  }
+
+  /// The month (`months=`) of a history response: `2017-12`.
+  pub fn month(&self) -> Option<String> {
+    match self {
+      Self::Month(month) => Some(crate::model::month_name(*month)),
+      Self::Years(_) | Self::Lucks(_) => None,
     }
   }
 }
@@ -175,7 +200,7 @@ impl Subset<'_> {
 }
 
 /// One row's `RowSupplyJson` over a slice: top holders for a single year
-/// only (`None` for a set, or lucks).
+/// or month only (`None` for a set, or lucks).
 pub fn row_supply(
   state: &ServerState,
   reader: &Reader,

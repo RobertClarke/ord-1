@@ -527,6 +527,149 @@ impl Naive {
   }
 }
 
+impl Naive {
+  /// Supply by mint month (DESIGN.md §5.3), recomputed from scratch: each
+  /// spendable UTXO's sats split by the month of their blocks (the running
+  /// max header time), with every month's holders, active windows and top
+  /// holders.
+  fn check_months(&self, tracker: &Tracker) {
+    use crate::model::month_index_of_time;
+    let rows = self.catalog.rows().len();
+    let supply = tracker.supply(5);
+    let tip = *self.times.last().unwrap();
+    let max_times = self.max_times();
+    let month_of = |height: u64| month_index_of_time(max_times[height as usize]);
+    // Per (row, month): located, extracted, active per window; script →
+    // tally as in `check_supply`.
+    #[derive(Default)]
+    struct Cell<'a> {
+      located: u64,
+      extracted: u64,
+      active: [u64; ACTIVE_YEARS.len()],
+      scripts: HashMap<&'a ScriptBuf, Tally>,
+    }
+    let mut cells: BTreeMap<(usize, usize), Cell> = BTreeMap::new();
+    for utxo in self.utxos.values() {
+      if utxo.kind != UtxoKind::Spendable {
+        continue;
+      }
+      let ext = self.extracted(utxo);
+      // This UTXO's sats per (row, month).
+      let mut counts: BTreeMap<(usize, usize), u64> = BTreeMap::new();
+      for piece in &utxo.pieces {
+        let mut start = piece.start;
+        while start < piece.end() {
+          let height = crate::sats::math::height_of(start);
+          let stop = first_sat(height + 1).min(piece.end());
+          for (row, n) in self.catalog.row_counts(start, stop - start) {
+            *counts
+              .entry((usize::from(row), month_of(height)))
+              .or_default() += n;
+          }
+          start = stop;
+        }
+      }
+      for (key, n) in counts {
+        let cell = cells.entry(key).or_default();
+        cell.located += n;
+        let tally = cell.scripts.entry(&utxo.script).or_default();
+        tally.0 += n;
+        if ext {
+          cell.extracted += n;
+          tally.1 += n;
+          tally.2 += 1;
+          tally.4 = tally.4.max(utxo.height);
+        } else {
+          tally.3 += 1;
+          tally.5 = tally.5.max(utxo.height);
+          for (w, &years) in ACTIVE_YEARS.iter().enumerate() {
+            if max_times[utxo.height as usize] >= tip.saturating_sub(years * 365 * 86_400) {
+              cell.active[w] += n;
+            }
+          }
+        }
+      }
+    }
+    for row in 0..rows {
+      let months = &supply.months.rows[row];
+      assert_eq!(usize::from(months.row), row);
+      let name = &self.catalog.rows()[row].id;
+      // Every month with a located sat has its cell (cells with only
+      // mined, burned or lost sats too).
+      for ((_, month), cell) in cells.range((row, 0)..(row + 1, 0)) {
+        let got = months
+          .cells
+          .iter()
+          .find(|(m, _)| m == month)
+          .map(|(_, cell)| cell)
+          .unwrap_or_else(|| panic!("{name} month {month} missing"));
+        let stats = got.stats;
+        assert_eq!(
+          (stats.located, stats.extracted),
+          (cell.located, cell.extracted),
+          "{name} month {month}"
+        );
+        assert_eq!(
+          stats.holders,
+          cell.scripts.values().filter(|t| t.0 > 0).count() as u64,
+          "{name} month {month} holders"
+        );
+        assert_eq!(
+          stats.extracted_holders,
+          cell.scripts.values().filter(|t| t.1 > 0).count() as u64,
+          "{name} month {month} extracted holders"
+        );
+        assert_eq!(
+          got.active_non_extracted,
+          ACTIVE_YEARS
+            .iter()
+            .copied()
+            .zip(cell.active)
+            .collect::<Vec<_>>(),
+          "{name} month {month} active"
+        );
+        let top = |extracted: bool| -> Vec<Holder> {
+          let mut list: Vec<Holder> = cell
+            .scripts
+            .iter()
+            .filter_map(|(script, t)| {
+              let (count, utxos, last) = if extracted {
+                (t.1, t.2, t.4)
+              } else {
+                (t.0 - t.1, t.3, t.5)
+              };
+              (count > 0).then(|| Holder {
+                script_pubkey: (*script).clone(),
+                count,
+                utxos,
+                last_received_height: last,
+              })
+            })
+            .collect();
+          list.sort_by(|a, b| {
+            b.count
+              .cmp(&a.count)
+              .then_with(|| a.script_pubkey.cmp(&b.script_pubkey))
+          });
+          list.truncate(5);
+          list
+        };
+        assert_eq!(got.top_extracted_holders, top(true), "{name} {month}");
+        assert_eq!(got.top_non_extracted_holders, top(false), "{name} {month}");
+      }
+      for (month, got) in &months.cells {
+        if !cells.contains_key(&(row, *month)) {
+          assert_eq!(
+            (got.stats.located, got.stats.holders),
+            (0, 0),
+            "{name} month {month}"
+          );
+        }
+      }
+    }
+  }
+}
+
 use crate::model::Holder;
 
 fn merged(pieces: &[Piece]) -> Vec<Piece> {
@@ -725,8 +868,10 @@ fn check_full(tracker: &Tracker, naive: &Naive, rng: &mut Rng) {
   );
   naive.check_supply(tracker);
   naive.check_lucks(tracker);
+  naive.check_months(tracker);
   super::check_years(tracker);
   super::check_lucks(tracker);
+  super::check_months(tracker);
   tracker.verify().unwrap();
 }
 

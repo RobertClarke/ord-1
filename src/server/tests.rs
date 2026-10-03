@@ -595,6 +595,12 @@ fn scenario() -> Scenario {
       before,
       after,
     });
+    // And its month rows: 2009-01 and 2023-11 (`fake_months`).
+    deltas[height].rows.push(RowDelta {
+      row: crate::model::month_row(4, 0, if year == 0 { 0 } else { NOV_2023 }),
+      before,
+      after,
+    });
   }
 
   let catalog = FakeCatalog::new();
@@ -715,6 +721,36 @@ fn fake_lucks() -> crate::model::LuckSupply {
           .extracted_holder_masks
           .iter()
           .map(|&(mask, n)| (if mask == 1 { 1 } else { 1 << 12 }, n))
+          .collect(),
+      })
+      .collect(),
+  }
+}
+
+/// The month index of November 2023, blocks 2 and 3's month (`TIMES`).
+const NOV_2023: usize = 14 * 12 + 10;
+
+/// The published supply by month of `TestServer`: `fake_years` with
+/// 2009-01 for 2009 and 2023-11 for 2023 (its month rows in `scenario`).
+fn fake_months() -> crate::model::MonthSupply {
+  let years = fake_years();
+  let mut starts = vec![0];
+  starts.extend([2; NOV_2023]);
+  crate::model::MonthSupply {
+    starts,
+    rows: years
+      .rows
+      .into_iter()
+      .map(|row| crate::model::RowMonths {
+        row: row.row,
+        cells: row
+          .cells
+          .into_iter()
+          .map(|(year, mut cell)| {
+            let month = if year == 0 { 0 } else { NOV_2023 };
+            cell.row = crate::model::month_row(4, row.row, month);
+            (month, cell)
+          })
           .collect(),
       })
       .collect(),
@@ -845,6 +881,7 @@ impl TestServer {
           .collect(),
         years: fake_years(),
         lucks: fake_lucks(),
+        months: fake_months(),
       });
     }
 
@@ -1007,6 +1044,11 @@ fn status() {
       "luck_stats": true,
       "max_luck": 31,
       "lucks": [{ "luck": 0, "blocks": 2 }, { "luck": 12, "blocks": 2 }],
+      "month_stats": true,
+      "months": [
+        { "month": "2009-01", "from_height": 0, "to_height": 1 },
+        { "month": "2023-11", "from_height": 2, "to_height": 3 },
+      ],
       "timings": status["timings"],
       "error": null,
       "mempool": true,
@@ -1230,6 +1272,96 @@ fn supply_by_year() {
   let server = TestServer::new(None);
   server.error("/supply/years", 503);
   server.error("/supply?years=2009", 503);
+}
+
+#[test]
+fn supply_by_month() {
+  let server = TestServer::new(Some(3));
+  let status = server.json("/status");
+  assert_eq!(status["month_stats"], true);
+  assert_eq!(
+    status["months"],
+    json!([
+      { "month": "2009-01", "from_height": 0, "to_height": 1 },
+      { "month": "2023-11", "from_height": 2, "to_height": 3 },
+    ])
+  );
+
+  // 2009-01 is 2009 here, 2023-11 2023: the same rows, top holders and
+  // history (holders included: one month's are exact).
+  for (month, year) in [("2009-01", "2009"), ("2023-11", "2023")] {
+    let by_month = server.json(&format!("/supply?months={month}"));
+    let by_year = server.json(&format!("/supply?years={year}"));
+    assert_eq!(by_month["rows"], by_year["rows"], "{month}");
+    assert_eq!(
+      server.json(&format!("/supply/uncommon?month={month}&top=5")),
+      server.json(&format!("/supply/uncommon?years={year}&top=5")),
+      "{month}"
+    );
+    let history = server.json(&format!("/supply/uncommon/history?every=1&months={month}"));
+    let by_year = server.json(&format!("/supply/uncommon/history?every=1&years={year}"));
+    assert_eq!(history["month"], month);
+    assert!(history.get("years").is_none());
+    assert_eq!(history["points"], by_year["points"], "{month}");
+  }
+  let row = server.json("/supply/uncommon?months=2023-11&top=5");
+  assert_eq!(
+    row["top_non_extracted_holders"][0]["address"],
+    address(&p2wpkh(4))
+  );
+  assert_eq!(
+    server.json("/supply/uncommon/history?every=1&months=2023-11")["points"][3]["stats"]["holders"],
+    1
+  );
+
+  // Every row's months, compactly.
+  let months = server.json("/supply/months");
+  assert_eq!(months["height"], 3);
+  assert_eq!(months["months"], status["months"]);
+  assert_eq!(
+    months["fields"],
+    json!([
+      "mined",
+      "located",
+      "burned",
+      "lost",
+      "overwritten",
+      "extracted",
+      "holders",
+      "extracted_holders",
+      "inscribed"
+    ])
+  );
+  assert_eq!(months["rows"][0]["id"], "uncommon");
+  assert_eq!(
+    months["rows"][0]["months"]["2009-01"],
+    json!([2, 2, 0, 0, 0, 1, 2, 1, 1])
+  );
+  assert_eq!(
+    months["rows"][0]["months"]["2023-11"],
+    json!([2, 1, 1, 0, 0, 0, 1, 0, 0])
+  );
+  assert_eq!(months["rows"][1]["months"], json!({}));
+
+  for (path, needle) in [
+    ("/supply?months=2009-02", "no block was mined in 2009-02"),
+    ("/supply?months=2023-12", "from 2009-01 to 2023-11"),
+    ("/supply?months=2008-12", "2008-12"),
+    ("/supply?months=2009-13", "YYYY-MM"),
+    ("/supply?months=2009-1", "YYYY-MM"),
+    ("/supply?months=200901", "YYYY-MM"),
+    ("/supply?months=2009-01,2023-11", "one month at a time"),
+    ("/supply?months=2009-01&years=2009", "cannot be combined"),
+    ("/supply?months=2009-01&luck=3", "cannot be combined"),
+    ("/supply/uncommon?months=2010-01", "2010-01"),
+    ("/supply/uncommon/history?months=x", "YYYY-MM"),
+  ] {
+    assert!(server.error(path, 400).contains(needle), "{path}");
+  }
+
+  let server = TestServer::new(None);
+  server.error("/supply/months", 503);
+  server.error("/supply?months=2009-01", 503);
 }
 
 #[test]

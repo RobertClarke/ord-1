@@ -5,6 +5,7 @@ mod bench;
 mod differential;
 mod lucks;
 mod mainnet;
+mod months;
 mod scenarios;
 mod years;
 
@@ -281,6 +282,115 @@ pub(crate) fn check_years(tracker: &Tracker) {
         .map(|(_, n)| *n)
         .collect::<Vec<_>>(),
       "{name}: active by year"
+    );
+  }
+}
+
+/// The month rows add up to their catalog rows and to their year rows
+/// (DESIGN.md §5.3): every counter but the holders, and the active windows;
+/// each month's holders are at most its year's; every month cell's row id
+/// is its month row, and the months start where their years do.
+pub(crate) fn check_months(tracker: &Tracker) {
+  use crate::model::{RowSupply, month_row};
+  let supply = tracker.supply(5);
+  let rows = tracker.catalog().rows().len();
+  assert_eq!(supply.months.rows.len(), rows);
+  assert_eq!(supply.months.starts, tracker.month_starts());
+  for (year, &start) in supply.years.starts.iter().enumerate() {
+    if let Some(&month_start) = supply.months.starts.get(year * 12) {
+      assert_eq!(month_start, start, "year {year} starts with its January");
+    }
+  }
+  assert!(supply.months.starts.len() <= supply.years.starts.len() * 12);
+  let additive = |sum: &mut RowStats, s: &RowStats| {
+    sum.mined += s.mined;
+    sum.located += s.located;
+    sum.burned += s.burned;
+    sum.lost += s.lost;
+    sum.overwritten += s.overwritten;
+    sum.extracted += s.extracted;
+  };
+  let active = |cells: &mut Vec<u64>, cell: &RowSupply| {
+    cells.resize(cell.active_non_extracted.len(), 0);
+    for (total, (_, n)) in cells.iter_mut().zip(&cell.active_non_extracted) {
+      *total += n;
+    }
+  };
+  for ((row, months), years) in supply
+    .rows
+    .iter()
+    .zip(&supply.months.rows)
+    .zip(&supply.years.rows)
+  {
+    assert_eq!(row.row, months.row);
+    let name = &tracker.catalog().rows()[usize::from(row.row)].id;
+    let mut sum = RowStats::default();
+    let mut sum_active = Vec::new();
+    // Per year index: (stats, active).
+    let mut by_year: BTreeMap<usize, (RowStats, Vec<u64>)> = BTreeMap::new();
+    let mut last = None;
+    for (month, cell) in &months.cells {
+      assert!(last < Some(*month), "{name}: months out of order");
+      last = Some(*month);
+      assert!(
+        *month < supply.months.starts.len(),
+        "{name}: month past the tip"
+      );
+      assert_eq!(cell.row, month_row(rows, row.row, *month), "{name}");
+      assert_eq!(cell.stats, tracker.month_stats(row.row, *month), "{name}");
+      assert!(cell.stats.holders <= row.stats.holders, "{name} {month}");
+      assert!(cell.top_non_extracted_holders.len() <= 5);
+      additive(&mut sum, &cell.stats);
+      active(&mut sum_active, cell);
+      let year = by_year.entry(month / 12).or_default();
+      additive(&mut year.0, &cell.stats);
+      active(&mut year.1, cell);
+      let year_cell = years
+        .cells
+        .iter()
+        .find(|(y, _)| *y == month / 12)
+        .map(|(_, cell)| cell.stats)
+        .unwrap_or_default();
+      assert!(cell.stats.holders <= year_cell.holders, "{name} {month}");
+      assert!(
+        cell.stats.extracted_holders <= year_cell.extracted_holders,
+        "{name} {month}"
+      );
+    }
+    sum.holders = row.stats.holders;
+    sum.extracted_holders = row.stats.extracted_holders;
+    assert_eq!(sum, row.stats, "{name}: the months do not add up");
+    if !months.cells.is_empty() {
+      assert_eq!(
+        sum_active,
+        row
+          .active_non_extracted
+          .iter()
+          .map(|(_, n)| *n)
+          .collect::<Vec<_>>(),
+        "{name}: active by month"
+      );
+    }
+    for (year, cell) in &years.cells {
+      let (mut stats, active) = by_year.remove(year).unwrap_or_default();
+      stats.holders = cell.stats.holders;
+      stats.extracted_holders = cell.stats.extracted_holders;
+      assert_eq!(stats, cell.stats, "{name} {year}: the months do not add up");
+      if !active.is_empty() {
+        assert_eq!(
+          active,
+          cell
+            .active_non_extracted
+            .iter()
+            .map(|(_, n)| *n)
+            .collect::<Vec<_>>(),
+          "{name} {year}: active by month"
+        );
+      }
+    }
+    assert!(
+      by_year.is_empty(),
+      "{name}: months of a year without a cell"
     );
   }
 }

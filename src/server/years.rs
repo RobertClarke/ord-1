@@ -14,8 +14,8 @@ use {
   },
   crate::{
     model::{
-      FIRST_YEAR, RowYears, SupplySnapshot, YearMask, YearSupply, luck_row, tracked_row_ids,
-      year_row,
+      FIRST_YEAR, RowYears, SupplySnapshot, YearMask, YearSupply, luck_row, month_row,
+      tracked_row_ids, year_row,
     },
     sats::math::height_of,
   },
@@ -145,7 +145,7 @@ pub fn subset<'a>(rows: usize, row: &'a RowYears, years: &Years) -> Subset<'a> {
 }
 
 /// Located inscribed sats per tracker row id (catalog rows, then their
-/// year and luck rows), as `ServerState::inscribed_rows` counts them.
+/// year, luck and month rows), as `ServerState::inscribed_rows` counts them.
 pub fn inscribed_by_row(
   state: &ServerState,
   supply: &SupplySnapshot,
@@ -158,11 +158,13 @@ pub fn inscribed_by_row(
     .ok()
     .and_then(|height| supply.lucks.heights.get(height))
     .map_or(0, |&luck| usize::from(luck));
+  let month = super::months::month_of_sat(&supply.months.starts, sat);
   for row in state.catalog.sat_rows(sat) {
     if usize::from(row) < rows {
       counts[usize::from(row)] += 1;
       counts[usize::from(year_row(rows, row, year))] += 1;
       counts[usize::from(luck_row(rows, row, luck))] += 1;
+      counts[usize::from(month_row(rows, row, month))] += 1;
     }
   }
 }

@@ -411,6 +411,7 @@ impl Engine for FakeEngine {
       rows: Vec::new(),
       years: Default::default(),
       lucks: Default::default(),
+      months: Default::default(),
     }
   }
 

@@ -288,6 +288,34 @@ pub fn split_luck_row(rows: usize, id: RowId) -> Option<(RowId, usize)> {
   }
 }
 
+/// Mint months the tracker breaks every row down by (DESIGN.md §5.3):
+/// `FIRST_YEAR`-01 to 2058-12 (50 years), a sat of a later month counting
+/// in the last one. Bounded by `RowId`: every catalog row takes this many
+/// ids next to its year and luck rows, so 600 leaves room for 86 rows.
+pub const MONTH_SLOTS: usize = 600;
+
+/// The tracker's id of row `row` restricted to the sats mined in month
+/// index `month` (`(year - FIRST_YEAR) * 12 + month - 1`, DESIGN.md §5.3):
+/// after the luck rows, one block of `MONTH_SLOTS` ids per catalog row.
+pub fn month_row(rows: usize, row: RowId, month: usize) -> RowId {
+  debug_assert!(usize::from(row) < rows && month < MONTH_SLOTS);
+  (rows * (1 + YEAR_SLOTS + LUCK_SLOTS) + usize::from(row) * MONTH_SLOTS + month) as RowId
+}
+
+/// The catalog row and month index of a month row id; `None` for any other
+/// id.
+pub fn split_month_row(rows: usize, id: RowId) -> Option<(RowId, usize)> {
+  match split_row(rows, id) {
+    TrackedRow::Month(row, month) => Some((row, month)),
+    _ => None,
+  }
+}
+
+/// The first tracker row id of the month rows: every id from it on is one.
+pub fn first_month_row(rows: usize) -> usize {
+  rows * (1 + YEAR_SLOTS + LUCK_SLOTS)
+}
+
 /// What a tracker row id counts.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TrackedRow {
@@ -297,6 +325,8 @@ pub enum TrackedRow {
   Year(RowId, usize),
   /// A catalog row's sats of one luck.
   Luck(RowId, usize),
+  /// A catalog row's sats of one mint month (index).
+  Month(RowId, usize),
 }
 
 /// Splits a tracker row id (`id < tracked_row_ids(rows)`).
@@ -310,12 +340,16 @@ pub fn split_row(rows: usize, id: RowId) -> TrackedRow {
     return TrackedRow::Year((index / YEAR_SLOTS) as RowId, index % YEAR_SLOTS);
   }
   let index = index - rows * YEAR_SLOTS;
-  TrackedRow::Luck((index / LUCK_SLOTS) as RowId, index % LUCK_SLOTS)
+  if index < rows * LUCK_SLOTS {
+    return TrackedRow::Luck((index / LUCK_SLOTS) as RowId, index % LUCK_SLOTS);
+  }
+  let index = index - rows * LUCK_SLOTS;
+  TrackedRow::Month((index / MONTH_SLOTS) as RowId, index % MONTH_SLOTS)
 }
 
 /// Ids the tracker keeps counters for, given the catalog's row count.
 pub fn tracked_row_ids(rows: usize) -> usize {
-  rows * (1 + YEAR_SLOTS + LUCK_SLOTS)
+  rows * (1 + YEAR_SLOTS + LUCK_SLOTS + MONTH_SLOTS)
 }
 
 /// Leading zero bits of a 256-bit number given big-endian.
@@ -367,6 +401,16 @@ pub fn luck_slot(hash: &BlockHash, bits: bitcoin::CompactTarget) -> u8 {
 
 /// The UTC calendar year of a unix time.
 pub fn year_of_time(time: u32) -> u32 {
+  year_month_of_time(time).0
+}
+
+/// The year index (`year - FIRST_YEAR`, within `0..YEAR_SLOTS`) of a time.
+pub fn year_index_of_time(time: u32) -> usize {
+  (year_of_time(time).saturating_sub(u32::from(FIRST_YEAR)) as usize).min(YEAR_SLOTS - 1)
+}
+
+/// The UTC calendar year and month (1–12) of a unix time.
+pub fn year_month_of_time(time: u32) -> (u32, u32) {
   // Howard Hinnant's civil_from_days, for days ≥ 0.
   let days = time / 86_400 + 719_468;
   let era = days / 146_097;
@@ -375,12 +419,26 @@ pub fn year_of_time(time: u32) -> u32 {
   let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
   let mp = (5 * doy + 2) / 153;
   let month = if mp < 10 { mp + 3 } else { mp - 9 };
-  yoe + era * 400 + u32::from(month <= 2)
+  (yoe + era * 400 + u32::from(month <= 2), month)
 }
 
-/// The year index (`year - FIRST_YEAR`, within `0..YEAR_SLOTS`) of a time.
-pub fn year_index_of_time(time: u32) -> usize {
-  (year_of_time(time).saturating_sub(u32::from(FIRST_YEAR)) as usize).min(YEAR_SLOTS - 1)
+/// The month index (`(year - FIRST_YEAR) * 12 + month - 1`, within
+/// `0..MONTH_SLOTS`) of a time.
+pub fn month_index_of_time(time: u32) -> usize {
+  let (year, month) = year_month_of_time(time);
+  let index = (year.saturating_sub(u32::from(FIRST_YEAR)) as usize) * 12 + month as usize - 1;
+  index.min(MONTH_SLOTS - 1)
+}
+
+/// `(year, month)` (1–12) of a month index.
+pub fn month_of_index(month: usize) -> (u16, u8) {
+  (FIRST_YEAR + (month / 12) as u16, (month % 12) as u8 + 1)
+}
+
+/// `2017-12` for a month index.
+pub fn month_name(month: usize) -> String {
+  let (year, month) = month_of_index(month);
+  format!("{year}-{month:02}")
 }
 
 /// A row's circulating-supply counters at one height (see DESIGN.md §5).
@@ -715,6 +773,29 @@ pub struct SupplySnapshot {
   pub years: YearSupply,
   /// The same broken down by block luck (DESIGN.md §5.2).
   pub lucks: LuckSupply,
+  /// The same broken down by mint month (DESIGN.md §5.3).
+  pub months: MonthSupply,
+}
+
+/// Every row's supply by the month its sats were mined.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MonthSupply {
+  /// First height of each month index, from `FIRST_YEAR`-01 to the tip's
+  /// month (a month no block was mined in starts where the next one does).
+  pub starts: Vec<u32>,
+  /// One per catalog row, in `RowId` order.
+  pub rows: Vec<RowMonths>,
+}
+
+/// One catalog row's supply by mint month: the months it has mined sats
+/// in, ascending, each month's supply under its month row id
+/// (`month_row`), holders exact (one month), top holders at most
+/// `YEAR_TOP_HOLDERS` per list. Months are not combined, so no holder
+/// masks.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RowMonths {
+  pub row: RowId,
+  pub cells: Vec<(usize, RowSupply)>,
 }
 
 /// Every row's supply by the luck of the blocks its sats were mined in.
@@ -800,7 +881,7 @@ impl RowYears {
   }
 }
 
-/// Top holders per list kept for a year row (the catalog rows keep the
+/// Top holders per list kept for a year or month row (the catalog rows keep the
 /// indexer's `supply_top`).
 pub const YEAR_TOP_HOLDERS: usize = 100;
 
@@ -853,9 +934,40 @@ mod tests {
   }
 
   #[test]
+  fn months_of_times() {
+    for (time, (year, month), index) in [
+      (1_231_006_505, (2009, 1), 0), // genesis
+      (1_233_446_399, (2009, 1), 0), // 2009-01-31T23:59:59Z
+      (1_233_446_400, (2009, 2), 1),
+      (1_262_303_999, (2009, 12), 11),
+      (1_262_304_000, (2010, 1), 12),
+      (1_330_473_600, (2012, 2), 37), // 2012-02-29
+      (1_330_559_999, (2012, 2), 37),
+      (1_330_560_000, (2012, 3), 38),
+      (1_512_086_400, (2017, 12), 107), // 2017-12-01
+      (1_788_220_800, (2026, 9), 212),  // 2026-09-01
+      (2_871_763_200, (2061, 1), MONTH_SLOTS - 1),
+    ] {
+      assert_eq!(year_month_of_time(time), (year, month), "{time}");
+      assert_eq!(month_index_of_time(time), index, "{time}");
+      if index < MONTH_SLOTS - 1 {
+        assert_eq!(month_of_index(index), (year as u16, month as u8));
+      }
+    }
+    assert_eq!(month_index_of_time(0), 0);
+    assert_eq!(month_name(0), "2009-01");
+    assert_eq!(month_name(107), "2017-12");
+    assert_eq!(month_name(MONTH_SLOTS - 1), "2058-12");
+    // A month index's year is its year index.
+    for time in (1_231_006_505..2_000_000_000u32).step_by(86_400 * 7) {
+      assert_eq!(month_index_of_time(time) / 12, year_index_of_time(time));
+    }
+  }
+
+  #[test]
   fn year_row_ids() {
     let rows = 72;
-    assert_eq!(tracked_row_ids(rows), 72 * 161);
+    assert_eq!(tracked_row_ids(rows), 72 * 761);
     assert!(tracked_row_ids(rows) <= usize::from(RowId::MAX));
     assert_eq!(split_year_row(rows, 71), None);
     assert_eq!(split_row(rows, 71), TrackedRow::Catalog(71));
@@ -872,9 +984,23 @@ mod tests {
       assert_eq!(split_year_row(rows, id), None);
     }
     assert_eq!(
-      usize::from(luck_row(rows, 71, LUCK_SLOTS - 1)),
+      usize::from(luck_row(rows, 71, LUCK_SLOTS - 1)) + 1,
+      first_month_row(rows)
+    );
+    for (row, month) in [(0, 0), (0, 599), (5, 107), (71, 599)] {
+      let id = month_row(rows, row, month);
+      assert!(usize::from(id) >= first_month_row(rows) && usize::from(id) < tracked_row_ids(rows));
+      assert_eq!(split_month_row(rows, id), Some((row, month)));
+      assert_eq!(split_luck_row(rows, id), None);
+      assert_eq!(split_year_row(rows, id), None);
+    }
+    assert_eq!(
+      usize::from(month_row(rows, 71, MONTH_SLOTS - 1)),
       tracked_row_ids(rows) - 1
     );
+    // Room for 86 catalog rows.
+    assert!(tracked_row_ids(86) <= usize::from(RowId::MAX));
+    assert!(tracked_row_ids(87) > usize::from(RowId::MAX));
   }
 
   #[test]

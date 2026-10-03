@@ -137,8 +137,8 @@ use {
 /// inscriptions; 3: an inscription's first transaction index, so a sale and
 /// an inscription in one block are ordered; 4: the address history; 5: the
 /// year rows' history in `row_history` and their `mined` counters; 6: the
-/// same for the luck rows).
-pub const SCHEMA_VERSION: u32 = 6;
+/// same for the luck rows; 7: and for the month rows).
+pub const SCHEMA_VERSION: u32 = 7;
 
 /// Undo records are kept for this many blocks below and including the tip.
 pub const UNDO_DEPTH: u32 = 144;

@@ -107,6 +107,27 @@ lists) equal a brute-force count over `/sats` for rare, epic, black rare,
 Nakamoto alpha, vintage uncommon, megasat alpha, alpha uncommon (195,831
 holders) and uncommon (256,807).
 
+With the month rows (index schema 7, 2026-10-03, same box, to 969,714):
+fast sync 51.6 min (3,093 s; +7% on schema 6), peak memory 31.3 GB
+(cgroup; 28.2 GB on schema 6), RSS live after a restart ~2.0 GB (1.8 GB on
+schema 6; restore 3.2 s), index 7.5 GB (6.1 GB for the schema 6 index
+live beside it), the published supply ~0.8–1.2 s a block (1.4–2.1 s on
+schema 6 at the same height: each listed holder's outputs are now tallied
+in one pass per script, which pays for the month rows' 7,382 more top
+holder lists). 214 months, 3,691 non-empty (row, month) cells;
+`/supply/months` is 144 KB. Checked at 969,729: for all 70 rows the months
+add up to the row and to every year (mined, located, burned, lost,
+overwritten, extracted, inscribed; active windows for 2009, 2013, 2017,
+2023 and 2026), and no month has more holders than its year; the month
+spans equal those derived from every header's running-max time; the
+holders, extracted holders and both top-100 lists (sats, UTXOs, last
+received height) of every month equal a brute-force count over `/sats`
+for rare, epic, black rare, Nakamoto alpha, vintage uncommon, megasat
+alpha, pizza uncommon and alpha uncommon (214 months, 396,119 holders);
+`/supply`, `/supply/years`, `/supply/lucks`, `years=`/`luck=` answers, row
+details with top holders, history, `/status` years and lucks and the
+mempool overlay equal the schema 6 index's at the same height.
+
 Validated against an upstream ord with `--index-sats` at the same height
 (`tools/validate/`, 2026-09-30, tip 969,264–969,267): 2,310 sampled tracked
 sats across all 62 rows plus edge sets (burned sats, sats that passed through
