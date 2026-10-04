@@ -513,6 +513,13 @@
           "to_height": null,
           "fee": "2.5% of the summed listing prices (offers: of the price P), at least 546 sats, paid by the buyer (bidder) on top of the price; no maker fee (the seller's payment is the full price)",
           "note": "One fee output per purchase, at vout 2k+1; per accepted offer, at vout 2."
+        },
+        {
+          "address": "bc1qycdj49gt04zvc07xyzzgsvgglc7qyhz8r3sfs6",
+          "from_height": 969899,
+          "to_height": null,
+          "fee": "2.5% of the summed listing prices (offers: of the price P), at least 546 sats, paid by the buyer (bidder) on top of the price; no maker fee (the seller's payment is the full price)",
+          "note": "One fee output per purchase, at vout 2k+1; per accepted offer, at vout 2. The fee address from block 969899 on; the earlier one stays attributed (purchases and offers signed before the change)."
         }
       ],
       "markers": [
