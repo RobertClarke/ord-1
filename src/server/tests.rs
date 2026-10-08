@@ -44,6 +44,7 @@ impl FakeCatalog {
       all_of: types.to_vec(),
       any_of: Vec::new(),
       heights: None,
+      sats: None,
       range,
       market: true,
     };
@@ -2321,6 +2322,7 @@ fn sale_json(server: &TestServer) -> Value {
       { "sat": COIN, "height": 1, "time": TIMES[1], "inscribed": true },
       { "sat": 2 * COIN - 1, "height": 1, "time": TIMES[1], "inscribed": false },
     ],
+    "sats_truncated": false,
     "rows": { "uncommon": 1, "black": 1, "alpha": 1 },
     "unit": { "row": "uncommon", "count": 1, "price": 45_000 },
     "pure_rows": [],
@@ -2473,9 +2475,36 @@ fn sale_sats_are_the_special_sats_of_the_sold_pieces() {
     kind: UtxoKind::Spendable,
     pieces: vec![piece(0, 0, 20 * COIN)],
   };
+  let wide = render.sale(&sale_of(wide)).unwrap();
+  assert_eq!(wide.sats.len(), super::sales::MAX_SALE_SATS);
+  assert!(wide.sats_truncated, "over 100 special sats");
   assert_eq!(
-    render.sale(&sale_of(wide)).unwrap().sats.len(),
-    super::sales::MAX_SALE_SATS
+    serde_json::to_value(&wide).unwrap()["sats_truncated"],
+    json!(true)
+  );
+
+  // [0, 99e8) holds exactly 100 (99 alphas and the black COIN − 1): not
+  // cut; one sat more (the alpha 99e8) is.
+  let first = |len: u64| TrackedUtxo {
+    value: len,
+    script_pubkey: p2pk(),
+    height: 0,
+    kind: UtxoKind::Spendable,
+    pieces: vec![piece(0, 0, len)],
+  };
+  let exact = render.sale(&sale_of(first(99 * 100_000_000))).unwrap();
+  assert_eq!(exact.sats.len(), super::sales::MAX_SALE_SATS);
+  assert!(!exact.sats_truncated, "exactly 100");
+  let over = render.sale(&sale_of(first(99 * 100_000_000 + 1))).unwrap();
+  assert_eq!(over.sats.len(), super::sales::MAX_SALE_SATS);
+  assert!(over.sats_truncated, "101");
+  assert_eq!(over.sats, exact.sats);
+  let few = render.sale(&sale_of(first(1))).unwrap();
+  assert_eq!(few.sats.len(), 1);
+  assert!(!few.sats_truncated);
+  assert_eq!(
+    serde_json::to_value(&few).unwrap()["sats_truncated"],
+    json!(false)
   );
 }
 
