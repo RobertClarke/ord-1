@@ -18,6 +18,10 @@ pub struct RowInfo {
   pub all_of: Vec<&'static str>,
   pub any_of: Vec<&'static str>,
   pub heights: Option<(u32, u32)>,
+  /// Sat-number scope `[start, end)` (start inclusive, end exclusive), if
+  /// the row has one (`block9_1st_tx`); omitted from the JSON otherwise.
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub sats: Option<(u64, u64)>,
   pub range: bool,
   /// A market row (sales are priced per its sats); `false` for label rows.
   pub market: bool,
@@ -75,6 +79,7 @@ impl SatCatalogView {
         all_of: names(&row.all_of),
         any_of: names(&row.any_of),
         heights: row.heights,
+        sats: row.sats,
         range: row.range,
         market: row.market,
       })
@@ -173,6 +178,18 @@ mod tests {
     assert!(view.rows()[usize::from(uncommon)].market);
     let first_tx = view.row_id("block9_1st_tx").unwrap();
     assert!(!view.rows()[usize::from(first_tx)].market);
+    assert_eq!(
+      view.rows()[usize::from(first_tx)].sats,
+      Some(crate::sats::BLOCK9_FIRST_TX)
+    );
+    assert_eq!(view.rows()[usize::from(block9)].sats, None);
+    let json = |row: RowId| serde_json::to_value(&view.rows()[usize::from(row)]).unwrap();
+    assert_eq!(
+      json(first_tx)["sats"],
+      serde_json::json!([45_000_000_000u64, 46_000_000_000u64])
+    );
+    assert!(json(block9).get("sats").is_none(), "no scope, no key");
+    assert!(json(uncommon).get("sats").is_none(), "no scope, no key");
     assert_eq!(
       view.rows().iter().filter(|row| !row.market).count(),
       1,

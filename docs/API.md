@@ -140,6 +140,14 @@ Row definitions, in `RowId` order.
 another row: `block9_1st_tx` holds every block 9 sat that ever moved (the
 other 40 BTC of block 9 never did), so its sales are priced as `block9`.
 
+`sats` (additive, present only on a row with a sat-number scope): the
+row's sats as `[start, end]`, a half-open interval — `start` inclusive,
+`end` exclusive (sats `start ..= end - 1`). Only `block9_1st_tx` has one:
+`"sats": [45000000000, 46000000000]`, block 9's sats of the first bitcoin
+transaction (10 BTC), not all of block 9. A row without the key has no sat
+scope (it is bounded by its types and `heights` only). Older indexes never
+send it; a client reading one should treat `block9_1st_tx` as this range.
+
 The row set is docs/DESIGN.md §3. Rules version 4 (a new
 `catalog_fingerprint` in `/status`, so a reindex) removed the
 `alpha_jan_feb_2009` row and type (an extraction criterion of the runtime,
@@ -551,6 +559,7 @@ SINGLE|ANYONECANPAY, an accepted offer, a legacy Magic Eden trade, …).
   "premium": 45000,
   "pieces": [Piece],
   "sats": [{ "sat": 1150805000000000, "height": 250322, "time": 1375694270, "inscribed": false }],
+  "sats_truncated": false,
   "rows": { "uncommon": 1, "alpha": 1, "alpha_uncommon": 1 },
   "unit": { "row": "alpha_uncommon", "count": 1, "price": 45000 } | null,
   "pure_rows": ["alpha_uncommon", "uncommon", "alpha"],
@@ -608,6 +617,11 @@ SINGLE|ANYONECANPAY, an accepted offer, a legacy Magic Eden trade, …).
   chunk lists its alphas, palindromes, … but not every block 9 sat — in sat
   order within each piece, at most 100; each with the height and time of
   the block that mined it and whether it carried an inscription when sold.
+* `sats_truncated` (additive): `true` exactly when the sale sold more than
+  100 individually special sats, so `sats` holds only the first 100 (in the
+  order above); `false` when `sats` lists them all. Computed when the sale
+  is served, not stored; older indexes never send it (read a missing key as
+  unknown, e.g. truncated when `sats` has 100 entries).
 * `inscribed`: some sold tracked sat carried an inscription when sold (an
   outlier for rare-sat pricing; the fork tracks inscriptions only on tracked
   sats). "When sold" means inscribed by an earlier transaction: one later

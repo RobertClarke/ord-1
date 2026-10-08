@@ -66,6 +66,9 @@ pub struct SaleJson {
   pub premium: i64,
   pub pieces: Vec<PieceJson>,
   pub sats: Vec<SaleSatJson>,
+  /// `sats` was cut at `MAX_SALE_SATS`: the sale sold more individually
+  /// special sats than it lists.
+  pub sats_truncated: bool,
   pub rows: RowMap,
   pub unit: Option<UnitJson>,
   /// The rows every sold sat belongs to, rarest first.
@@ -106,9 +109,9 @@ impl Render<'_> {
   }
 
   /// The individually special sats of `piece` (sats of non-range rows), in
-  /// sat order, until `out` holds `MAX_SALE_SATS`.
-  fn special_sats(&self, start: u64, len: u64, out: &mut Vec<u64>) {
-    if out.len() >= MAX_SALE_SATS || len == 0 || !self.has_special(start, len) {
+  /// sat order, until `out` holds `cap`.
+  fn special_sats(&self, start: u64, len: u64, cap: usize, out: &mut Vec<u64>) {
+    if out.len() >= cap || len == 0 || !self.has_special(start, len) {
       return;
     }
     if len == 1 {
@@ -116,8 +119,8 @@ impl Render<'_> {
       return;
     }
     let half = len / 2;
-    self.special_sats(start, half, out);
-    self.special_sats(start + half, len - half, out);
+    self.special_sats(start, half, cap, out);
+    self.special_sats(start + half, len - half, cap, out);
   }
 
   /// The sats of `pieces` that carried an inscription before the
@@ -178,10 +181,13 @@ impl Render<'_> {
 
     let inscribed = self.inscribed_at(pieces, stored.height, sale.tx_index)?;
 
+    // One past the cap tells whether the list was cut.
     let mut special = Vec::new();
     for piece in pieces {
-      self.special_sats(piece.start, piece.len, &mut special);
+      self.special_sats(piece.start, piece.len, MAX_SALE_SATS + 1, &mut special);
     }
+    let sats_truncated = special.len() > MAX_SALE_SATS;
+    special.truncate(MAX_SALE_SATS);
     let mut sats = Vec::with_capacity(special.len());
     for sat in special {
       let height = ordinals::Sat(sat).height().n();
@@ -226,6 +232,7 @@ impl Render<'_> {
       premium,
       pieces: self.pieces(pieces),
       sats,
+      sats_truncated,
       rows: self.row_map(&counts),
       unit,
       pure_rows,
